@@ -1,5 +1,3 @@
-# syntax=docker.io/docker/dockerfile:1
-
 # Shared Dockerfile for the Bun API
 # Build from repo root: docker build --build-arg SERVICE=apps/api -f apps/api/Dockerfile .
 

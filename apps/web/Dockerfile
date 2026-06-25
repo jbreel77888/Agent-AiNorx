@@ -1,4 +1,3 @@
-# syntax=docker.io/docker/dockerfile:1
 #
 # Multi-stage Dockerfile for cloud deployment.
 # Builds Next.js inside Docker (no pre-built host artifacts needed).
