@@ -23,6 +23,10 @@ COPY apps/web ./apps/web
 COPY packages/shared ./packages/shared
 COPY packages/db ./packages/db
 COPY packages/llm-gateway ./packages/llm-gateway
+COPY packages/agent-tunnel ./packages/agent-tunnel
+COPY packages/starter ./packages/starter
+COPY packages/manifest-schema ./packages/manifest-schema
+COPY packages/registry ./packages/registry
 
 # Install dependencies
 RUN pnpm install --filter Kortix-Computer-Frontend... --shamefully-hoist
