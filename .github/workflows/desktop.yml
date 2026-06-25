@@ -244,7 +244,7 @@ jobs:
           git push -f origin desktop-dev-latest
 
       - name: Publish GitHub prerelease (desktop-dev-latest)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: desktop-dev-latest
           name: desktop-dev-latest

@@ -783,7 +783,7 @@ jobs:
           git push -f origin dev-latest
 
       - name: Publish GitHub prerelease (dev-latest)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: dev-latest
           name: dev-latest
