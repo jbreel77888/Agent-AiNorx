@@ -51,7 +51,7 @@ FROM node:22-slim AS deps
 
 WORKDIR /app
 
-ARG SERVICE
+ARG SERVICE=apps/api
 
 # Copy workspace root files for pnpm install
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
@@ -81,7 +81,7 @@ FROM base AS runner
 
 WORKDIR /app
 
-ARG SERVICE
+ARG SERVICE=apps/api
 
 # Unified platform version (root VERSION file). Baked as a default; prod overrides
 # it with the clean X.Y.Z via the ECS task-def env. Deliberately SEPARATE from
