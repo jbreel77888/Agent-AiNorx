@@ -1,0 +1,11 @@
+FROM postgres:16-alpine
+
+ENV POSTGRES_DB=kortix
+ENV POSTGRES_USER=kortix_user
+ENV POSTGRES_PASSWORD=kortix_secure_2024
+
+EXPOSE 5432
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
+  CMD pg_isready -U kortix_user -d kortix
