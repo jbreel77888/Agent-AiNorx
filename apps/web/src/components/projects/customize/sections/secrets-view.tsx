@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
+import { useAdminRole } from '@/hooks/admin';
 import { CustomizeSectionHeader } from '@/components/projects/customize/customize-section-header';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -108,6 +109,10 @@ export function SecretsView({ projectId }: { projectId: string }) {
 
 function ProjectSecretsBody({ projectId }: { projectId: string }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
+  // Admin role check — platform secrets editing is admin-only
+  const { data: adminRoleData } = useAdminRole();
+  const isAdmin = adminRoleData?.isAdmin ?? false;
+
   const secretsQuery = useQuery({
     queryKey: ['project-secrets', projectId],
     queryFn: () => listProjectSecrets(projectId),

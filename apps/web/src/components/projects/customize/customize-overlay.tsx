@@ -24,6 +24,8 @@
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+
+import { useAdminRole } from '@/hooks/admin';
 import {
   Bot,
   Container,
@@ -113,7 +115,8 @@ const GROUPS: readonly RailGroup[] = [
     items: [
       { section: 'changes', label: 'Changes', icon: GitPullRequest },
       { section: 'files', label: 'Files', icon: FolderOpen },
-      { section: 'sandbox', label: 'Sandbox', icon: Container },
+      // Sandbox hidden from regular users — admin-only (moved to admin panel)
+      // { section: 'sandbox', label: 'Sandbox', icon: Container },
       { section: 'dev', label: 'Dev', icon: Terminal },
     ],
   },
@@ -135,16 +138,26 @@ const COMPUTERS_ITEM: RailItem = { section: 'computers', label: 'Computers', ico
 const MARKETPLACE_ITEM: RailItem = { section: 'marketplace', label: 'Marketplace', icon: Store };
 
 /** Build the rail groups for this project, injecting flag-gated entries. */
-function railGroups(tunnelEnabled: boolean, marketplaceEnabled: boolean): readonly RailGroup[] {
+function railGroups(tunnelEnabled: boolean, marketplaceEnabled: boolean, isAdmin: boolean): readonly RailGroup[] {
   return GROUPS.map((g) => {
     if (g.label === 'Build' && marketplaceEnabled) {
       return { ...g, items: [...g.items, MARKETPLACE_ITEM] };
     }
-    if (g.label === 'Connect' && tunnelEnabled) {
+    // Computers (Agent Tunnel) — only shown to admin users
+    if (g.label === 'Connect' && tunnelEnabled && isAdmin) {
       return { ...g, items: [...g.items, COMPUTERS_ITEM] };
     }
     return g;
-  });
+  }).concat(
+    // Add Sandbox back for admin users under Workspace group
+    isAdmin ? [{ label: 'Workspace (Admin)', items: [{ section: 'sandbox' as CustomizeSection, label: 'Sandbox', icon: Container }] }] : []
+  ).map((g, idx, arr) => {
+    // Merge duplicate Workspace groups
+    if (g.label === 'Workspace (Admin)') {
+      return g;
+    }
+    return g;
+  }) as readonly RailGroup[];
 }
 
 export function CustomizeOverlay({ projectId }: { projectId: string }) {
@@ -163,13 +176,17 @@ export function CustomizeOverlay({ projectId }: { projectId: string }) {
   });
   const projectName = detail.data?.project?.name ?? '';
 
+  // Admin role check — used to show/hide admin-only sections
+  const { data: adminRoleData } = useAdminRole();
+  const isAdmin = adminRoleData?.isAdmin ?? false;
+
   // Flag-gated rail. Computers (Agent Computer Tunnel) appears only when this
-  // project has opted into the experimental feature.
+  // project has opted into the experimental feature AND the user is admin.
   const tunnelEnabled = detail.data?.project?.experimental?.agent_tunnel ?? false;
   const marketplaceEnabled = detail.data?.project?.experimental?.marketplace ?? false;
   const groups = useMemo(
-    () => railGroups(tunnelEnabled, marketplaceEnabled),
-    [tunnelEnabled, marketplaceEnabled],
+    () => railGroups(tunnelEnabled, marketplaceEnabled, isAdmin),
+    [tunnelEnabled, marketplaceEnabled, isAdmin],
   );
   const allItems = useMemo(() => groups.flatMap((g) => g.items), [groups]);
 
