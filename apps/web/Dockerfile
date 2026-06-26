@@ -4,7 +4,7 @@
 # Build from repo root: docker build -f apps/web/Dockerfile -t kortix-web .
 
 # ---- Build Stage ----
-FROM node:22-slim AS builder
+FROM node:26-slim AS builder
 
 WORKDIR /app
 
@@ -46,7 +46,7 @@ WORKDIR /app/apps/web
 RUN NODE_OPTIONS="--max-old-space-size=6144" pnpm run build
 
 # ---- Runner Stage ----
-FROM node:22-slim AS runner
+FROM node:26-slim AS runner
 
 WORKDIR /app
 
