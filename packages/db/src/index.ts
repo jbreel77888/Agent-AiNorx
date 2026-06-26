@@ -9,11 +9,11 @@ export {
   // Enums
   sandboxStatusEnum,
   deploymentStatusEnum,
-	  deploymentSourceEnum,
-	  projectStatusEnum,
-	  projectSessionStatusEnum,
-	  sessionLifecycleCommandStatusEnum,
-	  projectRoleEnum,
+          deploymentSourceEnum,
+          projectStatusEnum,
+          projectSessionStatusEnum,
+          sessionLifecycleCommandStatusEnum,
+          projectRoleEnum,
   projectAccessRequestStatusEnum,
   apiKeyStatusEnum,
   apiKeyTypeEnum,
@@ -43,9 +43,9 @@ export {
   secretShareScopeEnum,
   secretGrantPrincipalEnum,
   projectSecretScopeEnum,
-	  projectTriggerRuntime,
-	  sessionLifecycleCommands,
-	  chatChannelBindings,
+          projectTriggerRuntime,
+          sessionLifecycleCommands,
+          chatChannelBindings,
   chatInstalls,
   chatThreads,
   chatTurnStreams,
@@ -236,3 +236,11 @@ export type {
   GatewayBudget,
   NewGatewayBudget,
 } from './types';
+
+// Platform LLM Provider System — exported from schema
+export {
+  platformLlmProviders,
+  platformLlmModels,
+  platformLlmProvidersRelations,
+  platformLlmModelsRelations,
+} from './schema/kortix';
