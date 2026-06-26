@@ -255,7 +255,14 @@ const withMDX = createMDX();
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
 // Compose config wrappers: next-intl → MDX → Better Stack (structured logs) → Sentry (error tracking)
-export default withSentryConfig(withBetterStack(withMDX(withNextIntl(nextConfig()))), {
+// On Railway trial plan, Sentry build steps cause OOM — disable when SKIP_SENTRY=1
+const baseConfig = withBetterStack(withMDX(withNextIntl(nextConfig())));
+
+const shouldSkipSentry = process.env.SKIP_SENTRY === '1' || process.env.NEXT_PUBLIC_SENTRY_DSN === '';
+
+export default shouldSkipSentry
+  ? baseConfig
+  : withSentryConfig(baseConfig, {
   // Suppresses source map uploading logs during build
   silent: true,
 

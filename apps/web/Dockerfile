@@ -39,6 +39,9 @@ ENV NEXT_PUBLIC_BACKEND_URL=http://localhost:8008/v1
 ENV NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=local-build-placeholder-anon-key
 ENV NEXT_OUTPUT=standalone
+# Skip Sentry build to save memory on Railway trial plan
+ENV SKIP_SENTRY=1
+ENV NEXT_PUBLIC_SENTRY_DSN=
 
 # Build the Next.js app with standalone output
 # Disable Turbopack for lower memory usage in CI
