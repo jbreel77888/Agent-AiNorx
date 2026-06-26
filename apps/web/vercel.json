@@ -1,6 +1,6 @@
 {
-  "buildCommand": "SKIP_SENTRY=1 NEXT_PUBLIC_SENTRY_DSN= next build",
-  "installCommand": "pnpm install --engine-strict=false",
+  "buildCommand": "cd ../.. && pnpm install --engine-strict=false && cd apps/web && SKIP_SENTRY=1 NEXT_PUBLIC_SENTRY_DSN= next build",
+  "installCommand": "cd ../.. && pnpm install --engine-strict=false",
   "ignoreCommand": "bash scripts/vercel-ignore.sh",
   "rewrites": [
     {
