@@ -36,6 +36,10 @@ const KORTIX_VERSION = resolveKortixVersion();
 // don't set this flag, so they are completely unaffected.
 const IS_PREVIEW_BUILD = process.env.KORTIX_PREVIEW_BUILD === '1';
 
+// Vercel builds set KORTIX_VERCEL_BUILD=1 to skip memory-heavy build steps
+// (standalone file tracing, ESLint) that cause OOM on Vercel's 8GB builders.
+const IS_VERCEL_BUILD = process.env.KORTIX_VERCEL_BUILD === '1' || process.env.VERCEL === '1';
+
 // --- Cross-origin dev / preview access -----------------------------------
 // The app is frequently reached through a proxy whose hostname differs from the
 // origin the browser sends: the Kortix platform proxy (p<port>-<id>.localhost:<port>),
@@ -76,7 +80,9 @@ const nextConfig = (): NextConfig => ({
   // Standalone bundles the app for Docker/Vercel via a slow monorepo-wide
   // file-tracing pass. `next start` (what `pnpm preview` uses) ignores it, so
   // skip it locally for a faster build.
-  output: IS_PREVIEW_BUILD ? undefined : 'standalone',
+  // Standalone output is needed for Docker/Railway but not for Vercel (uses serverless).
+  // Skip it on Vercel to save ~1.5GB of peak memory during the file-tracing pass.
+  output: IS_PREVIEW_BUILD || IS_VERCEL_BUILD ? undefined : 'standalone',
   // Inline the resolved version so NEXT_PUBLIC_KORTIX_VERSION is available in
   // both the server (runtime-config) and client bundles, even on Vercel.
   env: {
@@ -102,8 +108,10 @@ const nextConfig = (): NextConfig => ({
 
   // Lint runs in CI (`pnpm lint`); skip it during local preview builds for speed.
   // Prod/CI builds (no KORTIX_PREVIEW_BUILD) keep Next's default lint-on-build.
+  // ESLint runs in CI (`pnpm lint`); skip it during Vercel builds to reduce
+  // peak memory by ~1GB and avoid OOM during the lint phase.
   eslint: {
-    ignoreDuringBuilds: IS_PREVIEW_BUILD,
+    ignoreDuringBuilds: IS_PREVIEW_BUILD || IS_VERCEL_BUILD,
   },
 
   // Webpack configuration to make Konva work with Next.js
