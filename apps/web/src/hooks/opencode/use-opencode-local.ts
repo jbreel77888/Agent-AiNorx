@@ -13,11 +13,58 @@
 
 import { flattenModels, type FlatModel } from '@/features/session/session-chat-input';
 import { featureFlags } from '@/lib/feature-flags';
+import { LLM_PROVIDERS } from '@/lib/llm-providers';
+import { listProjectSecrets } from '@/lib/projects-client';
 import type { Agent, Config, ProviderListResponse } from '@opencode-ai/sdk/v2/client';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { useModelStore, type ModelKey } from './use-model-store';
 
 export type { ModelKey };
+
+// ============================================================================
+// Connected Provider IDs hook
+// ============================================================================
+
+/**
+ * Derives the set of BYOK provider IDs whose API keys are present in project
+ * secrets. This drives which gateway-catalog models (e.g. `anthropic/claude-*`)
+ * are visible in the model picker.
+ *
+ * Mirrors the logic in model-selector.tsx but is reusable from any component.
+ */
+export function useConnectedProviderIds() {
+  const params = useParams<{ id?: string }>();
+  const projectId = typeof params?.id === 'string' ? params.id : null;
+
+  const secretsQuery = useQuery({
+    queryKey: ['project-secrets', projectId],
+    queryFn: () => listProjectSecrets(projectId as string),
+    enabled: !!projectId,
+    staleTime: 10_000,
+  });
+
+  const connectedProviderIds = useMemo(() => {
+    const data = secretsQuery.data;
+    const items = Array.isArray(data) ? data : ((data as any)?.items ?? []);
+    const secretNames = new Set(items.map((secret: { name: string }) => secret.name));
+
+    const ids = new Set<string>();
+    for (const provider of LLM_PROVIDERS) {
+      if (provider.envVars.length > 0 && provider.envVars.every((v) => secretNames.has(v))) {
+        ids.add(provider.id);
+      }
+    }
+    // ChatGPT subscription (Codex)
+    if (secretNames.has('CODEX_AUTH_JSON') || secretNames.has('OPENCODE_AUTH_JSON')) {
+      ids.add('codex');
+    }
+    return ids;
+  }, [secretsQuery.data]);
+
+  return connectedProviderIds;
+}
 
 // ============================================================================
 // Types
@@ -29,6 +76,10 @@ export interface UseOpenCodeLocalOptions {
   config?: Config;
   /** Session ID — used to persist agent selection per-session in localStorage */
   sessionId?: string;
+  /** Connected BYOK provider IDs — derived from project secrets, drives which
+   *  gateway-catalog models are visible in the picker. Without this, BYOK models
+   *  (e.g. anthropic/claude-*) are always hidden. */
+  connectedProviderIds?: Set<string>;
 }
 
 export interface OpenCodeLocalAgent {
@@ -132,13 +183,20 @@ export function useOpenCodeLocal({
   providers,
   config,
   sessionId,
+  connectedProviderIds: connectedProviderIdsProp,
 }: UseOpenCodeLocalOptions): OpenCodeLocal {
+  // Derive connected providers from project secrets if not passed explicitly
+  const derivedProviderIds = useConnectedProviderIds();
+  const connectedProviderIds = connectedProviderIdsProp ?? derivedProviderIds;
+
   // ---- Flatten models from providers (shared with the chat input, so the
   // gateway-only allowlist applies here too — native providers never leak in) ----
   const flatModels = useMemo<FlatModel[]>(() => flattenModels(providers), [providers]);
 
   // ---- Model store (persisted: visibility, recent, variant) ----
-  const modelStore = useModelStore(flatModels);
+  // Pass connectedProviderIds so BYOK models are visible when their provider key
+  // is present in project_secrets. Without this, only managed defaults show up.
+  const modelStore = useModelStore(flatModels, { connectedProviderIds });
 
   // ---- Model validation: a model is valid only if it's in the flattened list,
   // which is already filtered to connected + gateway-only providers. This keeps
