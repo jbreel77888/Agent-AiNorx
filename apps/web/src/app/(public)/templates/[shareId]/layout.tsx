@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: { params: Promise<{ shareId: 
 
     const template = await response.json();
 
-    const title = `${template.name} - AI Worker Template | Kortix`;
+    const title = `${template.name} - AI Worker Template | VaelonX`;
     const description = template.description || 'Discover and install this AI worker template to enhance your workflow with powerful automation capabilities.';
 
     const ogImage = `${appUrl}/api/og/template?shareId=${templateId}`;
@@ -58,7 +58,7 @@ export async function generateMetadata({ params }: { params: Promise<{ shareId: 
             url: `${appUrl}/share-page/og-fallback.png`,
             width: 1200,
             height: 630,
-            alt: 'Kortix AI Worker Template',
+            alt: 'VaelonX AI Worker Template',
           }
         ],
       },

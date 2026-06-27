@@ -13,11 +13,11 @@ const rawAppUrl =
 const baseUrl = /^https?:\/\//.test(rawAppUrl) ? rawAppUrl : DEFAULT_APP_URL;
 
 export const siteMetadata = {
-  name: 'Kortix',
-  title: 'Kortix – The AI Command Center for Your Company',
+  name: 'VaelonX',
+  title: 'VaelonX – The AI Command Center for Your Company',
   description:
-    'Kortix is the open-source AI command center for your company — one place to build, run, and govern AI agents that connect 3,000+ tools and deliver real work, not just chat.',
+    'VaelonX is the open-source AI command center for your company — one place to build, run, and govern AI agents that connect 3,000+ tools and deliver real work, not just chat.',
   url: baseUrl,
   keywords:
-    'Kortix, AI command center, AI agents, AI workforce, open source AI platform, self-hosted AI agents, AI automation, agent orchestration, AI-native company, build AI agents, connect 3000 tools, AI operations',
+    'VaelonX, AI command center, AI agents, AI workforce, open source AI platform, self-hosted AI agents, AI automation, agent orchestration, AI-native company, build AI agents, connect 3000 tools, AI operations',
 };

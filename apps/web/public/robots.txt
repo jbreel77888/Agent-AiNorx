@@ -1,4 +1,4 @@
-# Kortix Robots.txt
+# VaelonX Robots.txt
 User-agent: *
 Allow: /
 

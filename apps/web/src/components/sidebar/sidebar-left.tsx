@@ -624,7 +624,7 @@ function SidebarUpdateIndicator({ collapsed }: { collapsed: boolean }) {
           <span className="bg-primary relative inline-flex h-2 w-2 rounded-full" />
         </span>
         <span className="text-foreground min-w-0 truncate text-xs font-semibold">
-          {currentChannel === 'dev' ? 'New dev build' : 'New Kortix version'}
+          {currentChannel === 'dev' ? 'New dev build' : 'New VaelonX version'}
         </span>
         <span className="flex-1" />
         <span className="text-muted-foreground flex-shrink-0 text-xs">v{latestVersion}</span>

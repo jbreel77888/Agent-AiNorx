@@ -82,9 +82,9 @@ export const metadata: Metadata = {
   },
   description: siteMetadata.description,
   keywords: siteMetadata.keywords,
-  authors: [{ name: 'Kortix Team', url: 'https://www.kortix.com' }],
-  creator: 'Kortix Team',
-  publisher: 'Kortix Team',
+  authors: [{ name: 'VaelonX Team', url: 'https://www.kortix.com' }],
+  creator: 'VaelonX Team',
+  publisher: 'VaelonX Team',
   applicationName: siteMetadata.name,
   robots: {
     index: true,
@@ -258,7 +258,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <meta property="og:image" content="https://kortix.com/banner.png" />
         <meta property="og:url" content="https://kortix.com" />
         <meta property="og:type" content="website" />
-        <meta property="og:site_name" content="Kortix" />
+        <meta property="og:site_name" content="VaelonX" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta
           name="twitter:title"
@@ -297,9 +297,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               '@type': 'Organization',
               name: siteMetadata.name,
               alternateName: [
-                'Kortix',
-                'Kortix AI',
-                'Kortix – The AI Command Center for Your Company',
+                'VaelonX',
+                'VaelonX AI',
+                'VaelonX – The AI Command Center for Your Company',
               ],
               url: siteMetadata.url,
               logo: `${siteMetadata.url}/favicon.png`,
@@ -326,7 +326,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               '@context': 'https://schema.org',
               '@type': 'SoftwareApplication',
               name: siteMetadata.title,
-              alternateName: [siteMetadata.name, 'Kortix'],
+              alternateName: [siteMetadata.name, 'VaelonX'],
               applicationCategory: 'BusinessApplication',
               operatingSystem: 'Web, macOS, Windows, Linux',
               description: siteMetadata.description,

@@ -34,7 +34,7 @@ export const siteConfig = {
     ],
   },
   hero: {
-    description: 'Kortix – the open AI command center for your company.',
+    description: 'VaelonX – the open AI command center for your company.',
   },
   footerLinks: [
     {

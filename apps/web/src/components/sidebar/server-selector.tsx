@@ -1073,9 +1073,9 @@ export function InstanceManagerDialog({
 
   // Compute description text based on mode
   const modeDescription: Record<string, string> = {
-    list: 'Manage your Kortix instances.',
+    list: 'Manage your VaelonX instances.',
     add: 'Choose how to connect.',
-    custom: 'Connect to a Kortix instance by entering its address.',
+    custom: 'Connect to a VaelonX instance by entering its address.',
     edit: 'Update the connection details for this instance.',
     ssh: 'Connect via SSH or VS Code Remote SSH.',
   };

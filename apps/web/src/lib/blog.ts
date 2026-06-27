@@ -26,8 +26,8 @@ export const AUTHORS: Record<string, Author> = {
     email: 'marko@kortix.ai',
   },
   team: {
-    name: 'The Kortix Team',
-    role: 'Kortix',
+    name: 'The VaelonX Team',
+    role: 'VaelonX',
     email: 'team@kortix.ai',
   },
 };
