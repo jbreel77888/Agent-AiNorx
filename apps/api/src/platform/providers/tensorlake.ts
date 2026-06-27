@@ -113,30 +113,36 @@ export class TensorlakeProvider implements SandboxProvider {
     envVars: Record<string, string>,
     sandboxApiBase: string,
   ): Promise<ProvisionResult> {
-    // Every sandbox must boot from a per-project snapshot — same contract as
-    // Daytona. A missing snapshot means the project's first build hasn't
-    // finished, which is a session-creation error.
     const snapshot = opts.snapshot;
-    if (!snapshot) {
-      throw new Error(
-        'Tensorlake create() called without opts.snapshot. ' +
-        'Every sandbox must boot from a per-project snapshot built by ' +
-        'apps/api/src/snapshots/builder.ts. There is no shared fallback.',
-      );
-    }
+    // Tensorlake trial plan: only 1 concurrent sandbox allowed.
+    // Image building itself creates a temporary builder sandbox that counts
+    // against the quota, so the per-project snapshot may not exist yet.
+    // Fallback: boot from the base image directly if no snapshot is available.
+    const baseImage = config.TENSORLAKE_DEFAULT_IMAGE || 'tensorlake/ubuntu-systemd';
+    const useImage = snapshot || baseImage;
 
     const sandboxName = buildTensorlakeName(opts.accountId, opts.name);
     const autoStopMinutes = opts.autoStopInterval ?? config.KORTIX_SANDBOX_AUTOSTOP_MINUTES;
     const timeoutSecs = autoStopMinutes === 0 ? 0 : Math.max(60, autoStopMinutes * 60);
 
-    const sandbox = await Sandbox.create({
+    // Create sandbox from snapshot (if built) or base image (fallback)
+    const createOpts: Record<string, unknown> = {
       name: sandboxName,
-      snapshotId: snapshot,
       cpus: DEFAULT_CPUS,
       memoryMb: DEFAULT_MEMORY_MB,
       timeoutSecs: timeoutSecs || DEFAULT_TIMEOUT_SECS,
       allowInternetAccess: true,
-    });
+    };
+
+    // snapshotId takes priority (pre-built image), otherwise use base image
+    if (snapshot) {
+      createOpts.snapshotId = snapshot;
+    } else {
+      createOpts.image = baseImage;
+      console.log(`[tensorlake] No snapshot available, booting from base image: ${baseImage}`);
+    }
+
+    const sandbox = await Sandbox.create(createOpts);
 
     // Expose the agent daemon port so the proxy can reach it
     await sandbox.update({
@@ -156,7 +162,8 @@ export class TensorlakeProvider implements SandboxProvider {
       metadata: {
         provisionedBy: opts.userId,
         tensorlakeSandboxId: externalId,
-        snapshot,
+        snapshot: snapshot || null,
+        image: snapshot ? undefined : baseImage,
         version: SANDBOX_VERSION,
       },
     };
