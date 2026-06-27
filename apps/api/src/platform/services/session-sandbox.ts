@@ -40,6 +40,7 @@ import {
 } from '../../snapshots/builder';
 import { ensureWarmBaseReady, warmPathPaused } from '../../snapshots/warm-bake';
 import { config } from '../../config';
+import { isTensorlakeQuotaError, TensorlakeQuotaError } from '../../snapshots/providers/tensorlake';
 import { providerFallbackSetting } from './runtime-settings';
 import { selectProvider } from './provider-balancer';
 import { ProvisionTimeline } from './provision-timeline';
@@ -449,6 +450,18 @@ export async function provisionSessionSandbox(opts: {
       } else if (firstImagePromise) {
         image = await firstImagePromise;
         firstImagePromise = null;
+      } else if (providerName === 'tensorlake' && healedStaleSnapshot) {
+        // Tensorlake quota/build fallback: skip ensureSandboxImage() entirely
+        // and boot from the base image. The provider's createCold() handles
+        // the no-snapshot case by using TENSORLAKE_DEFAULT_IMAGE.
+        const baseImage = config.TENSORLAKE_DEFAULT_IMAGE || 'tensorlake/ubuntu-systemd';
+        console.log(
+          `[session-sandbox] Skipping snapshot build for ${sandbox.sandboxId} (Tensorlake quota fallback), ` +
+          `booting from base image: ${baseImage}`,
+        );
+        // Use empty snapshotName so createCold() uses the image field (not snapshotId).
+        // The base image name is captured in imageInfo for logging/metadata only.
+        image = { snapshotName: '', slug, contentHash: 'base-image', built: false, isDefault: true };
       } else {
         const gitProject = await resolveGitProject();
         image = await ensureSandboxImage(gitProject, {
@@ -475,8 +488,8 @@ export async function provisionSessionSandbox(opts: {
         providerCreateInput.snapshot = image.snapshotName;
       }
       console.log(
-        `[session-sandbox] Booting ${sandbox.sandboxId} from ${image.snapshotName} ` +
-        `(${warmBase ? 'warm base' : `template "${image.slug}"${image.isDefault ? ' [platform default]' : ''}`}, ` +
+        `[session-sandbox] Booting ${sandbox.sandboxId} from ${image.snapshotName || 'base image (no snapshot)'} ` +
+        `(${warmBase ? 'warm base' : image.contentHash === 'base-image' ? 'Tensorlake quota fallback' : `template "${image.slug}"${image.isDefault ? ' [platform default]' : ''}`}, ` +
         `branch ${branch}, ${warmBase ? 'memory-restore' : image.built ? 'fresh build' : 'cache hit'})`,
       );
 
@@ -584,8 +597,8 @@ export async function provisionSessionSandbox(opts: {
             provisionTimeline: timeline,
             daytonaSandboxId: result.externalId,
             runtimeArtifact: {
-              artifactType: providerName === 'daytona' ? 'daytona_snapshot' : 'unknown',
-              providerArtifactRef: imageInfo!.snapshotName,
+              artifactType: providerName === 'daytona' ? 'daytona_snapshot' : imageInfo!.contentHash === 'base-image' ? 'tensorlake_base_image' : 'unknown',
+              providerArtifactRef: imageInfo!.snapshotName || `base:${config.TENSORLAKE_DEFAULT_IMAGE || 'tensorlake/ubuntu-systemd'}`,
               contentHash: imageInfo!.contentHash,
               sandboxSlug: imageInfo!.slug,
               isPlatformDefault: imageInfo!.isDefault,
@@ -704,6 +717,33 @@ export async function provisionSessionSandbox(opts: {
           bgExternalId = null;
         }
         imageInfo = null;
+        continue provisioning;
+      }
+
+      // ── Tensorlake quota fallback ──────────────────────────────────────
+      // On the trial plan, building a snapshot requires a temporary builder
+      // sandbox, which counts against the 1-concurrent-sandbox quota. When
+      // the quota is exceeded (or the build times out / fails for any reason
+      // on Tensorlake), skip the snapshot and boot directly from the base
+      // image. The provider's createCold() already handles the no-snapshot
+      // case by falling back to TENSORLAKE_DEFAULT_IMAGE.
+      if (providerName === 'tensorlake' && !warmBase && isTensorlakeQuotaError(bgErr)) {
+        console.warn(
+          `[session-sandbox] Tensorlake quota/build error for ${sandbox.sandboxId} — ` +
+          `skipping snapshot, booting from base image: ${bgErr instanceof Error ? bgErr.message : String(bgErr)}`,
+        );
+        if (bgExternalId) {
+          await provider.remove(bgExternalId).catch(() => {});
+          bgExternalId = null;
+        }
+        // Clear snapshot state and retry without a snapshot — createCold()
+        // will use the base image when providerCreateInput.snapshot is empty.
+        providerCreateInput.snapshot = undefined;
+        providerCreateInput.warmBaseSnapshot = undefined;
+        firstImagePromise = null;
+        imageInfo = null;
+        healedStaleSnapshot = true; // prevent re-attempting image build
+        tl.mark('tensorlake-quota-fallback');
         continue provisioning;
       }
 

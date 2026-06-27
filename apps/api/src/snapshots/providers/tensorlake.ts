@@ -29,7 +29,42 @@ import {
   Image,
   importSandboxImage,
 } from 'tensorlake';
+import { withTimeout } from '../../shared/with-timeout';
 import type { SandboxProviderAdapter, ProviderState, BuildableTemplate, BuildLogTap } from './index';
+
+// ─── Timeouts ─────────────────────────────────────────────────────────────────
+// The Tensorlake SDK takes no per-call timeout, so a degraded upstream can
+// leave the promise pending indefinitely (same situation as the Daytona SDK).
+// Bound all SDK calls so a slow/degraded API degrades gracefully instead of
+// hanging the provision IIFE forever.
+
+const BUILD_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes (matches Daytona)
+const SNAPSHOT_STATE_TIMEOUT_MS = 8_000;  // 8 seconds (matches Daytona)
+
+// ─── Quota Error Detection ────────────────────────────────────────────────────
+// Trial/free Tensorlake plans limit concurrent sandboxes. When the quota is
+// exceeded, the API returns an error. Detect these so the caller can fall back
+// to the base image instead of marking the session as failed.
+
+export class TensorlakeQuotaError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TensorlakeQuotaError';
+  }
+}
+
+export function isTensorlakeQuotaError(error: unknown): boolean {
+  if (error instanceof TensorlakeQuotaError) return true;
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return (
+    msg.includes('quota') ||
+    msg.includes('concurrent sandbox') ||
+    msg.includes('sandboxes are running') ||
+    msg.includes('limit exceeded') ||
+    msg.includes('capacity') ||
+    msg.includes('too many')
+  );
+}
 
 // ─── Adapter ───────────────────────────────────────────────────────────────────
 
@@ -79,20 +114,29 @@ export class TensorlakeAdapter implements SandboxProviderAdapter {
           });
 
           // Add user Dockerfile content as RUN commands
-          // The SDK's build() handles Dockerfile parsing internally
-          await image.build({
-            registeredName: input.snapshotName,
-            cpus: buildCpus,
-            memoryMb: buildMemoryMb,
-          });
+          // The SDK's build() handles Dockerfile parsing internally.
+          // Wrapped with withTimeout to prevent indefinite hangs on degraded upstream.
+          await withTimeout(
+            image.build({
+              registeredName: input.snapshotName,
+              cpus: buildCpus,
+              memoryMb: buildMemoryMb,
+            }),
+            BUILD_TIMEOUT_MS,
+            `Tensorlake image.build(${input.snapshotName})`,
+          );
         } else if (input.image) {
           // Import an existing OCI image
           tap?.onLine?.(`[tensorlake] Importing image: ${input.image}`);
-          await importSandboxImage(input.image, {
-            registeredName: input.snapshotName,
-            cpus: buildCpus,
-            memoryMb: buildMemoryMb,
-          });
+          await withTimeout(
+            importSandboxImage(input.image, {
+              registeredName: input.snapshotName,
+              cpus: buildCpus,
+              memoryMb: buildMemoryMb,
+            }),
+            BUILD_TIMEOUT_MS,
+            `Tensorlake importSandboxImage(${input.snapshotName})`,
+          );
         } else {
           // No image or Dockerfile — register the base image directly
           tap?.onLine?.(`[tensorlake] Registering base image as ${input.snapshotName}`);
@@ -100,11 +144,15 @@ export class TensorlakeAdapter implements SandboxProviderAdapter {
             name: input.snapshotName,
             baseImage: config.TENSORLAKE_DEFAULT_IMAGE || 'tensorlake/ubuntu-systemd',
           });
-          await image.build({
-            registeredName: input.snapshotName,
-            cpus: buildCpus,
-            memoryMb: buildMemoryMb,
-          });
+          await withTimeout(
+            image.build({
+              registeredName: input.snapshotName,
+              cpus: buildCpus,
+              memoryMb: buildMemoryMb,
+            }),
+            BUILD_TIMEOUT_MS,
+            `Tensorlake image.build(${input.snapshotName})`,
+          );
         }
 
         tap?.onLine?.(`[tensorlake] Build complete: ${input.snapshotName}`);
@@ -112,6 +160,19 @@ export class TensorlakeAdapter implements SandboxProviderAdapter {
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         tap?.onLine?.(`[tensorlake] Build attempt ${attempt} failed: ${lastError.message}`);
+
+        // If this is a quota error, don't retry — the quota won't change between attempts.
+        // Throw immediately so the caller can fall back to the base image.
+        if (isTensorlakeQuotaError(err)) {
+          console.warn(
+            `[tensorlake] Build failed with quota error for ${input.snapshotName}: ${lastError.message}. ` +
+            `Falling back to base image.`,
+          );
+          throw new TensorlakeQuotaError(
+            `Cannot build snapshot "${input.snapshotName}": ${lastError.message}. ` +
+            `Tensorlake concurrent sandbox quota exceeded — falling back to base image.`,
+          );
+        }
 
         if (attempt < MAX_BUILD_ATTEMPTS) {
           // Brief delay before retry
@@ -138,7 +199,12 @@ export class TensorlakeAdapter implements SandboxProviderAdapter {
     }
 
     try {
-      const image = await findSandboxImageByName(snapshotName);
+      // Wrap with timeout to prevent indefinite hangs on degraded upstream.
+      const image = await withTimeout(
+        findSandboxImageByName(snapshotName),
+        SNAPSHOT_STATE_TIMEOUT_MS,
+        `Tensorlake findSandboxImageByName(${snapshotName})`,
+      );
 
       if (image) {
         stateCache.set(snapshotName, 'active');
