@@ -211,7 +211,9 @@ export class DaytonaProvider implements SandboxProvider {
         // Daytona regions/orgs apply default egress restrictions that block
         // curl, web fetch, and the sandbox's built-in web proxy from reaching
         // most external sites. Setting this to 0.0.0.0/0 allows all IPv4 egress.
-        networkAllowList: '0.0.0.0/0,::/0',
+        // NOTE: Daytona only accepts IPv4 CIDR — ::/0 (IPv6) causes a
+        // DaytonaValidationError: "Invalid IP address: '::' in network '::/0'".
+        networkAllowList: '0.0.0.0/0',
       },
       { timeout: createTimeoutSeconds },
     );
@@ -269,8 +271,8 @@ export class DaytonaProvider implements SandboxProvider {
             public: true,
             // Explicitly disable network blocking
             networkBlockAll: false,
-            // Allow all outbound egress (IPv4 + IPv6)
-            networkAllowList: '0.0.0.0/0,::/0',
+            // Allow all outbound egress (IPv4 only — Daytona rejects IPv6 CIDR)
+            networkAllowList: '0.0.0.0/0',
           },
           { timeout },
         );
