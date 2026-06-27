@@ -122,7 +122,7 @@ export interface ModelSelectorProps {
   providers?: ProviderListResponse;
 }
 
-export function ModelSelector({ models, selectedModel, onSelect }: ModelSelectorProps) {
+export function ModelSelector({ models, selectedModel, onSelect, providers }: ModelSelectorProps) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -168,8 +168,13 @@ export function ModelSelector({ models, selectedModel, onSelect }: ModelSelector
   // Providers whose key(s) are present — drives which of the gateway's full
   // baked catalog is shown by default in the picker (connected providers light
   // up the instant their secret lands; everything else stays search-only).
+  // We check TWO sources: project_secrets (ProjectProviderModal path) AND
+  // the OpenCode provider list (GlobalProviderModal/legacy path) so BYOK models
+  // appear regardless of which settings page the user used to add their key.
   const connectedProviderIds = useMemo(() => {
     const ids = new Set<string>();
+
+    // Source 1: project_secrets (ProjectProviderModal stores keys here)
     for (const provider of LLM_PROVIDERS) {
       if (provider.envVars.length > 0 && provider.envVars.every((v) => secretNames.has(v))) {
         ids.add(provider.id);
@@ -181,8 +186,21 @@ export function ModelSelector({ models, selectedModel, onSelect }: ModelSelector
     if (secretNames.has('CODEX_AUTH_JSON') || secretNames.has('OPENCODE_AUTH_JSON')) {
       ids.add('codex');
     }
+
+    // Source 2: OpenCode provider list (GlobalProviderModal stores keys in sandbox auth)
+    // If OpenCode reports a BYOK provider (anthropic, openai, etc.) as connected,
+    // its models should appear in the picker even if the key isn't in project_secrets.
+    if (providers?.connected && providers?.all) {
+      for (const providerId of providers.connected) {
+        // Skip gateway and opencode providers (they're always "connected")
+        if (providerId === 'kortix' || providerId === 'opencode') continue;
+        // This is a BYOK provider connected via sandbox auth — show its models
+        ids.add(providerId);
+      }
+    }
+
     return ids;
-  }, [secretNames]);
+  }, [secretNames, providers]);
 
   const modelStore = useModelStore(baseModels, { connectedProviderIds });
 

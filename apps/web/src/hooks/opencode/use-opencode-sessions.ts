@@ -1037,8 +1037,17 @@ function filterToGatewayProviders(providers: ProviderListResponse): ProviderList
   const connected = Array.isArray(providers.connected) ? providers.connected : [];
   return {
     ...providers,
+    // Only gateway providers (kortix/opencode) appear in `all` — model
+    // flattening iterates this list and BYOK models are served through
+    // the kortix gateway namespace, not as native providers.
     all: all.filter((p) => GATEWAY_PROVIDER_IDS.has(p.id)),
-    connected: connected.filter((id) => GATEWAY_PROVIDER_IDS.has(id)),
+    // Keep the FULL connected list (including BYOK provider IDs like
+    // 'anthropic', 'openai', etc.) so the model picker's
+    // connectedProviderIds can detect which BYOK providers have keys
+    // stored in sandbox auth (via the GlobalProviderModal / Settings
+    // page path). Without this, only project_secrets-sourced connections
+    // light up BYOK models.
+    connected,
   };
 }
 

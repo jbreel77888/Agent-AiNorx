@@ -186,8 +186,31 @@ export function useOpenCodeLocal({
   connectedProviderIds: connectedProviderIdsProp,
 }: UseOpenCodeLocalOptions): OpenCodeLocal {
   // Derive connected providers from project secrets if not passed explicitly
-  const derivedProviderIds = useConnectedProviderIds();
-  const connectedProviderIds = connectedProviderIdsProp ?? derivedProviderIds;
+  const projectSecretProviderIds = useConnectedProviderIds();
+
+  // Merge both sources:
+  //   Source 1: project_secrets (ProjectProviderModal stores keys here)
+  //   Source 2: OpenCode provider list (GlobalProviderModal stores keys in sandbox auth)
+  // After the filterToGatewayProviders fix, providers.connected now includes
+  // BYOK provider IDs (anthropic, openai, etc.) alongside kortix/opencode.
+  const connectedProviderIds = useMemo(() => {
+    const ids = new Set(projectSecretProviderIds);
+
+    // Source 2: OpenCode provider list — BYOK providers connected via sandbox auth
+    if (providers?.connected && providers?.all) {
+      for (const providerId of providers.connected) {
+        // Skip gateway and opencode providers (they're always "connected")
+        if (providerId === 'kortix' || providerId === 'opencode') continue;
+        // This is a BYOK provider connected via sandbox auth — show its models
+        ids.add(providerId);
+      }
+    }
+
+    return ids;
+  }, [projectSecretProviderIds, providers?.connected, providers?.all]);
+
+  // Allow explicit prop to override merged computation
+  const finalConnectedProviderIds = connectedProviderIdsProp ?? connectedProviderIds;
 
   // ---- Flatten models from providers (shared with the chat input, so the
   // gateway-only allowlist applies here too — native providers never leak in) ----
@@ -195,8 +218,8 @@ export function useOpenCodeLocal({
 
   // ---- Model store (persisted: visibility, recent, variant) ----
   // Pass connectedProviderIds so BYOK models are visible when their provider key
-  // is present in project_secrets. Without this, only managed defaults show up.
-  const modelStore = useModelStore(flatModels, { connectedProviderIds });
+  // is present in project_secrets or sandbox auth. Without this, only managed defaults show up.
+  const modelStore = useModelStore(flatModels, { connectedProviderIds: finalConnectedProviderIds });
 
   // ---- Model validation: a model is valid only if it's in the flattened list,
   // which is already filtered to connected + gateway-only providers. This keeps
