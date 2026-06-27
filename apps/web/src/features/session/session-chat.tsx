@@ -3151,7 +3151,7 @@ function SessionTurn({
         <div className="mt-3 flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/kortix-logomark-white.svg"
+            src="/vaelonx-logomark-white.png"
             alt="Kortix"
             className="h-[14px] w-auto flex-shrink-0 invert dark:invert-0"
           />
@@ -3418,7 +3418,7 @@ function SessionTurn({
           <div className="mt-3 mb-3 flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/kortix-logomark-white.svg"
+              src="/vaelonx-logomark-white.png"
               alt="Kortix"
               className="h-[14px] w-auto flex-shrink-0 invert dark:invert-0"
             />
@@ -5684,7 +5684,7 @@ export function SessionChat({
                     <div className="flex items-center gap-3">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src="/kortix-logomark-white.svg"
+                        src="/vaelonx-logomark-white.png"
                         alt="Kortix"
                         className="h-[14px] w-auto flex-shrink-0 invert dark:invert-0"
                       />

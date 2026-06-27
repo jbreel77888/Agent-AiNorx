@@ -39,7 +39,7 @@ export function AssistantPendingRow({
     <div className={cn('flex flex-col items-start gap-3', className)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/kortix-logomark-white.svg"
+        src="/vaelonx-logomark-white.png"
         alt="Kortix"
         className="dark:invert-0 h-[14px] w-auto flex-shrink-0 invert"
       />

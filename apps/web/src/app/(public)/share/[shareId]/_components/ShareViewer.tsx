@@ -314,7 +314,7 @@ function AssistantBlock({
       <div className="flex items-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/kortix-logomark-white.svg"
+          src="/vaelonx-logomark-white.png"
           alt="Kortix"
           className="dark:invert-0 invert flex-shrink-0"
           style={{ height: '12px', width: 'auto' }}

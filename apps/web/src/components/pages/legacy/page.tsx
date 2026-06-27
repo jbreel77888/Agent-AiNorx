@@ -253,7 +253,7 @@ function LegacyTurn({
 					<div className="flex items-center gap-2 mt-3">
 						{/* eslint-disable-next-line @next/next/no-img-element */}
 						<img
-							src="/kortix-logomark-white.svg"
+							src="/vaelonx-logomark-white.png"
 							alt="Kortix"
 							className="dark:invert-0 invert flex-shrink-0"
 							style={{ height: '14px', width: 'auto' }}
