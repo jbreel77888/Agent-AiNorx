@@ -25,7 +25,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, createReadStream, createWriteStream, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { copyFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, basename, join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -36,7 +36,13 @@ import { config } from '../config';
 import { getDaytonaWarm, warmSnapshotsEnabled } from '../shared/daytona';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '../../../..');
+// Local dev:  __dirname = <repo>/apps/api/src/snapshots/ → ../../../.. = <repo>/
+// Docker:     __dirname = /app/apps/api/src/snapshots/  → ../../../.. = /app/apps/
+//             but static assets live under /app/apps/... so we detect and go one level up.
+const _rawRoot = resolve(__dirname, '../../../..');
+const REPO_ROOT = existsSync(resolve(_rawRoot, 'apps/sandbox/entrypoint.sh'))
+  ? _rawRoot
+  : resolve(_rawRoot, '..');
 
 // Same artifact set the Dockerfile snapshot bakes (snapshots/providers/daytona.ts).
 const AGENT_BIN_PATH = process.env.KORTIX_SNAPSHOT_AGENT_BIN_PATH

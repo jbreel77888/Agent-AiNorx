@@ -13,7 +13,7 @@
  */
 
 import { copyFile, cp, mkdir, mkdtemp, rm, stat, writeFile as writeFileFs } from 'node:fs/promises';
-import { createReadStream, createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream/promises';
@@ -26,7 +26,13 @@ import { promisify } from 'node:util';
 const execFileAsyncBC = promisify(execFile);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '../../../..');
+// Local dev:  __dirname = <repo>/apps/api/src/snapshots/ → ../../../.. = <repo>/
+// Docker:     __dirname = /app/apps/api/src/snapshots/  → ../../../.. = /app/apps/
+//             but static assets live under /app/apps/... so we detect and go one level up.
+const _rawRoot = resolve(__dirname, '../../../..');
+const REPO_ROOT = existsSync(resolve(_rawRoot, 'apps/sandbox/entrypoint.sh'))
+  ? _rawRoot
+  : resolve(_rawRoot, '..');
 // These artifact paths are read LAZILY (per call, not as module-load consts).
 // build-context is imported once and shared across the whole `bun test` process;
 // tests override KORTIX_SNAPSHOT_* per suite, so module-load consts let the

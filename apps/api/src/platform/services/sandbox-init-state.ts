@@ -50,7 +50,9 @@ function isProviderCapacityLimited(error: unknown): boolean {
     m.includes('capacity exceeded') ||
     m.includes('rate limit') ||
     m.includes('ratelimit') ||
-    m.includes('too many requests')
+    m.includes('too many requests') ||
+    m.includes('has reached its quota') ||
+    m.includes('concurrent sandbox')
   );
 }
 

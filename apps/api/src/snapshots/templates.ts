@@ -32,9 +32,16 @@ import { buildRuntimeArtifactFingerprint } from './runtime-fingerprint';
 import { getSandboxProvider, type SandboxProviderAdapter } from './providers';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '../../../..');
+// Local dev:  __dirname = <repo>/apps/api/src/snapshots/ → ../../../.. = <repo>/
+// Docker:     __dirname = /app/apps/api/src/snapshots/  → ../../../.. = /app/apps/
+//             but static assets live under /app/apps/... so we detect and go one level up.
+const _rawRoot = resolve(__dirname, '../../../..');
+const REPO_ROOT = existsSync(resolve(_rawRoot, 'apps/sandbox/entrypoint.sh'))
+  ? _rawRoot
+  : resolve(_rawRoot, '..');
 const AGENT_SRC_DIR = resolve(REPO_ROOT, 'apps/kortix-sandbox-agent-server/src');
 const AGENT_PKG_JSON = resolve(REPO_ROOT, 'apps/kortix-sandbox-agent-server/package.json');
 const ENTRYPOINT_PATH = process.env.KORTIX_SNAPSHOT_ENTRYPOINT_PATH

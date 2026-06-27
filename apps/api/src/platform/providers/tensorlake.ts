@@ -46,8 +46,14 @@ import type {
 } from './index';
 
 // ─── Repo root ────────────────────────────────────────────────────────────────
+// Local dev:  __dirname = <repo>/apps/api/src/platform/providers/ → ../../../.. = <repo>/
+// Docker:     __dirname = /app/apps/api/src/platform/providers/  → ../../../.. = /app/apps/
+//             but static assets live under /app/apps/... so we detect and go one level up.
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, '../../../..');
+const _rawRoot = resolve(__dirname, '../../../..');
+const REPO_ROOT = existsSync(resolve(_rawRoot, 'apps/sandbox/entrypoint.sh'))
+  ? _rawRoot
+  : resolve(_rawRoot, '..');
 
 // ─── Status Cache ──────────────────────────────────────────────────────────────
 // Same pattern as DaytonaProvider: short-TTL cache on the hot path to avoid
