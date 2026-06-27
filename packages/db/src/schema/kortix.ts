@@ -16,6 +16,10 @@ import {
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 
+// Add array type for PostgreSQL text[]
+// Note: Drizzle doesn't have a built-in text[] type, we use jsonb as a workaround
+// for the available_in_plans field
+
 export const kortixSchema = pgSchema('kortix');
 
 export const sandboxStatusEnum = kortixSchema.enum('sandbox_status', [
@@ -3065,5 +3069,61 @@ export const projectSecretGrantsRelations = relations(projectSecretGrants, ({ on
   secret: one(projectSecrets, {
     fields: [projectSecretGrants.secretId],
     references: [projectSecrets.secretId],
+  }),
+}));
+
+// ─── Platform LLM Provider System ────────────────────────────────────────
+// Virtual platform providers + models for SaaS model
+// Admin manages backend providers (OpenRouter, Anthropic, etc.)
+// and customizes display names, descriptions, icons per model
+// Users see platform models as "free" + can add their own BYOK providers
+
+export const platformLlmProviders = kortixSchema.table(
+  'platform_llm_providers',
+  {
+    providerId: uuid('provider_id').defaultRandom().primaryKey(),
+    name: varchar('name', { length: 100 }).notNull(),
+    providerType: varchar('provider_type', { length: 50 }).notNull(),
+    apiKeyEnc: text('api_key_enc').notNull(),
+    baseUrl: text('base_url'),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_platform_llm_providers_active').on(table.isActive),
+  ],
+);
+
+export const platformLlmModels = kortixSchema.table(
+  'platform_llm_models',
+  {
+    modelId: uuid('model_id').defaultRandom().primaryKey(),
+    providerId: uuid('provider_id').notNull()
+      .references(() => platformLlmProviders.providerId, { onDelete: 'cascade' }),
+    displayName: varchar('display_name', { length: 200 }).notNull(),
+    displayDescription: text('display_description'),
+    displayIcon: varchar('display_icon', { length: 50 }),
+    backendModelId: varchar('backend_model_id', { length: 200 }).notNull(),
+    sortOrder: integer('sort_order').default(0).notNull(),
+    isActive: boolean('is_active').default(true).notNull(),
+    availableInPlans: jsonb('available_in_plans').$type<string[]>().default(['free', 'basic', 'pro', 'enterprise']),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_platform_llm_models_provider').on(table.providerId),
+    index('idx_platform_llm_models_active').on(table.isActive),
+  ],
+);
+
+export const platformLlmProvidersRelations = relations(platformLlmProviders, ({ many }) => ({
+  models: many(platformLlmModels),
+}));
+
+export const platformLlmModelsRelations = relations(platformLlmModels, ({ one }) => ({
+  provider: one(platformLlmProviders, {
+    fields: [platformLlmModels.providerId],
+    references: [platformLlmProviders.providerId],
   }),
 }));

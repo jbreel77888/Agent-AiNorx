@@ -41,8 +41,8 @@ import { useTranslations } from 'next-intl';
 import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-const CAL_LINK = 'team/kortix/demo';
-const CAL_NAMESPACE = 'kortix-onboarding-wizard';
+const CAL_LINK = 'team/kortix/demo'; // DEPRECATED — founder step removed for SaaS
+const CAL_NAMESPACE = 'kortix-onboarding-wizard'; // DEPRECATED — founder step removed for SaaS
 
 const Q = { staleTime: 60_000, refetchOnWindowFocus: false } as const;
 
@@ -61,6 +61,7 @@ const CUSTOMIZE_BUILD_OUT_ITEMS = [
 ] as const;
 
 type WizardStepId = 'founder' | 'integrations' | 'team' | 'first-request' | 'agents';
+// 'founder' step type kept for backward compatibility but step is disabled in SaaS mode
 
 type WizardStep = {
   id: WizardStepId;
@@ -77,7 +78,9 @@ type WizardStep = {
 export function ProjectOnboardingWizard({ projectId }: { projectId: string }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const contactTier = usePersonalContactTier();
-  const showFounderStep = contactTier !== 'none';
+  // Founder step removed for SaaS — no longer show Cal.com booking
+  // const showFounderStep = contactTier !== 'none';
+  const showFounderStep = false;
   const { user } = useAuth();
   const defaultName =
     (user?.user_metadata?.full_name as string | undefined) ||

@@ -1,5 +1,6 @@
 'use client';
 
+import { useAdminRole } from '@/hooks/admin';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -165,6 +166,22 @@ export function CliTokensTab() {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
+
+  // Admin-only guard for CLI tokens
+  const { data: adminRoleData } = useAdminRole();
+  const isAdmin = adminRoleData?.isAdmin ?? false;
+
+  // Restrict CLI tokens to admin/account owner only
+  if (!isAdmin) {
+    return (
+      <div className="scrollbar-hide w-full max-w-full min-w-0 overflow-x-hidden px-6 py-5">
+        <div className="flex flex-col items-center justify-center gap-3 py-12">
+          <p className="text-muted-foreground text-sm">CLI token management is available for account administrators only.</p>
+          <p className="text-muted-foreground/60 text-xs">Contact your account administrator for token access.</p>
+        </div>
+      </div>
+    );
+  }
 
   const tokensQuery = useQuery({
     queryKey: ['account-tokens'],

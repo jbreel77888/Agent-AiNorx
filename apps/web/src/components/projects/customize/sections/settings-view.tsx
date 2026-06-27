@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 
+import { useAdminRole } from '@/hooks/admin';
 import { CustomizeSectionHeader } from '@/components/projects/customize/customize-section-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -60,6 +61,10 @@ function ProjectSettingsBody({ projectId }: { projectId: string }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
   const [archiveOpen, setArchiveOpen] = useState(false);
+
+  // Admin role check — used to show/hide admin-only settings
+  const { data: adminRoleData } = useAdminRole();
+  const isAdmin = adminRoleData?.isAdmin ?? false;
 
   const projectQuery = useQuery({
     queryKey: ['project', projectId],
@@ -107,9 +112,11 @@ function ProjectSettingsBody({ projectId }: { projectId: string }) {
         {project && (
           <>
             <GeneralProjectCard project={project} canManage={!!canManage} />
-            <RepositoryCard project={project} canManage={!!canManage} />
-            <ExperimentalCard project={project} canManage={!!canManage} />
-            {canManage && <TriggersActivationCard projectId={projectId} canManage={!!canManage} />}
+            <RepositoryCard project={project} canManage={!!canManage} isAdmin={isAdmin} />
+            {/* Experimental features — admin only */}
+            {isAdmin && <ExperimentalCard project={project} canManage={!!canManage} />}
+            {/* Triggers kill-switch — account owner or admin only */}
+            {canManage && isAdmin && <TriggersActivationCard projectId={projectId} canManage={!!canManage} />}
             {canManage && (
               <SectionCard
                 tone="destructive"
@@ -163,7 +170,7 @@ function ProjectSettingsBody({ projectId }: { projectId: string }) {
   );
 }
 
-function RepositoryCard({ project, canManage }: { project: KortixProject; canManage: boolean }) {
+function RepositoryCard({ project, canManage, isAdmin }: { project: KortixProject; canManage: boolean; isAdmin: boolean }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
   const repoUrl = project.repo_url;
@@ -230,42 +237,47 @@ function RepositoryCard({ project, canManage }: { project: KortixProject; canMan
       </div>
 
       <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="default-branch">
-              {tHardcodedUi.raw('appProjectsIdCustomizeSettingsPage.line270JsxTextDefaultBranch')}
-            </Label>
-            <Input
-              id="default-branch"
-              value={defaultBranch}
-              onChange={(e) => setDefaultBranch(e.target.value)}
-              disabled={!canManage || mutation.isPending}
-              className="font-mono text-xs"
-            />
+        {/* Default Branch & Manifest Path — admin only (hidden from regular users) */}
+        {isAdmin && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="default-branch">
+                {tHardcodedUi.raw('appProjectsIdCustomizeSettingsPage.line270JsxTextDefaultBranch')}
+              </Label>
+              <Input
+                id="default-branch"
+                value={defaultBranch}
+                onChange={(e) => setDefaultBranch(e.target.value)}
+                disabled={!canManage || mutation.isPending}
+                className="font-mono text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="manifest-path">
+                {tHardcodedUi.raw('appProjectsIdCustomizeSettingsPage.line280JsxTextManifestPath')}
+              </Label>
+              <Input
+                id="manifest-path"
+                value={manifestPath}
+                onChange={(e) => setManifestPath(e.target.value)}
+                disabled={!canManage || mutation.isPending}
+                className="font-mono text-xs"
+              />
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="manifest-path">
-              {tHardcodedUi.raw('appProjectsIdCustomizeSettingsPage.line280JsxTextManifestPath')}
-            </Label>
-            <Input
-              id="manifest-path"
-              value={manifestPath}
-              onChange={(e) => setManifestPath(e.target.value)}
-              disabled={!canManage || mutation.isPending}
-              className="font-mono text-xs"
-            />
+        )}
+        {isAdmin && dirty && (
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              disabled={!dirty || !canManage || mutation.isPending}
+              className="gap-1.5"
+            >
+              {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Save
+            </Button>
           </div>
-        </div>
-        <div className="flex justify-end">
-          <Button
-            type="submit"
-            disabled={!dirty || !canManage || mutation.isPending}
-            className="gap-1.5"
-          >
-            {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Save
-          </Button>
-        </div>
+        )}
       </form>
 
       {managed && <RepoCollaboratorInvite projectId={project.project_id} />}

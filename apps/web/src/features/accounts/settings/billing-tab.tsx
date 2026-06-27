@@ -1,5 +1,6 @@
 'use client';
 
+import { useAdminRole } from '@/hooks/admin';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,6 +42,22 @@ const CREDIT_PACKAGES: { credits: number; price: number }[] = [
 export function BillingTab({ returnUrl, isActive }: { returnUrl: string; isActive: boolean }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const { session, isLoading: authLoading } = useAuth();
+
+  // Admin/owner-only guard for billing tab
+  const { data: adminRoleData } = useAdminRole();
+  const isAdmin = adminRoleData?.isAdmin ?? false;
+
+  // Restrict billing to admin/account owner only
+  if (!authLoading && session && !isAdmin) {
+    return (
+      <div className="max-w-full min-w-0 overflow-x-hidden p-4 sm:p-6">
+        <div className="flex flex-col items-center justify-center gap-3 py-12">
+          <p className="text-muted-foreground text-sm">Billing management is available for account administrators only.</p>
+          <p className="text-muted-foreground/60 text-xs">Contact your account administrator for billing inquiries.</p>
+        </div>
+      </div>
+    );
+  }
   const highlight = useUserSettingsModalStore((s) => s.highlight);
   const openUpgradeDialog = useUpgradeDialogStore((s) => s.openUpgradeDialog);
   const [selectedPackage, setSelectedPackage] = useState<(typeof CREDIT_PACKAGES)[number] | null>(
