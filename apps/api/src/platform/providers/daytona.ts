@@ -203,6 +203,11 @@ export class DaytonaProvider implements SandboxProvider {
         // Daytona restricts network access and the agent can only reach a few
         // domains (Google, GitHub) — all other outbound connections are blocked.
         public: true,
+        // Explicitly allow all outbound network access. Without this, some
+        // Daytona regions/orgs apply default egress restrictions that block
+        // curl, web fetch, and the sandbox's built-in web proxy from reaching
+        // most external sites. Setting this to 0.0.0.0/0 allows all IPv4 egress.
+        networkAllowList: '0.0.0.0/0,::/0',
       },
       { timeout: createTimeoutSeconds },
     );
@@ -258,6 +263,8 @@ export class DaytonaProvider implements SandboxProvider {
             labels: managedSandboxLabels(),
             // Enable public HTTP preview for unrestricted outbound network access
             public: true,
+            // Allow all outbound egress (IPv4 + IPv6)
+            networkAllowList: '0.0.0.0/0,::/0',
           },
           { timeout },
         );
