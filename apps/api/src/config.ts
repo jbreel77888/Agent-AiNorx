@@ -12,7 +12,7 @@ export const SANDBOX_VERSION = process.env.SANDBOX_VERSION || 'unknown';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type SandboxProviderName = 'daytona' | 'local_docker' | 'platinum';
+export type SandboxProviderName = 'daytona' | 'local_docker' | 'platinum' | 'tensorlake';
 type InternalKortixEnv = 'dev' | 'staging' | 'prod' | 'preview';
 
 // ─── Zod Helpers ────────────────────────────────────────────────────────────
@@ -293,6 +293,25 @@ const envSchema = z.object({
   // once at registration). Optional — same backstop story as Daytona's.
   PLATINUM_WEBHOOK_SECRET:     optStr,
 
+  // ── Tensorlake — Sandbox provisioning (conditional: required if tensorlake provider enabled) ──
+  // Tensorlake provides MicroVM sandboxes backed by Firecracker/CloudHypervisor.
+  // Unlike Daytona, warm snapshots (MEMORY checkpoints) are an official API (not experimental),
+  // and preview URLs are deterministic (no signed link resolution needed).
+  // No webhook system — billing reconciliation uses polling (see tensorlake-reconciler.ts).
+  TENSORLAKE_API_KEY:                optStr,
+  // Default sandbox image when no per-project snapshot is available.
+  // tensorlake/ubuntu-systemd includes systemd (needed for Docker support).
+  // tensorlake/ubuntu-minimal boots fastest but lacks service management.
+  TENSORLAKE_DEFAULT_IMAGE:          optStrDefault('tensorlake/ubuntu-systemd'),
+  // Default idle timeout in seconds before auto-suspend (named sandboxes) or
+  // auto-terminate (ephemeral). Translated from KORTIX_SANDBOX_AUTOSTOP_MINUTES
+  // when not explicitly set.
+  TENSORLAKE_SANDBOX_TIMEOUT_SECS:   optInt(600),
+  // Warm base snapshot ID for MEMORY checkpoint restore (~0.6-1.3s boot).
+  // When set AND warm snapshots are enabled (DB toggle), sessions attempt warm
+  // path first and fall back to cold if it fails.
+  TENSORLAKE_WARM_SNAPSHOT:          optStr,
+
   // ── Sandbox Platform ──────────────────────────────────────────────────────
   // Public API base URL, without a route suffix. Auto-derived from PORT in local mode.
   KORTIX_URL:                  optStr,
@@ -386,7 +405,7 @@ type EnvIssue = { var: string; message: string; level: 'error' | 'warn' };
 // Recognised provider names. Source-of-truth for what can legally appear in
 // ALLOWED_SANDBOX_PROVIDERS — adding a new provider is a one-place change
 // here plus a case in `getProvider()` in platform/providers/index.ts.
-const KNOWN_PROVIDERS: readonly SandboxProviderName[] = ['daytona', 'local_docker', 'platinum'] as const;
+const KNOWN_PROVIDERS: readonly SandboxProviderName[] = ['daytona', 'local_docker', 'platinum', 'tensorlake'] as const;
 
 /** Parse comma-separated provider list (e.g. "daytona,local_docker"). */
 function parseAllowedProviders(raw: string): SandboxProviderName[] {
@@ -433,6 +452,9 @@ function validateEnv(): z.infer<typeof envSchema> {
   }
   if (providers.includes('local_docker') && !raw.DOCKER_HOST) {
     issues.push({ var: 'DOCKER_HOST', message: 'Required when ALLOWED_SANDBOX_PROVIDERS includes "local_docker"', level: 'error' });
+  }
+  if (providers.includes('tensorlake')) {
+    if (!raw.TENSORLAKE_API_KEY) issues.push({ var: 'TENSORLAKE_API_KEY', message: 'Required when ALLOWED_SANDBOX_PROVIDERS includes "tensorlake"', level: 'error' });
   }
 
   // ── Conditional: Billing enabled → need Stripe keys ────────────────────
@@ -645,6 +667,12 @@ export const config = {
   PLATINUM_TEMPLATE: env.PLATINUM_TEMPLATE,
   PLATINUM_WEBHOOK_SECRET: env.PLATINUM_WEBHOOK_SECRET,
 
+  // ─── Tensorlake (Sandbox provisioning) ────────────────────────────────────
+  TENSORLAKE_API_KEY: env.TENSORLAKE_API_KEY,
+  TENSORLAKE_DEFAULT_IMAGE: env.TENSORLAKE_DEFAULT_IMAGE,
+  TENSORLAKE_SANDBOX_TIMEOUT_SECS: env.TENSORLAKE_SANDBOX_TIMEOUT_SECS,
+  TENSORLAKE_WARM_SNAPSHOT: env.TENSORLAKE_WARM_SNAPSHOT,
+
   // ─── Sandbox Provisioning (Platform) ──────────────────────────────────────
   KORTIX_URL: env.KORTIX_URL,
   KORTIX_YOLO_URL: env.KORTIX_YOLO_URL,
@@ -750,6 +778,7 @@ export const config = {
       case 'daytona': return !!this.DAYTONA_API_KEY;
       case 'local_docker': return !!this.DOCKER_HOST;
       case 'platinum': return !!this.PLATINUM_API_KEY;
+      case 'tensorlake': return !!this.TENSORLAKE_API_KEY;
       default: {
         const exhaustive: never = name;
         return exhaustive;
@@ -778,6 +807,10 @@ export const config = {
 
   isPlatinumEnabled(): boolean {
     return this.ALLOWED_SANDBOX_PROVIDERS.includes('platinum') && !!this.PLATINUM_API_KEY;
+  },
+
+  isTensorlakeEnabled(): boolean {
+    return this.ALLOWED_SANDBOX_PROVIDERS.includes('tensorlake') && !!this.TENSORLAKE_API_KEY;
   },
 
 };

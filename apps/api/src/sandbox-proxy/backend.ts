@@ -236,14 +236,26 @@ export async function buildSandboxUpstreamHeaders(opts: {
   userId: string;
   serviceKey: string | null;
   previewToken: string | null;
+  provider?: string;
 }): Promise<Record<string, string>> {
-  const { sandboxId, userId, serviceKey, previewToken } = opts;
-  const headers: Record<string, string> = {
-    'X-Daytona-Skip-Preview-Warning': 'true',
-    'X-Daytona-Disable-CORS': 'true',
-  };
-  if (previewToken) headers['X-Daytona-Preview-Token'] = previewToken;
-  if (serviceKey) headers['Authorization'] = `Bearer ${serviceKey}`;
+  const { sandboxId, userId, serviceKey, previewToken, provider } = opts;
+  const headers: Record<string, string> = {};
+
+  // Provider-specific headers
+  if (provider === 'tensorlake') {
+    // Tensorlake uses standard Authorization — no Daytona-specific headers needed
+    if (serviceKey) {
+      headers['Authorization'] = `Bearer ${serviceKey}`;
+    } else if (config.TENSORLAKE_API_KEY) {
+      headers['Authorization'] = `Bearer ${config.TENSORLAKE_API_KEY}`;
+    }
+  } else {
+    // Daytona (default) — skip warning page, disable CORS, pass preview token
+    headers['X-Daytona-Skip-Preview-Warning'] = 'true';
+    headers['X-Daytona-Disable-CORS'] = 'true';
+    if (previewToken) headers['X-Daytona-Preview-Token'] = previewToken;
+    if (serviceKey) headers['Authorization'] = `Bearer ${serviceKey}`;
+  }
 
   if (userId && serviceKey) {
     const payload = await resolvePreviewUserContext(sandboxId, userId);

@@ -12,6 +12,7 @@
 
 import { daytonaProvider } from './daytona';
 import { platinumProvider } from './platinum';
+import { TensorlakeAdapter } from './tensorlake';
 
 interface SandboxResourceSpec {
   cpu?: number;
@@ -25,6 +26,8 @@ export interface BuildableTemplate {
   /** Either `image` OR `userDockerfile` is set (not both). */
   image?: string;
   userDockerfile?: string;
+  /** Path to the Dockerfile on disk (for providers that build from file). */
+  dockerfilePath?: string;
   /** Optional entrypoint override; null means use the provider default. */
   entrypoint?: string[];
   /** Resource spec. */
@@ -63,7 +66,7 @@ export interface BuildLogTap {
 }
 
 export interface SandboxProviderAdapter {
-  readonly id: 'daytona' | 'local' | string;
+  readonly id: 'daytona' | 'local' | 'tensorlake' | string;
 
   /**
    * Build the snapshot. The caller has already composed the layered Dockerfile
@@ -93,6 +96,12 @@ export interface SandboxProviderAdapter {
 const ADAPTERS = new Map<string, SandboxProviderAdapter>();
 ADAPTERS.set(daytonaProvider.id, daytonaProvider);
 ADAPTERS.set(platinumProvider.id, platinumProvider);
+
+// Register Tensorlake adapter (lazy — only if API key is configured)
+const tensorlakeAdapter = new TensorlakeAdapter();
+if (tensorlakeAdapter.isConfigured()) {
+  ADAPTERS.set(tensorlakeAdapter.id, tensorlakeAdapter);
+}
 
 export function getSandboxProvider(id: string): SandboxProviderAdapter {
   const adapter = ADAPTERS.get(id);

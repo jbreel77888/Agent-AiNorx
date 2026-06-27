@@ -2,6 +2,7 @@ import { config } from '../../config';
 import { DaytonaProvider } from './daytona';
 import { LocalDockerProvider } from './local-docker';
 import { PlatinumProvider } from './platinum';
+import { TensorlakeProvider } from './tensorlake';
 
 /**
  * Sandbox provider lineup. Extensible registry — adding a new runtime is
@@ -12,7 +13,7 @@ import { PlatinumProvider } from './platinum';
  *   - daytona — managed cloud (Daytona)
  *   - local_docker — self-hosted/local Docker runtime
  */
-export type ProviderName = 'daytona' | 'local_docker' | 'platinum';
+export type ProviderName = 'daytona' | 'local_docker' | 'platinum' | 'tensorlake';
 
 /**
  * Thrown by the Daytona warm path when the experimental memory-snapshot restore
@@ -151,6 +152,12 @@ export function getProvider(name: ProviderName): SandboxProvider {
         throw new Error('Platinum provider requires PLATINUM_API_KEY to be set.');
       }
       provider = new PlatinumProvider();
+      break;
+    case 'tensorlake':
+      if (!config.TENSORLAKE_API_KEY) {
+        throw new Error('Tensorlake provider requires TENSORLAKE_API_KEY to be set.');
+      }
+      provider = new TensorlakeProvider();
       break;
     default: {
       const exhaustive: never = name;

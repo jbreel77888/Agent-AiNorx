@@ -32,6 +32,7 @@ export const sandboxProviderEnum = kortixSchema.enum('sandbox_provider', [
   'local_docker',
   'justavps',
   'platinum',
+  'tensorlake',
 ]);
 
 export const deploymentStatusEnum = kortixSchema.enum('deployment_status', [
