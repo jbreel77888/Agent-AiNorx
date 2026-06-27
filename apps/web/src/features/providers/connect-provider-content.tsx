@@ -166,6 +166,9 @@ export function ConnectProviderContent({
   const tHardcodedUi = useTranslations('hardcodedUi');
   const queryClient = useQueryClient();
   const connectedIds = useMemo(() => new Set(providers?.connected ?? []), [providers]);
+  // Resolve project ID at component top-level (hooks can't be called inside callbacks)
+  const routeParams = useParams<{ id?: string }>();
+  const projectId = typeof routeParams?.id === 'string' ? routeParams.id : null;
 
   // --- Navigation state ---
   type View = { type: 'list' } | { type: 'custom' } | { type: 'connect'; providerID: string };
@@ -386,8 +389,6 @@ export function ConnectProviderContent({
         //    - The LLM gateway can resolve the BYOK key at inference time
         //    - The model picker's connectedProviderIds (Source 1) lights up
         //    - The key persists across sandbox restarts
-        const params = useParams<{ id?: string }>();
-        const projectId = typeof params?.id === 'string' ? params.id : null;
         if (projectId) {
           const provider = LLM_PROVIDERS.find((p) => p.id === view.providerID);
           if (provider && provider.envVars.length > 0) {
@@ -423,7 +424,7 @@ export function ConnectProviderContent({
         setSaving(false);
       }
     },
-    [view, apiKey, completeConnection, queryClient],
+    [view, apiKey, completeConnection, queryClient, projectId],
   );
 
   // --- Submit OAuth code ---
