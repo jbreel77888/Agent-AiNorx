@@ -55,11 +55,12 @@ export class TensorlakeAdapter implements SandboxProviderAdapter {
       throw new Error('Cannot build Tensorlake image: TENSORLAKE_API_KEY not set');
     }
 
-    // Trial/free Tensorlake plans limit sandboxes to 1 vCPU.
-    // Always cap at 1 to avoid "Per-sandbox vCPU limit exceeded" errors.
+    // Trial/free Tensorlake plans limit sandboxes to 1 vCPU and 1024 MB RAM.
+    // Always cap to avoid "limit exceeded" errors from the API.
     const MAX_CPUS = 1;
+    const MAX_MEMORY_MB = 1024;
     const buildCpus = Math.min(input.spec.cpu ?? 1, MAX_CPUS);
-    const buildMemoryMb = Math.min(input.spec.memoryGb ?? 1, 2) * 1024; // Cap at 2GB
+    const buildMemoryMb = Math.min((input.spec.memoryGb ?? 1) * 1024, MAX_MEMORY_MB);
 
     const MAX_BUILD_ATTEMPTS = 3;
     let lastError: Error | null = null;

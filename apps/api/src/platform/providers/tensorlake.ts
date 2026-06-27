@@ -46,8 +46,8 @@ const runningStatusCache = new Map<string, number>(); // externalId → cachedAt
 
 // ─── Default Resources ────────────────────────────────────────────────────────
 
-const DEFAULT_CPUS = 1.0;
-const DEFAULT_MEMORY_MB = 1024;
+const DEFAULT_CPUS = 1;
+const DEFAULT_MEMORY_MB = 512; // Trial plan max is 1024 MB; leave headroom for the sandbox OS
 const DEFAULT_TIMEOUT_SECS = 600; // 10 minutes idle → auto-suspend
 
 // ─── Agent Port ───────────────────────────────────────────────────────────────
