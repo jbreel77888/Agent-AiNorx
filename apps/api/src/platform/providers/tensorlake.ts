@@ -59,7 +59,7 @@ const runningStatusCache = new Map<string, number>(); // externalId → cachedAt
 // ─── Default Resources ────────────────────────────────────────────────────────
 
 const DEFAULT_CPUS = 1;
-const DEFAULT_MEMORY_MB = 512; // Trial plan max is 1024 MB; leave headroom for the sandbox OS
+const DEFAULT_MEMORY_MB = 1024; // Tensorlake requires 1000-8192 MB per CPU core; 1024 MB for trial plan
 const DEFAULT_TIMEOUT_SECS = 600; // 10 minutes idle → auto-suspend
 
 // ─── Agent Port ───────────────────────────────────────────────────────────────
