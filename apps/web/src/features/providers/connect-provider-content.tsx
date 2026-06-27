@@ -54,7 +54,10 @@ import { configKeys } from '@/hooks/opencode/use-opencode-config';
 import type { ProviderListResponse } from '@/hooks/opencode/use-opencode-sessions';
 import { opencodeKeys } from '@/hooks/opencode/use-opencode-sessions';
 import { getClient } from '@/lib/opencode-sdk';
+import { LLM_PROVIDERS } from '@/lib/llm-providers';
+import { upsertProjectSecret } from '@/lib/projects-client';
 import { useQueryClient } from '@tanstack/react-query';
+import { useParams } from 'next/navigation';
 
 const FALLBACK_PROVIDER_CARDS: Array<{ id: string; name: string }> = [];
 
@@ -372,11 +375,47 @@ export function ConnectProviderContent({
       setSaving(true);
       setError('');
       try {
+        // 1. Save to OpenCode sandbox auth (legacy path — keeps sandbox connected)
         const client = getClient();
         await client.auth.set({
           providerID: view.providerID,
           auth: { type: 'api', key: apiKey.trim() },
         });
+
+        // 2. ALSO save to project_secrets when in a project context so:
+        //    - The LLM gateway can resolve the BYOK key at inference time
+        //    - The model picker's connectedProviderIds (Source 1) lights up
+        //    - The key persists across sandbox restarts
+        const params = useParams<{ id?: string }>();
+        const projectId = typeof params?.id === 'string' ? params.id : null;
+        if (projectId) {
+          const provider = LLM_PROVIDERS.find((p) => p.id === view.providerID);
+          if (provider && provider.envVars.length > 0) {
+            // Map the API key to the provider's env var names.
+            // For single-env-var providers (most common), the key maps directly.
+            // For multi-env-var providers (e.g. Azure), all vars get the same key
+            // and the user can update individual ones later via project settings.
+            for (const envVar of provider.envVars) {
+              try {
+                await upsertProjectSecret(projectId, {
+                  name: envVar,
+                  value: apiKey.trim(),
+                  sharing: 'project',
+                });
+              } catch (secretErr) {
+                // Non-fatal: the sandbox auth path already succeeded.
+                // Log but don't block the connection flow.
+                console.warn(
+                  `[ConnectProvider] Failed to save ${envVar} to project_secrets:`,
+                  secretErr instanceof Error ? secretErr.message : secretErr,
+                );
+              }
+            }
+            // Invalidate the secrets query so the model picker picks up the new keys
+            queryClient.invalidateQueries({ queryKey: ['project-secrets', projectId] });
+          }
+        }
+
         await completeConnection(view.providerID);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -384,7 +423,7 @@ export function ConnectProviderContent({
         setSaving(false);
       }
     },
-    [view, apiKey, completeConnection],
+    [view, apiKey, completeConnection, queryClient],
   );
 
   // --- Submit OAuth code ---
