@@ -55,6 +55,12 @@ export class TensorlakeAdapter implements SandboxProviderAdapter {
       throw new Error('Cannot build Tensorlake image: TENSORLAKE_API_KEY not set');
     }
 
+    // Trial/free Tensorlake plans limit sandboxes to 1 vCPU.
+    // Always cap at 1 to avoid "Per-sandbox vCPU limit exceeded" errors.
+    const MAX_CPUS = 1;
+    const buildCpus = Math.min(input.spec.cpu ?? 1, MAX_CPUS);
+    const buildMemoryMb = Math.min(input.spec.memoryGb ?? 1, 2) * 1024; // Cap at 2GB
+
     const MAX_BUILD_ATTEMPTS = 3;
     let lastError: Error | null = null;
 
@@ -75,12 +81,16 @@ export class TensorlakeAdapter implements SandboxProviderAdapter {
           // The SDK's build() handles Dockerfile parsing internally
           await image.build({
             registeredName: input.snapshotName,
+            cpus: buildCpus,
+            memoryMb: buildMemoryMb,
           });
         } else if (input.image) {
           // Import an existing OCI image
           tap?.onLine?.(`[tensorlake] Importing image: ${input.image}`);
           await importSandboxImage(input.image, {
             registeredName: input.snapshotName,
+            cpus: buildCpus,
+            memoryMb: buildMemoryMb,
           });
         } else {
           // No image or Dockerfile — register the base image directly
@@ -91,6 +101,8 @@ export class TensorlakeAdapter implements SandboxProviderAdapter {
           });
           await image.build({
             registeredName: input.snapshotName,
+            cpus: buildCpus,
+            memoryMb: buildMemoryMb,
           });
         }
 
