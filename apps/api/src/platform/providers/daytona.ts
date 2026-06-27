@@ -198,7 +198,11 @@ export class DaytonaProvider implements SandboxProvider {
         // persistent (it manages its own lifecycle via reconcileWarmPool).
         ...daytonaLifecycle(opts.autoStopInterval),
         labels: managedSandboxLabels(),
-        public: false,
+        // Enable public HTTP preview so the agent can access external websites
+        // and the sandbox's web proxy works without restrictions. Without this,
+        // Daytona restricts network access and the agent can only reach a few
+        // domains (Google, GitHub) — all other outbound connections are blocked.
+        public: true,
       },
       { timeout: createTimeoutSeconds },
     );
@@ -252,7 +256,8 @@ export class DaytonaProvider implements SandboxProvider {
             snapshot: warmBaseSnapshot,
             ...daytonaLifecycle(opts.autoStopInterval),
             labels: managedSandboxLabels(),
-            public: false,
+            // Enable public HTTP preview for unrestricted outbound network access
+            public: true,
           },
           { timeout },
         );
