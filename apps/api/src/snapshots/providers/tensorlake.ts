@@ -38,7 +38,7 @@ import type { SandboxProviderAdapter, ProviderState, BuildableTemplate, BuildLog
 // Bound all SDK calls so a slow/degraded API degrades gracefully instead of
 // hanging the provision IIFE forever.
 
-const BUILD_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes (matches Daytona)
+const BUILD_TIMEOUT_MS = 90 * 1000; // 90 seconds — was 10 min, way too long for quota failures
 const SNAPSHOT_STATE_TIMEOUT_MS = 8_000;  // 8 seconds (matches Daytona)
 
 // ─── Quota Error Detection ────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ export class TensorlakeAdapter implements SandboxProviderAdapter {
     const buildCpus = Math.min(input.spec.cpu ?? 1, MAX_CPUS);
     const buildMemoryMb = Math.min((input.spec.memoryGb ?? 1) * 1024, MAX_MEMORY_MB);
 
-    const MAX_BUILD_ATTEMPTS = 3;
+    const MAX_BUILD_ATTEMPTS = 1; // was 3 — quota errors don't clear between retries, and each attempt takes up to 90s
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= MAX_BUILD_ATTEMPTS; attempt++) {
@@ -207,16 +207,21 @@ export class TensorlakeAdapter implements SandboxProviderAdapter {
       );
 
       if (image) {
+        console.log(`[tensorlake] getSnapshotState('${snapshotName}') → active (image found)`);
         stateCache.set(snapshotName, 'active');
         stateCacheTime.set(snapshotName, Date.now());
         return 'active';
       }
 
+      console.log(`[tensorlake] getSnapshotState('${snapshotName}') → missing (image not found by findSandboxImageByName)`);
       stateCache.delete(snapshotName);
       stateCacheTime.delete(snapshotName);
       return 'missing';
-    } catch {
+    } catch (err) {
       // On timeout/error, return missing to trigger a build
+      console.warn(`[tensorlake] getSnapshotState('${snapshotName}') → missing (error: ${err instanceof Error ? err.message : err})`);
+      stateCache.delete(snapshotName);
+      stateCacheTime.delete(snapshotName);
       return 'missing';
     }
   }
