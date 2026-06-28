@@ -391,6 +391,7 @@ export async function forwardToSandbox(
         userId,
         serviceKey,
         previewToken,
+        provider: record.provider,
       });
       for (const [key, value] of Object.entries(authHeaders)) {
         headers.set(key, value);
@@ -643,6 +644,7 @@ export async function resolvePreviewWsUpstream(opts: {
     userId,
     serviceKey: record.serviceKey,
     previewToken,
+    provider: record.provider,
   });
 
   return { ok: true, url, headers };

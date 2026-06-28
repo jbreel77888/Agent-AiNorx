@@ -162,6 +162,7 @@ async function forwardPublicShare(c: any, args: {
         userId: '',
         serviceKey: sandbox.serviceKey,
         previewToken,
+        provider: sandbox.provider,
       });
       for (const [key, value] of Object.entries(authHeaders)) {
         headers.set(key, value);
