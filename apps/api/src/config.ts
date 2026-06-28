@@ -303,6 +303,21 @@ const envSchema = z.object({
   // tensorlake/ubuntu-systemd includes systemd (needed for Docker support).
   // tensorlake/ubuntu-minimal boots fastest but lacks service management.
   TENSORLAKE_DEFAULT_IMAGE:          optStrDefault('tensorlake/ubuntu-systemd'),
+  // Organization and Project IDs required by the Tensorlake SDK for image
+  // lookup by name (findSandboxImageByName, listSandboxImages). Without these,
+  // the SDK throws "Looking up a sandbox image by name requires organization
+  // and project context" and getSnapshotState() always returns 'missing',
+  // triggering a doomed rebuild attempt on every session start.
+  // Find them at https://cloud.tensorlake.ai → Settings → Organization / Project.
+  TENSORLAKE_ORGANIZATION_ID:        optStr,
+  TENSORLAKE_PROJECT_ID:             optStr,
+  // Pre-built snapshot ID to boot ALL sessions from, bypassing the
+  // ensureSandboxImage → getSnapshotState → buildSnapshot chain entirely.
+  // When set, createCold() uses this snapshotId directly and getSnapshotState()
+  // short-circuits to 'active'. Set this to a snapshot like
+  // "snapshot_sandbox_template_build_Pmm97QnwK7LRGL9NcdWrH" once you've built
+  // a working base snapshot in the Tensorlake dashboard.
+  TENSORLAKE_DEFAULT_SNAPSHOT_ID:    optStr,
   // Default idle timeout in seconds before auto-suspend (named sandboxes) or
   // auto-terminate (ephemeral). Translated from KORTIX_SANDBOX_AUTOSTOP_MINUTES
   // when not explicitly set.
@@ -670,6 +685,9 @@ export const config = {
   // ─── Tensorlake (Sandbox provisioning) ────────────────────────────────────
   TENSORLAKE_API_KEY: env.TENSORLAKE_API_KEY,
   TENSORLAKE_DEFAULT_IMAGE: env.TENSORLAKE_DEFAULT_IMAGE,
+  TENSORLAKE_ORGANIZATION_ID: env.TENSORLAKE_ORGANIZATION_ID,
+  TENSORLAKE_PROJECT_ID: env.TENSORLAKE_PROJECT_ID,
+  TENSORLAKE_DEFAULT_SNAPSHOT_ID: env.TENSORLAKE_DEFAULT_SNAPSHOT_ID,
   TENSORLAKE_SANDBOX_TIMEOUT_SECS: env.TENSORLAKE_SANDBOX_TIMEOUT_SECS,
   TENSORLAKE_WARM_SNAPSHOT: env.TENSORLAKE_WARM_SNAPSHOT,
 

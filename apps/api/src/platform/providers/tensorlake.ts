@@ -154,6 +154,13 @@ export class TensorlakeProvider implements SandboxProvider {
     const snapshot = opts.snapshot;
     const baseImage = config.TENSORLAKE_DEFAULT_IMAGE || 'tensorlake/ubuntu-systemd';
 
+    // FALLBACK: If no per-session snapshot was resolved but
+    // TENSORLAKE_DEFAULT_SNAPSHOT_ID is set, use it. This bypasses the
+    // ensureSandboxImage → getSnapshotState → buildSnapshot chain entirely
+    // (which fails on trial plans due to quota limits and missing
+    // TENSORLAKE_ORGANIZATION_ID/TENSORLAKE_PROJECT_ID env vars).
+    const effectiveSnapshot = snapshot || config.TENSORLAKE_DEFAULT_SNAPSHOT_ID || undefined;
+
     const sandboxName = buildTensorlakeName(opts.accountId, opts.name);
     const autoStopMinutes = opts.autoStopInterval ?? config.KORTIX_SANDBOX_AUTOSTOP_MINUTES;
     const timeoutSecs = autoStopMinutes === 0 ? 0 : Math.max(60, autoStopMinutes * 60);
@@ -161,7 +168,7 @@ export class TensorlakeProvider implements SandboxProvider {
     // Create sandbox from snapshot (if built) or base image (fallback)
     // On cold boot (no snapshot), use a LONGER timeout so the install completes
     // before the sandbox's idle-timer terminates it.
-    const isColdBoot = !snapshot;
+    const isColdBoot = !effectiveSnapshot;
     const effectiveTimeout = isColdBoot
       ? Math.max(timeoutSecs || 0, COLD_BOOT_TIMEOUT_SECS)
       : (timeoutSecs || DEFAULT_TIMEOUT_SECS);
@@ -174,8 +181,9 @@ export class TensorlakeProvider implements SandboxProvider {
     };
 
     // snapshotId takes priority (pre-built image), otherwise use base image
-    if (snapshot) {
-      createOpts.snapshotId = snapshot;
+    if (effectiveSnapshot) {
+      createOpts.snapshotId = effectiveSnapshot;
+      console.log(`[tensorlake] Booting from snapshot: ${effectiveSnapshot}`);
     } else {
       createOpts.image = baseImage;
       console.log(`[tensorlake] No snapshot available, booting from base image: ${baseImage}`);
@@ -194,7 +202,7 @@ export class TensorlakeProvider implements SandboxProvider {
 
     // When booting from the base image (no pre-built snapshot), the runtime
     // (kortix-agent, opencode, etc.) is missing. Install it imperatively.
-    if (!snapshot) {
+    if (!effectiveSnapshot) {
       await this.installRuntimeInSandbox(sandbox, envVars);
     }
 
@@ -207,8 +215,8 @@ export class TensorlakeProvider implements SandboxProvider {
       metadata: {
         provisionedBy: opts.userId,
         tensorlakeSandboxId: externalId,
-        snapshot: snapshot || null,
-        image: snapshot ? undefined : baseImage,
+        snapshot: effectiveSnapshot || null,
+        image: effectiveSnapshot ? undefined : baseImage,
         version: SANDBOX_VERSION,
       },
     };

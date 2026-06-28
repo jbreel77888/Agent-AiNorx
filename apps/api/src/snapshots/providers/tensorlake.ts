@@ -198,6 +198,20 @@ export class TensorlakeAdapter implements SandboxProviderAdapter {
       return 'active';
     }
 
+    // FAST PATH: If TENSORLAKE_DEFAULT_SNAPSHOT_ID is set, trust it.
+    // findSandboxImageByName() requires TENSORLAKE_ORGANIZATION_ID and
+    // TENSORLAKE_PROJECT_ID env vars (set in the Tensorlake dashboard). Without
+    // them, the SDK throws and we'd return 'missing' → trigger a doomed 10-min
+    // build attempt on every session. When the operator has set a default
+    // snapshot ID, assume it's active — the provider's createCold() will pass
+    // it directly as snapshotId to Sandbox.create().
+    if (config.TENSORLAKE_DEFAULT_SNAPSHOT_ID) {
+      console.log(`[tensorlake] getSnapshotState('${snapshotName}') → active (TENSORLAKE_DEFAULT_SNAPSHOT_ID is set, trusting it)`);
+      stateCache.set(snapshotName, 'active');
+      stateCacheTime.set(snapshotName, Date.now());
+      return 'active';
+    }
+
     try {
       // Wrap with timeout to prevent indefinite hangs on degraded upstream.
       const image = await withTimeout(
@@ -213,13 +227,13 @@ export class TensorlakeAdapter implements SandboxProviderAdapter {
         return 'active';
       }
 
-      console.log(`[tensorlake] getSnapshotState('${snapshotName}') → missing (image not found by findSandboxImageByName)`);
+      console.log(`[tensorlake] getSnapshotState('${snapshotName}') → missing (image not found by findSandboxImageByName — set TENSORLAKE_ORGANIZATION_ID + TENSORLAKE_PROJECT_ID or TENSORLAKE_DEFAULT_SNAPSHOT_ID)`);
       stateCache.delete(snapshotName);
       stateCacheTime.delete(snapshotName);
       return 'missing';
     } catch (err) {
       // On timeout/error, return missing to trigger a build
-      console.warn(`[tensorlake] getSnapshotState('${snapshotName}') → missing (error: ${err instanceof Error ? err.message : err})`);
+      console.warn(`[tensorlake] getSnapshotState('${snapshotName}') → missing (error: ${err instanceof Error ? err.message : err} — set TENSORLAKE_ORGANIZATION_ID + TENSORLAKE_PROJECT_ID or TENSORLAKE_DEFAULT_SNAPSHOT_ID)`);
       stateCache.delete(snapshotName);
       stateCacheTime.delete(snapshotName);
       return 'missing';
