@@ -243,11 +243,16 @@ export async function buildSandboxUpstreamHeaders(opts: {
 
   // Provider-specific headers
   if (provider === 'tensorlake') {
-    // Tensorlake uses standard Authorization — no Daytona-specific headers needed
-    if (serviceKey) {
-      headers['Authorization'] = `Bearer ${serviceKey}`;
-    } else if (config.TENSORLAKE_API_KEY) {
+    // Tensorlake's sandbox proxy (https://<port>-<id>.sandbox.tensorlake.ai)
+    // REQUIRES the TENSORLAKE_API_KEY for authentication — it does NOT accept
+    // the kortix_sb_... service key. The service key is only for the
+    // agent daemon's internal auth (X-Kortix-User-Context header below).
+    // Sending kortix_sb_... here results in 403 "Invalid API key".
+    if (config.TENSORLAKE_API_KEY) {
       headers['Authorization'] = `Bearer ${config.TENSORLAKE_API_KEY}`;
+    } else if (serviceKey) {
+      // Fallback only if TENSORLAKE_API_KEY is somehow missing
+      headers['Authorization'] = `Bearer ${serviceKey}`;
     }
   } else {
     // Daytona (default) — skip warning page, disable CORS, pass preview token

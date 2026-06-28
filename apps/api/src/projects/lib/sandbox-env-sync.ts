@@ -77,13 +77,24 @@ async function postEnvToDaemon(args: {
   if (!isSecureOrPrivateTarget(args.previewUrl)) {
     throw new Error('refusing to push secrets over insecure transport (non-TLS public host)');
   }
+  // For Tensorlake sandboxes (https://<port>-<id>.sandbox.tensorlake.ai), the
+  // sandbox proxy REQUIRES TENSORLAKE_API_KEY in Authorization — the kortix_sb_
+  // service key is rejected with 403 "Invalid API key". previewToken carries
+  // the TENSORLAKE_API_KEY for Tensorlake providers (see resolvePreviewLink).
+  // For Daytona, previewToken is the preview token and serviceKey is used instead.
+  const isTensorlake = args.previewUrl.includes('.sandbox.tensorlake.ai');
+  const authKey = isTensorlake && args.previewToken
+    ? args.previewToken
+    : args.serviceKey;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${args.serviceKey}`,
-    'X-Daytona-Skip-Preview-Warning': 'true',
-    'X-Daytona-Disable-CORS': 'true',
+    'Authorization': `Bearer ${authKey}`,
   };
-  if (args.previewToken) headers['X-Daytona-Preview-Token'] = args.previewToken;
+  if (!isTensorlake) {
+    headers['X-Daytona-Skip-Preview-Warning'] = 'true';
+    headers['X-Daytona-Disable-CORS'] = 'true';
+    if (args.previewToken) headers['X-Daytona-Preview-Token'] = args.previewToken;
+  }
 
   const res = await fetch(`${args.previewUrl.replace(/\/$/, '')}/kortix/env`, {
     method: 'POST',
