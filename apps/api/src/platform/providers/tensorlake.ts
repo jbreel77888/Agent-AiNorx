@@ -668,9 +668,9 @@ sudo mkdir -p /workspace /ephemeral/kortix-master/opencode /opt/kortix/apps/sand
 
 # ─── 4. Install kortix binaries ───────────────────────────────────────────
 echo "$LOG_PREFIX Installing kortix-agent + entrypoint..."
-# IMPORTANT: `sudo gunzip -c ... > /usr/local/bin/...` does NOT work — the shell
-# redirect `>` is performed by the calling user (tl-user), not sudo. Use
-# `gunzip | sudo tee` so the write happens as root (same pattern as warm-bake.ts).
+# IMPORTANT: 'sudo gunzip -c X > /usr/local/bin/Y' does NOT work — the shell
+# redirect '>' is performed by the calling user (tl-user), not sudo. Use
+# 'gunzip | sudo tee' so the write happens as root (same pattern as warm-bake.ts).
 gunzip -c /tmp/kortix-agent.gz | sudo tee /usr/local/bin/kortix-agent >/dev/null
 sudo cp /tmp/kortix-entrypoint /usr/local/bin/kortix-entrypoint
 sudo chmod 755 /usr/local/bin/kortix-agent /usr/local/bin/kortix-entrypoint
