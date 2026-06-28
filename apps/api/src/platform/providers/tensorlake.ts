@@ -202,7 +202,37 @@ export class TensorlakeProvider implements SandboxProvider {
 
     // When booting from the base image (no pre-built snapshot), the runtime
     // (kortix-agent, opencode, etc.) is missing. Install it imperatively.
-    if (!effectiveSnapshot) {
+    //
+    // ALSO: even if we booted from a snapshot, verify the agent binary exists.
+    // Some snapshots (e.g. a bare tensorlake/ubuntu-systemd snapshot) don't
+    // contain the Kortix runtime — the sandbox boots but port 8000 returns
+    // 403 because nothing is listening. If the agent is missing, fall back to
+    // installing the runtime imperatively (cold boot pattern).
+    let agentPresent = false;
+    if (effectiveSnapshot) {
+      try {
+        const checkResult = await sandbox.run('bash', {
+          args: ['-c', 'test -x /usr/local/bin/kortix-agent && echo KORTIX_AGENT_PRESENT || echo KORTIX_AGENT_MISSING'],
+          timeout: 10,
+        });
+        const checkOut = String((checkResult as any).stdout ?? '');
+        agentPresent = checkOut.includes('KORTIX_AGENT_PRESENT');
+        if (!agentPresent) {
+          console.warn(
+            `[tensorlake] Snapshot ${effectiveSnapshot} booted but /usr/local/bin/kortix-agent is missing — ` +
+            `installing runtime imperatively (snapshot lacks Kortix runtime).`,
+          );
+        }
+      } catch (checkErr) {
+        console.warn(
+          `[tensorlake] Failed to verify kortix-agent in snapshot ${effectiveSnapshot}: ` +
+          `${checkErr instanceof Error ? checkErr.message : checkErr} — assuming missing, will install runtime.`,
+        );
+        agentPresent = false;
+      }
+    }
+
+    if (!effectiveSnapshot || !agentPresent) {
       await this.installRuntimeInSandbox(sandbox, envVars);
     }
 
