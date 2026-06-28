@@ -641,9 +641,22 @@ function buildColdSetupScript(envVars: Record<string, string>): string {
     .join('\n');
   const envB64 = Buffer.from(envExports, 'utf8').toString('base64');
 
-  // Build the /etc/pt-env content (plain KEY=VALUE format for the health check)
+  // Build the /etc/pt-env content (plain KEY=VALUE format for the health check).
+  // IMPORTANT: /etc/pt-env is read by the agent daemon's regex (not sourced by
+  // a shell), so it must NOT have surrounding quotes. The regex
+  // /^KORTIX_BRANCH_NAME=(\S+)/m captures everything up to whitespace — if the
+  // value is wrapped in quotes (KEY='value'), the regex captures the trailing
+  // quote as part of the value, breaking the branch comparison and leaving
+  // runtimeReady=false forever. Write plain KEY=value without quotes for values
+  // that don't contain spaces or special chars.
+  const ptEnvPlain = (v: string) => {
+    // Only quote if the value contains spaces, #, or starts with a quote.
+    // Branch names, UUIDs, URLs — none need quoting.
+    if (/[\s#]/.test(v) || /^['"]/.test(v)) return sh(v)
+    return v
+  }
   const envPlain = Object.entries(envVars)
-    .map(([k, v]) => `${k}=${sh(v)}`)
+    .map(([k, v]) => `${k}=${ptEnvPlain(v)}`)
     .join('\n');
   const ptEnvB64 = Buffer.from(envPlain, 'utf8').toString('base64');
 

@@ -16,7 +16,17 @@ import type { Opencode } from '../opencode'
 function wantedSessionBranch(): string {
   try {
     const m = readFileSync('/etc/pt-env', 'utf8').match(/^KORTIX_BRANCH_NAME=(\S+)/m)
-    if (m?.[1]) return m[1]
+    if (m?.[1]) {
+      // Strip surrounding quotes (single or double) — /etc/pt-env is written
+      // in shell format (KEY='value'), so the regex captures the quote char
+      // as part of the value. Without stripping, the branch comparison fails
+      // (e.g. "abc' !== "abc") and runtimeReady stays false forever.
+      const raw = m[1]
+      if ((raw.startsWith("'") && raw.endsWith("'")) || (raw.startsWith('"') && raw.endsWith('"'))) {
+        return raw.slice(1, -1)
+      }
+      return raw
+    }
   } catch { /* no env file (local dev) */ }
   return (process.env.KORTIX_BRANCH_NAME ?? '').trim()
 }
