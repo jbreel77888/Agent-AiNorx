@@ -368,8 +368,18 @@ export async function forwardToSandbox(
             // turned expected 502/timeouts from Daytona into Better Stack errors.
             throw new Error(message);
           }
-          console.warn(`[PREVIEW] Project env sync failed for ${sandboxId}:${port}: ${message}`);
-          return jsonProxyError({ error: message }, 502);
+          // For Tensorlake, env sync 401 is expected (proxy auth vs daemon auth
+          // conflict) — the env vars are already baked into /etc/pt-env at boot.
+          // Log a warning and continue proxying instead of returning 502.
+          if (record.provider === 'tensorlake' && message.includes('401')) {
+            console.warn(
+              `[PREVIEW] Tensorlake env sync 401 for ${sandboxId}:${port} — ` +
+              `env vars already in /etc/pt-env, continuing without live sync.`,
+            );
+          } else {
+            console.warn(`[PREVIEW] Project env sync failed for ${sandboxId}:${port}: ${message}`);
+            return jsonProxyError({ error: message }, 502);
+          }
         }
       }
 
