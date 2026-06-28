@@ -668,11 +668,21 @@ sudo mkdir -p /workspace /ephemeral/kortix-master/opencode /opt/kortix/apps/sand
 
 # ─── 4. Install kortix binaries ───────────────────────────────────────────
 echo "$LOG_PREFIX Installing kortix-agent + entrypoint..."
-sudo gunzip -c /tmp/kortix-agent.gz > /usr/local/bin/kortix-agent
+# IMPORTANT: `sudo gunzip -c ... > /usr/local/bin/...` does NOT work — the shell
+# redirect `>` is performed by the calling user (tl-user), not sudo. Use
+# `gunzip | sudo tee` so the write happens as root (same pattern as warm-bake.ts).
+gunzip -c /tmp/kortix-agent.gz | sudo tee /usr/local/bin/kortix-agent >/dev/null
 sudo cp /tmp/kortix-entrypoint /usr/local/bin/kortix-entrypoint
-sudo chmod +x /usr/local/bin/kortix-agent /usr/local/bin/kortix-entrypoint
+sudo chmod 755 /usr/local/bin/kortix-agent /usr/local/bin/kortix-entrypoint
+sudo chown root:root /usr/local/bin/kortix-agent /usr/local/bin/kortix-entrypoint
 rm -f /tmp/kortix-agent.gz /tmp/kortix-entrypoint
-echo "$LOG_PREFIX kortix binaries installed."
+# Verify the binary is executable — fail fast if not
+if [ ! -x /usr/local/bin/kortix-agent ]; then
+  echo "$LOG_PREFIX FATAL: /usr/local/bin/kortix-agent not executable after install"
+  ls -la /usr/local/bin/kortix-agent
+  exit 1
+fi
+echo "$LOG_PREFIX kortix binaries installed and verified executable."
 
 # ─── 5. Write session env file ────────────────────────────────────────────
 echo "$LOG_PREFIX Writing session env..."
