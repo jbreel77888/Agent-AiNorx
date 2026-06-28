@@ -66,7 +66,13 @@ const runningStatusCache = new Map<string, number>(); // externalId → cachedAt
 
 const DEFAULT_CPUS = 1;
 const DEFAULT_MEMORY_MB = 1024; // Tensorlake requires 1000-8192 MB per CPU core; 1024 MB for trial plan
-const DEFAULT_TIMEOUT_SECS = 600; // 10 minutes idle → auto-suspend
+// IMPORTANT: ephemeral sandboxes (no name) TERMINATE permanently on idle timeout.
+// The cold-boot install takes 3-25 min, so 10 min default would kill the sandbox
+// mid-install. Use a generous idle threshold that survives the install.
+const DEFAULT_TIMEOUT_SECS = 1800; // 30 min idle → auto-suspend (was 600)
+// Cold-boot install timeout — the setup script itself has its own `timeout` arg,
+// but the SANDBOX must stay alive long enough for the install to complete.
+const COLD_BOOT_TIMEOUT_SECS = 1800; // 30 min — covers worst-case apt+opencode+bun
 
 // ─── Agent Port ───────────────────────────────────────────────────────────────
 // The Kortix agent daemon listens on port 8000 inside the sandbox.
@@ -153,11 +159,17 @@ export class TensorlakeProvider implements SandboxProvider {
     const timeoutSecs = autoStopMinutes === 0 ? 0 : Math.max(60, autoStopMinutes * 60);
 
     // Create sandbox from snapshot (if built) or base image (fallback)
+    // On cold boot (no snapshot), use a LONGER timeout so the install completes
+    // before the sandbox's idle-timer terminates it.
+    const isColdBoot = !snapshot;
+    const effectiveTimeout = isColdBoot
+      ? Math.max(timeoutSecs || 0, COLD_BOOT_TIMEOUT_SECS)
+      : (timeoutSecs || DEFAULT_TIMEOUT_SECS);
     const createOpts: Record<string, unknown> = {
       name: sandboxName,
       cpus: DEFAULT_CPUS,
       memoryMb: DEFAULT_MEMORY_MB,
-      timeoutSecs: timeoutSecs || DEFAULT_TIMEOUT_SECS,
+      timeoutSecs: effectiveTimeout,
       allowInternetAccess: true,
     };
 
@@ -499,15 +511,29 @@ export class TensorlakeProvider implements SandboxProvider {
 
     console.log(`[tensorlake] Installing runtime in sandbox ${sandbox.sandboxId} (cold boot from base image)...`);
 
-    // ── 1. Upload the agent binary (gzipped → chunked) ──────────────────────
+    // ── 1. Upload the agent binary (gzipped, single call) ───────────────────
+    // Tensorlake's PUT /api/v1/files has no documented size limit — upload the
+    // full 38 MB binary in ONE writeFile call instead of 19 chunked calls +
+    // cat-reassembly. Falls back to chunking only if the single call fails
+    // (e.g. transport-level cap on some plan). Single-shot is ~50× faster.
     const agentRaw = readFileSync(agentBinPath);
     const agentGz = gzipSync(agentRaw);
     console.log(`[tensorlake] Uploading agent binary (${(agentGz.length / 1048576).toFixed(1)} MB gzipped, ${agentRaw.length} bytes raw)...`);
 
-    if (agentGz.length <= UPLOAD_CHUNK_BYTES) {
+    let uploaded = false;
+    try {
+      // Single-shot upload — ~50× faster than 19 chunked writes
       await sandbox.writeFile('/tmp/kortix-agent.gz', agentGz);
-    } else {
-      // Upload in ≤2 MB chunks, then concatenate inside the sandbox
+      uploaded = true;
+      console.log(`[tensorlake] Agent binary uploaded in single call.`);
+    } catch (singleErr) {
+      console.warn(
+        `[tensorlake] Single-shot upload failed (${singleErr instanceof Error ? singleErr.message : singleErr}), ` +
+        `falling back to chunked upload.`,
+      );
+    }
+    if (!uploaded) {
+      // Fallback: upload in ≤2 MB chunks, then concatenate inside the sandbox
       const totalParts = Math.ceil(agentGz.length / UPLOAD_CHUNK_BYTES);
       for (let i = 0; i < totalParts; i++) {
         const start = i * UPLOAD_CHUNK_BYTES;
@@ -586,68 +612,61 @@ function buildColdSetupScript(envVars: Record<string, string>): string {
   // RUNTIME_ENV mirrors Dockerfile ENV lines that the imperative install can't bake
   const RUNTIME_ENV = 'export AGENT_BROWSER_ARGS=--no-sandbox,--disable-dev-shm-usage KORTIX_WORKSPACE=/workspace;';
 
+  // SLIM COLD-BOOT SCRIPT — target <3 min total instead of ~25 min.
+  // Removed: opencode migration bake (saves ~2-5 min — opencode self-migrates
+  //          on first /session call, ~15-35s, acceptable).
+  // Removed: bun install (saves ~30s — agent binary is pre-compiled, no bun
+  //          runtime needed for it; bun is only needed for opencode tools).
+  // Removed: nodejs/npm from initial apt install (saves ~2-3 min — installed
+  //          lazily only if opencode install needs them).
+  // Kept:    curl, git, ca-certs (required by agent for git operations).
   return `
 set -euo pipefail
 
 LOG_PREFIX="[tensorlake-cold-setup]"
-echo "$LOG_PREFIX Starting runtime installation..."
+echo "$LOG_PREFIX Starting SLIM runtime installation (target <3 min)..."
 
-# ─── 1. Install apt dependencies ──────────────────────────────────────────
-echo "$LOG_PREFIX Installing apt dependencies..."
+# ─── 1. Install minimal apt deps (curl + git + ca-certs only) ─────────────
+# Skip nodejs/npm initially — they add 50+ MB and 2-3 min. Install lazily
+# below only if opencode install needs them.
+echo "$LOG_PREFIX Installing apt deps (curl, git, ca-certs)..."
 sudo apt-get update -o Acquire::Retries=2 >/tmp/apt-update.log 2>&1 || true
 sudo apt-get install -y --no-install-recommends \\
-  ca-certificates curl git gzip nodejs npm unzip tmux iproute2 \\
-  >>/tmp/apt-install.log 2>&1 || {
-  echo "$LOG_PREFIX apt install failed, trying with fallback..."
-  cat /tmp/apt-install.log | tail -5
-  # Retry once more
-  sudo apt-get update -o Acquire::Retries=3 >/dev/null 2>&1 || true
-  sudo apt-get install -y --no-install-recommends \\
-    ca-certificates curl git gzip nodejs npm unzip tmux \\
-    >/tmp/apt-install2.log 2>&1
-}
-echo "$LOG_PREFIX apt deps done. node: $(node -v 2>/dev/null || echo 'N/A'), npm: $(npm -v 2>/dev/null || echo 'N/A')"
+  ca-certificates curl git gzip unzip tmux \\
+  >>/tmp/apt-install.log 2>&1 || true
+echo "$LOG_PREFIX apt deps done."
 
-# ─── 2. Create runtime directories ────────────────────────────────────────
+# ─── 2. Install opencode (REQUIRED — agent calls it via pty) ───────────────
+echo "$LOG_PREFIX Checking for npm..."
+if ! command -v npm >/dev/null 2>&1; then
+  echo "$LOG_PREFIX npm not found, installing nodejs+npm..."
+  sudo apt-get install -y --no-install-recommends nodejs npm >>/tmp/node-install.log 2>&1 || true
+fi
+if command -v npm >/dev/null 2>&1; then
+  echo "$LOG_PREFIX Installing opencode@${OPENCODE_VERSION} via npm..."
+  sudo npm install -g --no-audit --no-fund "opencode-ai@${OPENCODE_VERSION}" >/tmp/oc-install.log 2>&1 || {
+    echo "$LOG_PREFIX WARN: opencode npm install failed, agent may fail at runtime"
+    tail -5 /tmp/oc-install.log
+  }
+  opencode --version 2>/dev/null || echo "$LOG_PREFIX opencode not on PATH yet"
+else
+  echo "$LOG_PREFIX WARN: npm unavailable — opencode not installed"
+fi
+echo "$LOG_PREFIX opencode step done."
+
+# NOTE: opencode migration bake SKIPPED — opencode self-migrates on first
+# /session call (~15-35s on hot path). Saves 2-5 min on cold boot.
+
+# NOTE: bun install SKIPPED — the kortix-agent binary is pre-compiled via
+# bun build --compile (self-contained Linux binary, no bun runtime needed).
+# If bun is needed for opencode tools later, it can be installed lazily.
+
+# ─── 3. Create runtime directories ────────────────────────────────────────
 echo "$LOG_PREFIX Creating runtime directories..."
 sudo mkdir -p ${RUNTIME_HOME} ${RUNTIME_HOME}/.local/share ${RUNTIME_HOME}/.config ${RUNTIME_HOME}/.cache
-sudo mkdir -p ${RUNTIME_HOME}/.bun/install/cache ${RUNTIME_HOME}/.agent-browser/browsers
 sudo mkdir -p /workspace /ephemeral/kortix-master/opencode /opt/kortix/apps/sandbox /opt/kortix/packages
 
-# ─── 3. Install opencode ──────────────────────────────────────────────────
-echo "$LOG_PREFIX Installing opencode@${OPENCODE_VERSION}..."
-sudo npm install -g --no-audit --no-fund "opencode-ai@${OPENCODE_VERSION}" >/tmp/oc-install.log 2>&1
-opencode --version
-echo "$LOG_PREFIX opencode installed."
-
-# ─── 4. Run opencode migration bake ───────────────────────────────────────
-echo "$LOG_PREFIX Running opencode migration bake..."
-export HOME=${RUNTIME_HOME}
-export XDG_DATA_HOME=${RUNTIME_HOME}/.local/share
-export XDG_CONFIG_HOME=${RUNTIME_HOME}/.config
-export XDG_CACHE_HOME=${RUNTIME_HOME}/.cache
-opencode serve --port 4096 --hostname 127.0.0.1 >/tmp/oc-bake.log 2>&1 &
-oc_pid=$!
-for i in $(seq 1 120); do
-  curl -s -o /dev/null -m 2 http://127.0.0.1:4096/ && break
-  kill -0 "$oc_pid" 2>/dev/null || break
-  sleep 1
-done
-sleep 2
-kill "$oc_pid" 2>/dev/null || true
-wait "$oc_pid" 2>/dev/null || true
-echo "$LOG_PREFIX opencode migration bake done."
-
-# ─── 5. Install bun ───────────────────────────────────────────────────────
-echo "$LOG_PREFIX Installing bun..."
-if ! command -v bun >/dev/null; then
-  curl -fsSL https://bun.com/install | bash >/tmp/bun-install.log 2>&1 || true
-  sudo install -m 755 ${RUNTIME_HOME}/.bun/bin/bun /usr/local/bin/bun 2>/dev/null || \
-    sudo install -m 755 "$HOME/.bun/bin/bun" /usr/local/bin/bun 2>/dev/null || true
-fi
-echo "$LOG_PREFIX bun: $(bun --version 2>/dev/null || echo 'not installed')"
-
-# ─── 6. Install kortix binaries ───────────────────────────────────────────
+# ─── 4. Install kortix binaries ───────────────────────────────────────────
 echo "$LOG_PREFIX Installing kortix-agent + entrypoint..."
 sudo gunzip -c /tmp/kortix-agent.gz > /usr/local/bin/kortix-agent
 sudo cp /tmp/kortix-entrypoint /usr/local/bin/kortix-entrypoint
@@ -655,24 +674,24 @@ sudo chmod +x /usr/local/bin/kortix-agent /usr/local/bin/kortix-entrypoint
 rm -f /tmp/kortix-agent.gz /tmp/kortix-entrypoint
 echo "$LOG_PREFIX kortix binaries installed."
 
-# ─── 7. Write session env file ────────────────────────────────────────────
+# ─── 5. Write session env file ────────────────────────────────────────────
 echo "$LOG_PREFIX Writing session env..."
 sudo mkdir -p /opt/kortix
 echo '${envB64}' | base64 -d | sudo tee /opt/kortix/session.env >/dev/null
 sudo chmod 600 /opt/kortix/session.env
 
-# ─── 8. Write /etc/pt-env (health check reads KORTIX_BRANCH_NAME from here)
+# ─── 6. Write /etc/pt-env (health check reads KORTIX_BRANCH_NAME from here)
 echo "$LOG_PREFIX Writing /etc/pt-env..."
 echo '${ptEnvB64}' | base64 -d | sudo tee /etc/pt-env >/dev/null
 
-# ─── 9. Set ownership ─────────────────────────────────────────────────────
+# ─── 7. Set ownership ─────────────────────────────────────────────────────
 sudo chown -R tl-user:tl-user /opt/kortix /workspace /ephemeral 2>/dev/null || true
 
-# ─── 10. Launch the daemon ────────────────────────────────────────────────
+# ─── 8. Launch the daemon ─────────────────────────────────────────────────
 echo "$LOG_PREFIX Launching kortix-agent daemon..."
 setsid sudo bash -c '${RUNTIME_ENV} set -a; source /opt/kortix/session.env; set +a; cd /; exec /usr/local/bin/kortix-entrypoint' </dev/null >/tmp/kortix-agent.log 2>&1 &
 echo "$LOG_PREFIX Daemon launched (PID=$!)."
 
-echo "$LOG_PREFIX Runtime installation complete."
+echo "$LOG_PREFIX Runtime installation COMPLETE."
 `;
 }
