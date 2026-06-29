@@ -257,11 +257,15 @@ async function resolveCloneToken(cfg: Config): Promise<string | undefined> {
       })
       if (!res.ok) {
         const text = await res.text().catch(() => '')
-        // 4xx (bad token / not found) won't fix itself — fail immediately.
-        if (res.status >= 400 && res.status < 500) {
+        // 403 "sandbox token is not scoped to this project" is TRANSIENT — it
+        // happens when the sandbox row is still 'provisioning' (not yet 'active')
+        // at the moment the daemon boots and tries to clone. The row flips to
+        // 'active' within seconds. Retry instead of failing permanently.
+        const isTransient403 = res.status === 403 && /not scoped to this project|sandbox token/i.test(text)
+        if (res.status >= 400 && res.status < 500 && !isTransient403) {
           throw new Error(`failed to fetch git clone credential (${res.status}): ${text || res.statusText}`)
         }
-        // 5xx is potentially transient — retry.
+        // 5xx OR transient 403 → retry.
         throw new Error(`clone-credential ${res.status}: ${text || res.statusText}`)
       }
       const body = await res.json().catch(() => null) as
@@ -273,7 +277,10 @@ async function resolveCloneToken(cfg: Config): Promise<string | undefined> {
       return value
     } catch (err) {
       lastErr = err
-      const is4xx = err instanceof Error && /\((4\d\d)\)/.test(err.message)
+      // 403 "not scoped to this project" is transient (sandbox still provisioning)
+      // — don't break out of the retry loop on it.
+      const isTransient403 = err instanceof Error && /\(403\)/.test(err.message) && /not scoped to this project|sandbox token/i.test(err.message)
+      const is4xx = err instanceof Error && /\((4\d\d)\)/.test(err.message) && !isTransient403
       if (is4xx || attempt === CLONE_CRED_ATTEMPTS) break
       logger.warn('[git] clone-credential fetch failed; retrying', {
         attempt,
