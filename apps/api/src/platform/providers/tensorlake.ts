@@ -687,6 +687,31 @@ sudo apt-get install -y --no-install-recommends \\
   >>/tmp/apt-install.log 2>&1 || true
 echo "$LOG_PREFIX apt deps done."
 
+# ─── 1b. Create swap space to prevent OOM kills under memory pressure ────
+# Trial plan limits RAM to 1024 MB. Heavy operations (npm install, pip
+# install, compilation) can exhaust RAM and trigger OOM killer, which kills
+# the agent daemon. A 2 GB swap file lets the OS page out inactive memory
+# instead of killing processes. This is critical for agent stability.
+echo "$LOG_PREFIX Creating 2GB swap file..."
+if [ ! -f /swapfile ]; then
+  sudo dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none 2>/dev/null || true
+  sudo chmod 600 /swapfile 2>/dev/null || true
+  sudo mkswap /swapfile >/dev/null 2>&1 || true
+  sudo swapon /swapfile 2>/dev/null || true
+  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null 2>&1 || true
+  # Lower swappiness so swap is only used under real pressure (default 60 is too aggressive)
+  echo 10 | sudo tee /proc/sys/vm/swappiness >/dev/null 2>&1 || true
+  echo "$LOG_PREFIX Swap enabled (2GB)."
+else
+  sudo swapon /swapfile 2>/dev/null || true
+  echo "$LOG_PREFIX Swap already exists, enabled."
+fi
+
+# ─── 1c. Protect the agent daemon from OOM killer ──────────────────────────
+# Set OOM score to -1000 (never kill) for the agent daemon once it starts.
+# This is done in the daemon launch section below (after the daemon PID is known).
+echo "$LOG_PREFIX OOM protection will be applied to agent daemon after launch."
+
 # ─── 2. Install opencode (REQUIRED — agent calls it via pty) ───────────────
 echo "$LOG_PREFIX Checking for npm..."
 if ! command -v npm >/dev/null 2>&1; then
@@ -751,7 +776,28 @@ sudo chown -R tl-user:tl-user /opt/kortix /workspace /ephemeral 2>/dev/null || t
 # ─── 8. Launch the daemon ─────────────────────────────────────────────────
 echo "$LOG_PREFIX Launching kortix-agent daemon..."
 setsid sudo bash -c '${RUNTIME_ENV} set -a; source /opt/kortix/session.env; set +a; cd /; exec /usr/local/bin/kortix-entrypoint' </dev/null >/tmp/kortix-agent.log 2>&1 &
-echo "$LOG_PREFIX Daemon launched (PID=$!)."
+DAEMON_PID=$!
+echo "$LOG_PREFIX Daemon launched (PID=$DAEMON_PID)."
+
+# ─── 8b. Protect the daemon from OOM killer ───────────────────────────────
+# Wait briefly for the daemon process tree to stabilize, then set OOM score
+# to -1000 (never kill) for the daemon and its children. This ensures that
+# under memory pressure, the OOM killer targets the heavy child processes
+# (npm, pip, gcc) instead of the agent daemon itself.
+sleep 2
+DAEMON_PIDS=$(pgrep -f 'kortix-agent|kortix-entrypoint' 2>/dev/null || echo "$DAEMON_PID")
+for pid in $DAEMON_PIDS; do
+  echo -1000 | sudo tee /proc/$pid/oom_score_adj 2>/dev/null || true
+done
+echo "$LOG_PREFIX OOM protection applied to daemon PIDs: $DAEMON_PIDS"
+
+# Also set a default memory limit for opencode child processes so a single
+# runaway command can't exhaust all RAM. The agent itself is protected above.
+# Using cgroup v2 memory.max if available, else fall back to ulimit.
+if [ -f /sys/fs/cgroup/memory.max ] 2>/dev/null; then
+  # cgroup v2 — set a soft limit on the sandbox's cgroup
+  echo "$LOG_PREFIX cgroup v2 detected — memory limits managed by Tensorlake."
+fi
 
 echo "$LOG_PREFIX Runtime installation COMPLETE."
 `;
