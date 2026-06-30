@@ -1,8 +1,8 @@
 /**
  * Sessions API client — for simple-mode session management.
  *
- * This mirrors the patterns in projects-client.ts but targets the
- * /v1/sessions endpoints for standalone (no-GitHub) sessions.
+ * Mirrors the patterns in projects-client.ts but targets /v1/sessions
+ * for standalone (no-GitHub) sessions.
  */
 
 import { backendApi } from '@/lib/api-client';
@@ -23,6 +23,19 @@ export interface SimpleSessionDetail extends SimpleSession {
     status: string;
     provider: string;
   } | null;
+}
+
+export interface SessionStartResult {
+  stage: 'provisioning' | 'starting' | 'ready' | 'failed' | 'stopped';
+  retriable: boolean;
+  sandbox: {
+    sandbox_id: string;
+    session_id: string;
+    external_id: string;
+    status: string;
+  } | null;
+  opencode_session_id: string | null;
+  reason?: string | null;
 }
 
 export interface SessionFile {
@@ -60,12 +73,14 @@ export async function createSession(opts: {
   name?: string;
   initial_prompt?: string;
   opencode_model?: string;
+  session_id?: string; // client-provided UUID for optimistic creation
 }): Promise<{ session_id: string; status: string; name: string }> {
   const headers = await authHeaders();
   const res = await backendApi.post('/v1/sessions', {
     name: opts.name,
     initial_prompt: opts.initial_prompt,
     opencode_model: opts.opencode_model,
+    session_id: opts.session_id,
   }, { headers });
   return res.data;
 }
@@ -74,6 +89,19 @@ export async function createSession(opts: {
 export async function deleteSession(sessionId: string): Promise<void> {
   const headers = await authHeaders();
   await backendApi.delete(`/v1/sessions/${sessionId}`, { headers });
+}
+
+/** Start/resume a session — equivalent to POST /v1/projects/:id/sessions/:sid/start */
+export async function startSession(sessionId: string): Promise<SessionStartResult | null> {
+  const headers = await authHeaders();
+  const res = await backendApi.post(`/v1/sessions/${sessionId}/start`, {}, { headers, showErrors: false });
+  if (!res.success || !res.data) return null;
+  return res.data;
+}
+
+/** Stable React Query key for session start polling. */
+export function sessionStartKey(sessionId: string) {
+  return ['session-start', sessionId] as const;
 }
 
 /** List files in a session workspace. */

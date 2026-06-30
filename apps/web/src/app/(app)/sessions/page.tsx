@@ -17,6 +17,7 @@ import {
   type SimpleSession,
 } from '@/lib/sessions-client';
 import { useCurrentAccountStore } from '@/stores/current-account-store';
+import { markSessionFresh } from '@/lib/fresh-sessions';
 import { Search, Plus, Trash2, MessageSquare } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
@@ -30,7 +31,6 @@ export default function SessionsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const { selectedAccountId } = useCurrentAccountStore();
   const [query, setQuery] = useState('');
-  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) router.replace('/auth');
@@ -43,10 +43,14 @@ export default function SessionsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => createSession({ name: 'New Session' }),
+    mutationFn: () => {
+      const sessionId = crypto.randomUUID();
+      markSessionFresh(sessionId);
+      return createSession({ name: 'New Session', session_id: sessionId }).then(data => ({ ...data, sessionId }));
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
-      router.push(`/sessions/${data.session_id}`);
+      router.push(`/sessions/${data.session_id ?? data.session_id}`);
     },
     onError: () => errorToast('Failed to create session'),
   });
@@ -69,7 +73,7 @@ export default function SessionsPage() {
       <AppHeader />
       <div className="flex-1 overflow-auto px-6 py-6">
         <div className="mx-auto max-w-5xl space-y-6">
-          {/* Header */}
+          {/* Header — same layout as projects page */}
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-foreground text-2xl font-semibold tracking-tight">
@@ -89,7 +93,7 @@ export default function SessionsPage() {
             </Button>
           </div>
 
-          {/* Search */}
+          {/* Search — same component as projects page */}
           <div className="relative max-w-md">
             <Search className="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
             <Input
@@ -100,7 +104,7 @@ export default function SessionsPage() {
             />
           </div>
 
-          {/* Sessions grid */}
+          {/* Sessions grid — same card style as projects */}
           {isLoading ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (

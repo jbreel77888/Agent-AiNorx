@@ -185,6 +185,52 @@ sessionFilesApp.delete('/:sessionId', async (c) => {
   return c.json({ ok: true });
 });
 
+// ─── Start/resume session (simple mode equivalent of POST /v1/projects/:id/sessions/:sid/start) ──
+
+sessionFilesApp.post('/:sessionId/start', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const accountId = c.get('accountId') as string;
+
+  // Look up the session
+  const [session] = await db
+    .select()
+    .from(projectSessions)
+    .where(eq(projectSessions.sessionId, sessionId))
+    .limit(1);
+
+  if (!session) return c.json({ error: 'Session not found' }, 404);
+
+  // Look up the sandbox
+  const [sandbox] = await db
+    .select()
+    .from(sessionSandboxes)
+    .where(eq(sessionSandboxes.sandboxId, sessionId))
+    .limit(1);
+
+  if (!sandbox || !sandbox.externalId) {
+    // No sandbox yet — still provisioning
+    return c.json({
+      stage: 'provisioning',
+      retriable: true,
+      sandbox: null,
+      opencode_session_id: null,
+    });
+  }
+
+  // Return the sandbox info so the frontend can connect
+  return c.json({
+    stage: sandbox.status === 'active' ? 'ready' : 'provisioning',
+    retriable: sandbox.status !== 'error',
+    sandbox: {
+      sandbox_id: sandbox.sandboxId,
+      session_id: sessionId,
+      external_id: sandbox.externalId,
+      status: sandbox.status,
+    },
+    opencode_session_id: (session.metadata as any)?.opencode_session_id ?? null,
+  });
+});
+
 // ─── List files ───────────────────────────────────────────────────────────────
 
 sessionFilesApp.get('/:sessionId/files', async (c) => {
