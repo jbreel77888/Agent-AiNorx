@@ -13,18 +13,15 @@ import { InstantSessionShell } from '@/features/session/instant-session-shell';
 import { SessionChat } from '@/features/session/session-chat';
 import { SessionLayout } from '@/features/session/session-layout';
 import { SessionStartingLoader } from '@/features/session/session-starting-loader';
-import { useCanonicalOpenCodeSession } from '@/hooks/opencode/use-canonical-opencode-session';
 import { OpenCodeEventStreamProvider } from '@/hooks/opencode/use-opencode-events';
 import { useSandboxConnection } from '@/hooks/platform/use-sandbox-connection';
 import { isSessionFresh, clearSessionFresh } from '@/lib/fresh-sessions';
-import { formatOpenCodeRuntimeError } from '@/lib/opencode-errors';
 import {
-  getSession,
   startSession,
   sessionStartKey,
   type SessionStartResult,
 } from '@/lib/sessions-client';
-import { finishSessionTiming, sessionMark } from '@/lib/session-timing';
+import { sessionMark } from '@/lib/session-timing';
 import { cn } from '@/lib/utils';
 import {
   markProvisioningVerified,
@@ -203,7 +200,7 @@ export default function SessionPage() {
           >
             {isFresh ? (
               <InstantSessionShell
-                projectId={undefined}
+                projectId="sessions"
                 sessionId={sessionId}
                 stage={startStage}
                 onSubmit={() => setShellSubmitted(true)}
@@ -252,17 +249,17 @@ function ActiveSessionChat({
   );
   const runtimeBootError = useSandboxConnectionStore((s) => s.runtimeError);
 
-  const {
-    rootSessionId,
-    error: runtimeError,
-  } = useCanonicalOpenCodeSession({ projectId: 'sessions', sessionId, pinFromStart });
+  // In simple mode, we use the opencode_session_id from the /start response
+  // directly — no need for useCanonicalOpenCodeSession (which requires a real project).
+  // The daemon creates the root opencode session on boot.
+  const rootSessionId = pinFromStart;
 
   useEffect(() => {
     if (runtimeReady) sessionMark(sessionId, 'runtime-ready');
   }, [runtimeReady, sessionId]);
 
   const chatShowable =
-    (!!rootSessionId && runtimeReady) || !!runtimeError || (!runtimeReady && !!runtimeBootError);
+    (!!rootSessionId && runtimeReady) || (!runtimeReady && !!runtimeBootError);
   useEffect(() => {
     if (chatShowable) onChatReady?.();
   }, [chatShowable, onChatReady]);
@@ -280,18 +277,6 @@ function ActiveSessionChat({
               {runtimeBootError}
             </p>
           )}
-        </div>
-      </div>
-    );
-  }
-
-  if (runtimeError) {
-    const formatted = formatOpenCodeRuntimeError(runtimeError);
-    return (
-      <div className="flex min-h-0 flex-1 items-center justify-center px-6">
-        <div className="flex max-w-md flex-col items-center gap-3 text-center">
-          <h2 className="text-foreground/90 text-sm font-medium">{formatted.title}</h2>
-          <p className="text-muted-foreground/70 text-xs leading-relaxed">{formatted.message}</p>
         </div>
       </div>
     );

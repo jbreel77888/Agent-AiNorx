@@ -49,7 +49,7 @@ export function InstantSessionShell({
   stage,
   onSubmit,
 }: {
-  projectId: string;
+  projectId?: string;
   /** The route's session id (== the pending-prompt namespace the page migrates). */
   sessionId: string;
   stage: SessionStartStage;
