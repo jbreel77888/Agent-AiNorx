@@ -527,9 +527,8 @@ export const projectSessions = kortixSchema.table(
       .notNull()
       .references(() => accounts.accountId, { onDelete: 'cascade' }),
     projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.projectId, { onDelete: 'cascade' }),
-    branchName: text('branch_name').notNull(),
+      .references(() => projects.projectId, { onDelete: 'cascade' }),  // nullable in simple mode
+    branchName: text('branch_name'),  // nullable in simple mode
     baseRef: text('base_ref').default('main').notNull(),
     sandboxProvider: sandboxProviderEnum('sandbox_provider').default('daytona').notNull(),
     sandboxId: text('sandbox_id'),
