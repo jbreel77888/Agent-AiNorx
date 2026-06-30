@@ -111,6 +111,13 @@ export default function SimpleSessionPage() {
     (s) => s.status === 'connected' && s.healthy === true,
   );
 
+  // ALWAYS mount useSandboxConnection so it can poll health and set runtimeReady.
+  // Previously this was inside RuntimeConnectionWrapper which only mounted when
+  // canShowChat=true — a chicken-and-egg deadlock (canShowChat requires
+  // runtimeReady, which is set BY useSandboxConnection). Now the hook runs
+  // as soon as the sandbox is registered in the server store.
+  useSandboxConnection();
+
   // Determine if we can show chat
   const sandboxSwitched = sandbox && activeInstanceId === sandbox.sandbox_id;
   const canShowChat = !!(sandboxSwitched && runtimeReady && opencodeSessionId);
@@ -147,10 +154,8 @@ export default function SimpleSessionPage() {
       {/* Chat layer — mounted only when everything is ready */}
       {canShowChat && (
         <div className="flex min-h-0 flex-1 flex-col">
-          <RuntimeConnectionWrapper>
-            <OpenCodeEventStreamProvider />
-            <SessionChat sessionId={opencodeSessionId!} />
-          </RuntimeConnectionWrapper>
+          <OpenCodeEventStreamProvider />
+          <SessionChat sessionId={opencodeSessionId!} />
         </div>
       )}
 
@@ -170,9 +175,4 @@ function FullScreenLoader({ stage }: { stage: string }) {
       <SessionStartingLoader stage={stage as any} />
     </div>
   );
-}
-
-function RuntimeConnectionWrapper({ children }: { children: React.ReactNode }) {
-  useSandboxConnection();
-  return <>{children}</>;
 }
