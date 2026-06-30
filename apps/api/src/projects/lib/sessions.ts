@@ -511,23 +511,30 @@ export async function createProjectSession(input: {
       // Resolve git auth and user env concurrently. Git auth is needed for
       // background freshness checks / remote branch publishing, but a warm
       // session can boot from an existing ready snapshot without waiting for it.
-      const gitAuthPromise = resolveProjectGitAuth(project).then((gitAuth) => {
-        tl.mark('git-auth');
-        return gitAuth;
-      });
-      const projectWithGitAuthPromise = gitAuthPromise.then((gitAuth) => ({
-        ...project,
-        gitAuthToken: gitAuth.auth?.token ?? null,
-      }));
+      const isSimpleMode = config.KORTIX_SESSION_MODE === 'simple';
+      const gitAuthPromise = isSimpleMode
+        ? Promise.resolve({ auth: null })
+        : resolveProjectGitAuth(project).then((gitAuth) => {
+            tl.mark('git-auth');
+            return gitAuth;
+          });
+      const projectWithGitAuthPromise = isSimpleMode
+        ? Promise.resolve(project)
+        : gitAuthPromise.then((gitAuth) => ({
+            ...project,
+            gitAuthToken: gitAuth.auth?.token ?? null,
+          }));
       // Resolve the base-branch tip SHA server-side (no tunnel) so the daemon
       // can skip the in-guest fetch when the baked scaffold already IS base.
       // Best-effort + timeout-guarded (never block create): on failure/timeout
       // the hint is omitted → daemon delta-fetches as before. Runs CONCURRENTLY
       // with gitAuth (folded into the env-build chain, not awaited inline).
-      const baseShaPromise = Promise.race([
-        resolveCommitSha(project, baseRef).catch(() => undefined),
-        new Promise<undefined>((r) => setTimeout(() => r(undefined), 2000)),
-      ]);
+      const baseShaPromise = isSimpleMode
+        ? Promise.resolve(undefined)
+        : Promise.race([
+            resolveCommitSha(project, baseRef).catch(() => undefined),
+            new Promise<undefined>((r) => setTimeout(() => r(undefined), 2000)),
+          ]);
       const envPromise = baseShaPromise.then((baseSha) =>
         buildSessionSandboxEnvVars({
           accountId,
@@ -573,7 +580,7 @@ export async function createProjectSession(input: {
       // fire-and-forget so they never block the IIFE itself.
       const branchAlreadyCreated =
         body.branch_already_created === true || body.branchAlreadyCreated === true;
-      const branchPromise: Promise<void> = branchAlreadyCreated
+      const branchPromise: Promise<void> = (isSimpleMode || branchAlreadyCreated)
         ? Promise.resolve()
         : projectWithGitAuthPromise.then((projectWithGitAuth) =>
             createRemoteSessionBranch(projectWithGitAuth, sessionId, baseRef),

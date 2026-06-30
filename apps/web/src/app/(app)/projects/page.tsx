@@ -61,6 +61,13 @@ export default function ProjectsPage() {
     if (!authLoading && !user) router.replace('/auth');
   }, [authLoading, user, router]);
 
+  // In simple mode, redirect /projects → /sessions (standalone sessions, no GitHub)
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_SESSION_MODE === 'simple') {
+      router.replace('/sessions');
+    }
+  }, [router]);
+
   useEffect(() => {
     if (searchParams.get('new') === '1') {
       setModalOpen(true);
