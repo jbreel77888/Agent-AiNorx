@@ -47,9 +47,11 @@ sessionFilesApp.post('/', async (c) => {
     name?: string;
     initial_prompt?: string;
     opencode_model?: string;
+    session_id?: string; // client-provided UUID for optimistic creation
   };
 
-  const sessionId = crypto.randomUUID();
+  // Use client-provided UUID if present (optimistic creation pattern)
+  const sessionId = body.session_id || crypto.randomUUID();
   const now = new Date();
 
   // Insert session row — projectId is null in simple mode
@@ -75,9 +77,66 @@ sessionFilesApp.post('/', async (c) => {
   // Create workspace for file storage
   await workspaceStore.createWorkspace(sessionId, accountId);
 
-  // TODO: Phase 2 continued — trigger sandbox provisioning here
-  // For now, just return the session — sandbox will be provisioned
-  // when we wire up the simple-mode provisioning in session-sandbox.ts
+  // Trigger sandbox provisioning in the background (fire-and-forget, like project mode)
+  // We call provisionSessionSandbox with a minimal gitProject (empty repo URL)
+  // — the daemon will skip git clone because KORTIX_SESSION_MODE=simple is in env
+  void (async () => {
+    try {
+      const { provisionSessionSandbox } = await import('../platform/services/session-sandbox');
+      const { buildSessionRuntimeEnv } = await import('../projects/lib/session-runtime-env');
+      const { sandboxFrontendBaseUrl } = await import('../platform/sandbox-frontend-url');
+
+      const kortixOrigin = config.KORTIX_URL?.replace(/\/+$/, '') || 'http://localhost:8008';
+      const runtimeEnv = buildSessionRuntimeEnv({
+        sessionId,
+        agentName: 'default',
+        apiUrl: `${kortixOrigin}/v1`,
+        frontendUrl: sandboxFrontendBaseUrl(),
+        initialPrompt: body.initial_prompt || null,
+        opencodeModel: body.opencode_model || null,
+        sessionMode: 'simple',
+      });
+
+      await provisionSessionSandbox({
+        sandboxId: sessionId,
+        accountId,
+        projectId: 'sessions', // virtual project ID — provisionSessionSandbox needs one
+        userId,
+        agentName: 'default',
+        provider: config.ALLOWED_SANDBOX_PROVIDERS.split(',')[0] as any,
+        metadata: {
+          session_id: sessionId,
+          session_mode: 'simple',
+          name: body.name || 'New Session',
+        },
+        extraEnvVars: {
+          ...runtimeEnv,
+          KORTIX_PROJECT_AUTO_CLONE: '0', // don't auto-clone — daemon will mkdir /workspace
+        },
+        gitProject: {
+          projectId: 'sessions',
+          repoUrl: '', // empty — daemon skips clone in simple mode
+          defaultBranch: 'main',
+          manifestPath: 'kortix.toml',
+          gitAuthToken: null,
+        },
+        baseRef: 'main',
+      });
+
+      console.log(`[sessions] Sandbox provisioned for ${sessionId}`);
+    } catch (err) {
+      console.error(`[sessions] Sandbox provisioning failed for ${sessionId}:`, err);
+      // Mark session as failed
+      await db
+        .update(projectSessions)
+        .set({
+          status: 'failed',
+          error: err instanceof Error ? err.message : String(err),
+          updatedAt: new Date(),
+        })
+        .where(eq(projectSessions.sessionId, sessionId));
+    }
+  })();
 
   return c.json({
     session_id: sessionId,

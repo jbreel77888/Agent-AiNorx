@@ -46,11 +46,12 @@ export default function SessionsPage() {
     mutationFn: () => {
       const sessionId = crypto.randomUUID();
       markSessionFresh(sessionId);
-      return createSession({ name: 'New Session', session_id: sessionId }).then(data => ({ ...data, sessionId }));
+      // Optimistic: navigate immediately, persist in background
+      router.push(`/sessions/${sessionId}`);
+      return createSession({ name: 'New Session', session_id: sessionId });
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
-      router.push(`/sessions/${data.session_id ?? data.session_id}`);
     },
     onError: () => errorToast('Failed to create session'),
   });
