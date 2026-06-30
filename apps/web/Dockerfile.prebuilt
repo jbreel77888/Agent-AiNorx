@@ -1,6 +1,6 @@
 # Runner-only Dockerfile — uses pre-built .next output from the repo
 # No build step needed, just copy and run!
-FROM node:22-slim AS runner
+FROM node:26-slim AS runner
 
 WORKDIR /app
 
