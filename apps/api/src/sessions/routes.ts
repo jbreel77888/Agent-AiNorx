@@ -25,7 +25,8 @@ import { config } from '../config';
 import { supabaseAuth } from '../middleware/auth';
 import { db } from '../shared/db';
 import { projectSessions, sessionSandboxes } from '@kortix/db';
-import { eq, desc, and, or } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
+import { resolveAccountId } from '../shared/resolve-account';
 import * as workspaceStore from './workspace-store';
 
 export const sessionFilesApp = new Hono();
@@ -37,10 +38,14 @@ sessionFilesApp.use('*', supabaseAuth);
 
 sessionFilesApp.post('/', async (c) => {
   const userId = c.get('userId') as string;
-  const accountId = c.get('accountId') as string;
+  // For JWT auth, accountId isn't set by middleware — resolve it from the user's account membership
+  let accountId = c.get('accountId') as string;
+  if (!accountId && userId) {
+    accountId = await resolveAccountId(userId);
+  }
 
   if (!accountId) {
-    return c.json({ error: 'Account ID required' }, 400);
+    return c.json({ error: 'Account ID required — no account membership found' }, 400);
   }
 
   const body = await c.req.json().catch(() => ({})) as {
@@ -149,7 +154,11 @@ sessionFilesApp.post('/', async (c) => {
 // ─── List user's sessions ────────────────────────────────────────────────────
 
 sessionFilesApp.get('/', async (c) => {
-  const accountId = c.get('accountId') as string;
+  const userId = c.get('userId') as string;
+  let accountId = c.get('accountId') as string;
+  if (!accountId && userId) {
+    accountId = await resolveAccountId(userId);
+  }
   if (!accountId) return c.json({ sessions: [] });
 
   const sessions = await db
@@ -161,13 +170,7 @@ sessionFilesApp.get('/', async (c) => {
       updatedAt: projectSessions.updatedAt,
     })
     .from(projectSessions)
-    .where(and(
-      eq(projectSessions.accountId, accountId),
-      or(
-        eq(projectSessions.metadata as any, { session_mode: 'simple' }),
-        // Filter by metadata containing session_mode: simple
-      ),
-    ))
+    .where(eq(projectSessions.accountId, accountId))
     .orderBy(desc(projectSessions.updatedAt))
     .limit(50);
 
