@@ -108,7 +108,7 @@ sessionFilesApp.post('/', async (c) => {
         projectId: 'sessions', // virtual project ID — provisionSessionSandbox needs one
         userId,
         agentName: 'default',
-        provider: config.ALLOWED_SANDBOX_PROVIDERS.split(',')[0] as any,
+        provider: (config.ALLOWED_SANDBOX_PROVIDERS as readonly string[])[0] as any,
         metadata: {
           session_id: sessionId,
           session_mode: 'simple',
