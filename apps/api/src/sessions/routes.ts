@@ -28,6 +28,9 @@ import { projectSessions, sessionSandboxes } from '@kortix/db';
 import { eq, desc } from 'drizzle-orm';
 import { resolveAccountId } from '../shared/resolve-account';
 import * as workspaceStore from './workspace-store';
+import { getProvider } from '../platform/providers';
+import type { SandboxProviderName } from '../config';
+import { ensureOpencodeSessionPin } from '../projects/opencode-mapping';
 
 export const sessionFilesApp = new Hono();
 
@@ -230,6 +233,28 @@ sessionFilesApp.get('/:sessionId', async (c) => {
 sessionFilesApp.delete('/:sessionId', async (c) => {
   const sessionId = c.req.param('sessionId');
 
+  // Look up the sandbox BEFORE updating DB rows so we can terminate it.
+  const [sandbox] = await db
+    .select()
+    .from(sessionSandboxes)
+    .where(eq(sessionSandboxes.sandboxId, sessionId))
+    .limit(1);
+
+  // Actually terminate the sandbox at the provider (best-effort).
+  // This was previously missing — sandboxes accumulated in Tensorlake until
+  // the trial plan's 1-concurrent-sandbox quota was hit.
+  if (sandbox?.externalId && sandbox.provider) {
+    try {
+      const provider = getProvider(sandbox.provider as SandboxProviderName);
+      await provider.remove(sandbox.externalId);
+      console.log(`[sessions] Terminated sandbox ${sandbox.externalId} for session ${sessionId}`);
+    } catch (err) {
+      // Don't fail the delete if the sandbox is already gone (404) — just log.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[sessions] Failed to terminate sandbox ${sandbox.externalId}: ${msg}`);
+    }
+  }
+
   // Delete workspace (R2 + DB files)
   await workspaceStore.deleteWorkspace(sessionId);
 
@@ -239,7 +264,7 @@ sessionFilesApp.delete('/:sessionId', async (c) => {
     .set({ status: 'deleted', updatedAt: new Date() })
     .where(eq(projectSessions.sessionId, sessionId));
 
-  // Mark sandbox as archived if exists
+  // Mark sandbox as archived
   await db
     .update(sessionSandboxes)
     .set({ status: 'archived', updatedAt: new Date() })
@@ -252,7 +277,7 @@ sessionFilesApp.delete('/:sessionId', async (c) => {
 
 sessionFilesApp.post('/:sessionId/start', async (c) => {
   const sessionId = c.req.param('sessionId');
-  const accountId = c.get('accountId') as string;
+  const userId = c.get('userId') as string;
 
   // Look up the session
   const [session] = await db
@@ -270,8 +295,9 @@ sessionFilesApp.post('/:sessionId/start', async (c) => {
     .where(eq(sessionSandboxes.sandboxId, sessionId))
     .limit(1);
 
+  // No sandbox yet — still provisioning (fire-and-forget provisioning kicked
+  // off by POST /sessions runs in the background; client keeps polling).
   if (!sandbox || !sandbox.externalId) {
-    // No sandbox yet — still provisioning
     return c.json({
       stage: 'provisioning',
       retriable: true,
@@ -280,17 +306,122 @@ sessionFilesApp.post('/:sessionId/start', async (c) => {
     });
   }
 
-  // Return the sandbox info so the frontend can connect
+  // Sandbox error — terminal.
+  if (sandbox.status === 'error') {
+    return c.json({
+      stage: 'failed',
+      retriable: false,
+      sandbox: {
+        sandbox_id: sandbox.sandboxId,
+        session_id: sessionId,
+        external_id: sandbox.externalId,
+        status: sandbox.status,
+        provider: sandbox.provider,
+      },
+      opencode_session_id: null,
+      reason: 'sandbox_error',
+    });
+  }
+
+  // Confirm the box is actually running at the provider. The DB row may lag —
+  // the provider can idle-auto-stop a box while the row still reads 'active'.
+  // Mirrors the project-mode openSession flow.
+  let providerStatus: 'running' | 'stopped' | 'removed' | 'unknown' = 'unknown';
+  try {
+    const provider = getProvider(sandbox.provider as SandboxProviderName);
+    const status = await provider.getStatus(sandbox.externalId);
+    providerStatus = status as any;
+  } catch (err) {
+    console.warn(`[sessions/start] getStatus failed for ${sandbox.externalId}:`, err);
+  }
+
+  if (providerStatus === 'removed') {
+    // Sandbox was terminated out-of-band. Mark error and let the UI show failed.
+    await db
+      .update(sessionSandboxes)
+      .set({ status: 'error', updatedAt: new Date() })
+      .where(eq(sessionSandboxes.sandboxId, sessionId));
+    return c.json({
+      stage: 'failed',
+      retriable: false,
+      sandbox: {
+        sandbox_id: sandbox.sandboxId,
+        session_id: sessionId,
+        external_id: sandbox.externalId,
+        status: 'error',
+        provider: sandbox.provider,
+      },
+      opencode_session_id: null,
+      reason: 'runtime_removed',
+    });
+  }
+
+  if (providerStatus !== 'running') {
+    // Idle auto-stop: kick the start in the background; the client keeps polling.
+    if (providerStatus === 'stopped') {
+      try {
+        const provider = getProvider(sandbox.provider as SandboxProviderName);
+        void provider.start(sandbox.externalId).catch((err) => {
+          console.warn(`[sessions/start] failed to wake sandbox ${sandbox.externalId}:`, err);
+        });
+      } catch (err) {
+        console.warn(`[sessions/start] failed to start provider:`, err);
+      }
+    }
+    return c.json({
+      stage: 'starting',
+      retriable: true,
+      sandbox: null,
+      opencode_session_id: null,
+      reason: providerStatus === 'stopped' ? 'runtime_waking' : 'runtime_status_unknown',
+    });
+  }
+
+  // Box is provider-running. Resolve OpenCode readiness + the canonical pin
+  // server-side. The pin is what the frontend needs to mount SessionChat.
+  // Use a sentinel projectId (nil UUID) for the simple-mode session — the
+  // ensureOpencodeSessionPin function uses it only for the DB update WHERE
+  // clause, and in simple mode project_id is NULL so we match on sessionId
+  // alone via a separate update below if the pin needs to be persisted.
+  const currentPin = session.opencodeSessionId ?? null;
+  let ensured;
+  try {
+    ensured = await ensureOpencodeSessionPin({
+      projectId: '00000000-0000-0000-0000-000000000000',
+      sessionId,
+      accountId: session.accountId,
+      externalId: sandbox.externalId,
+      userId,
+      currentPin,
+    });
+  } catch (err) {
+    console.warn(`[sessions/start] ensureOpencodeSessionPin failed:`, err);
+    ensured = { pin: currentPin, changed: false, reason: 'unreachable' } as any;
+  }
+
+  // If the pin changed and ensureOpencodeSessionPin couldn't persist it (because
+  // it tried to match on projectId=NULL via the FK), persist it directly here.
+  if (ensured.pin && ensured.pin !== currentPin) {
+    await db
+      .update(projectSessions)
+      .set({ opencodeSessionId: ensured.pin, updatedAt: new Date() })
+      .where(eq(projectSessions.sessionId, sessionId))
+      .catch((err) => console.warn(`[sessions/start] failed to persist pin:`, err));
+  }
+
+  const booting = ensured.reason === 'not_ready' || ensured.reason === 'unreachable';
   return c.json({
-    stage: sandbox.status === 'active' ? 'ready' : 'provisioning',
-    retriable: sandbox.status !== 'error',
+    stage: booting ? 'starting' : 'ready',
+    retriable: booting,
     sandbox: {
       sandbox_id: sandbox.sandboxId,
       session_id: sessionId,
       external_id: sandbox.externalId,
-      status: sandbox.status,
+      status: 'active',
+      provider: sandbox.provider,
     },
-    opencode_session_id: (session.metadata as any)?.opencode_session_id ?? null,
+    opencode_session_id: ensured.pin,
+    reason: ensured.reason,
   });
 });
 

@@ -33,6 +33,7 @@ export interface SessionStartResult {
     session_id: string;
     external_id: string;
     status: string;
+    provider: string;
   } | null;
   opencode_session_id: string | null;
   reason?: string | null;
