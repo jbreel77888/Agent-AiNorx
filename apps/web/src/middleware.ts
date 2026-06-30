@@ -90,6 +90,13 @@ const DESKTOP_ALLOWED_ROUTES = [
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Server-side redirect: /projects → /sessions (simple mode — no GitHub needed)
+  if (pathname === '/projects' || pathname === '/projects/') {
+    const url = request.nextUrl.clone();
+    url.pathname = '/sessions';
+    return NextResponse.redirect(url);
+  }
+
   // Skip middleware for static files, API routes, and telemetry endpoints.
   if (
     pathname.startsWith('/_next') ||
