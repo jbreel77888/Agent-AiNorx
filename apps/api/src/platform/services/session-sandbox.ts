@@ -113,6 +113,18 @@ async function mintExecutorToken(opts: {
   agentName: string;
   gitProject: GitBackedProject;
 }): Promise<string | null> {
+  // Simple-mode sessions have no real project (projectId is a nil UUID
+  // sentinel). Skip executor-token minting entirely — the account_tokens
+  // table has an FK constraint on projectId that would reject the nil UUID,
+  // and simple mode doesn't need a project-scoped executor token anyway
+  // (no manifest, no [[agents]] grant to resolve, no LLM gateway attribution
+  // by project). The agent runtime inside the sandbox doesn't require one.
+  const NIL_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
+  if (opts.projectId === NIL_PROJECT_ID) {
+    console.log(`[session-sandbox] Skipping executor token mint for simple-mode session ${opts.sandboxId}`);
+    return null;
+  }
+
   const agentGrant = await resolveAgentGrant(opts.agentName, opts.gitProject).catch((err) => {
     console.warn(`[session-sandbox] failed to resolve agent grant for ${opts.projectId}:`, err);
     return null;
