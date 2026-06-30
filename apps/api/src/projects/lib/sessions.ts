@@ -257,6 +257,7 @@ export async function buildSessionSandboxEnvVars(input: {
       // Per-session model override (e.g. Slack turns pin a specific model).
       // The sandbox agent reads this and sets it on every opencode prompt call.
       opencodeModel: input.opencodeModel,
+      sessionMode: config.KORTIX_SESSION_MODE,
     }),
   };
 }
