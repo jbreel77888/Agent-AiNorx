@@ -1,32 +1,52 @@
 export interface SessionRuntimeEnvInput {
-  projectId: string;
+  projectId?: string;          // optional in simple mode
   sessionId: string;
-  repoUrl: string;
-  baseRef: string;
+  repoUrl?: string;            // optional in simple mode
+  baseRef?: string;            // optional in simple mode
   agentName: string;
   apiUrl: string;
   /** Frontend base URL (no /v1) the sandbox surfaces as user-facing links. */
   frontendUrl?: string;
   initialPrompt?: string | null;
   opencodeModel?: string | null;
+  /** 'simple' = no GitHub, 'project' = legacy git-backed */
+  sessionMode?: 'simple' | 'project';
 }
 
 export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<string, string> {
+  const mode = input.sessionMode ?? 'project';
+
+  if (mode === 'simple') {
+    // Simple mode: no git, no repo URL, no branch — standalone session
+    return {
+      KORTIX_SESSION_ID: input.sessionId,
+      KORTIX_WORKSPACE: '/workspace',
+      KORTIX_WORKSPACE_MODE: 'simple',
+      KORTIX_SESSION_MODE: 'simple',
+      KORTIX_SERVICE_PORT: '8000',
+      KORTIX_AGENT_NAME: input.agentName,
+      KORTIX_API_URL: input.apiUrl,
+      KORTIX_BOOTSTRAP_OPENCODE_SESSION: '1',
+      ...(input.projectId ? { KORTIX_PROJECT_ID: input.projectId } : {}),
+      ...(input.frontendUrl ? { KORTIX_FRONTEND_URL: input.frontendUrl } : {}),
+      ...(input.initialPrompt ? { KORTIX_INITIAL_PROMPT: input.initialPrompt } : {}),
+      ...(input.opencodeModel ? { KORTIX_OPENCODE_MODEL: input.opencodeModel } : {}),
+    };
+  }
+
+  // Project mode (legacy): full git-backed session
   return {
-    KORTIX_REPO_URL: input.repoUrl,
-    KORTIX_DEFAULT_BRANCH: input.baseRef,
-    KORTIX_BASE_REF: input.baseRef,
+    KORTIX_REPO_URL: input.repoUrl!,
+    KORTIX_DEFAULT_BRANCH: input.baseRef!,
+    KORTIX_BASE_REF: input.baseRef!,
     KORTIX_BRANCH_NAME: input.sessionId,
-    KORTIX_PROJECT_ID: input.projectId,
+    KORTIX_PROJECT_ID: input.projectId!,
     KORTIX_SESSION_ID: input.sessionId,
+    KORTIX_SESSION_MODE: 'project',
     KORTIX_SERVICE_PORT: '8000',
     KORTIX_AGENT_NAME: input.agentName,
     KORTIX_API_URL: input.apiUrl,
-    // Frontend base for user-facing dashboard links — the agent/CLI must never
-    // surface KORTIX_API_URL (the API host) to a human. See sandboxFrontendBaseUrl().
     ...(input.frontendUrl ? { KORTIX_FRONTEND_URL: input.frontendUrl } : {}),
-    // The sandbox daemon owns OpenCode root creation for every cold session.
-    // The API adopts/persists that root; it must not create a competing one.
     KORTIX_BOOTSTRAP_OPENCODE_SESSION: '1',
     ...(input.initialPrompt ? { KORTIX_INITIAL_PROMPT: input.initialPrompt } : {}),
     ...(input.opencodeModel ? { KORTIX_OPENCODE_MODEL: input.opencodeModel } : {}),
