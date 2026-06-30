@@ -3068,3 +3068,45 @@ export const projectSecretGrantsRelations = relations(projectSecretGrants, ({ on
     references: [projectSecrets.secretId],
   }),
 }));
+
+// ─── Session Workspace Storage (Simple Mode) ──────────────────────────────────
+// When KORTIX_SESSION_MODE=simple, session files are stored in R2 (Cloudflare)
+// and tracked in these tables — no GitHub repo needed.
+
+export const sessionWorkspaces = kortixSchema.table(
+  'session_workspaces',
+  {
+    sessionId: uuid('session_id').primaryKey(),
+    accountId: uuid('account_id').notNull(),
+    createdAt: timestamptz('created_at').defaultNow().notNull(),
+    updatedAt: timestamptz('updated_at').defaultNow().notNull(),
+    fileCount: integer('file_count').default(0).notNull(),
+    totalSizeBytes: bigint('total_size_bytes', { mode: 'number' }).default(0).notNull(),
+    r2Prefix: text('r2_prefix').notNull(), // e.g. "sessions/<sessionId>/"
+  },
+  (table) => ({
+    index: index('idx_session_workspaces_account').on(table.accountId),
+  }),
+);
+
+export const sessionFiles = kortixSchema.table(
+  'session_files',
+  {
+    fileId: uuid('file_id').defaultRandom().primaryKey(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => sessionWorkspaces.sessionId, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    content: text('content'),
+    r2Key: text('r2_key'),
+    isBinary: boolean('is_binary').default(false).notNull(),
+    sizeBytes: integer('size_bytes').default(0).notNull(),
+    mimeType: text('mime_type'),
+    createdAt: timestamptz('created_at').defaultNow().notNull(),
+    updatedAt: timestamptz('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    uniq: uniqueIndex('idx_session_files_session_path').on(table.sessionId, table.path),
+    index: index('idx_session_files_session').on(table.sessionId),
+  }),
+);

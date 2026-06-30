@@ -327,6 +327,21 @@ const envSchema = z.object({
   // path first and fall back to cold if it fails.
   TENSORLAKE_WARM_SNAPSHOT:          optStr,
 
+  // ── Session Mode (Simple vs Project) ───────────────────────────────────────
+  // 'project' = legacy mode: every session requires a GitHub repo + branch
+  // 'simple'  = Manus-style: sessions are standalone, no GitHub needed,
+  //             files stored in Cloudflare R2, sandbox gets empty workspace
+  KORTIX_SESSION_MODE:               z.enum(['simple', 'project']).default('project'),
+
+  // ── Cloudflare R2 (session file storage for simple mode) ──────────────────
+  // Used when KORTIX_SESSION_MODE=simple to persist session files outside Git.
+  // R2 is S3-compatible; these credentials come from the Cloudflare dashboard.
+  R2_ACCOUNT_ID:                     optStr,
+  R2_ACCESS_KEY_ID:                  optStr,
+  R2_SECRET_ACCESS_KEY:              optStr,
+  R2_BUCKET_NAME:                    optStrDefault('ainorx'),
+  R2_ENDPOINT:                       optStr,  // e.g. https://<accountid>.r2.cloudflarestorage.com
+
   // ── Sandbox Platform ──────────────────────────────────────────────────────
   // Public API base URL, without a route suffix. Auto-derived from PORT in local mode.
   KORTIX_URL:                  optStr,
@@ -690,6 +705,14 @@ export const config = {
   TENSORLAKE_DEFAULT_SNAPSHOT_ID: env.TENSORLAKE_DEFAULT_SNAPSHOT_ID,
   TENSORLAKE_SANDBOX_TIMEOUT_SECS: env.TENSORLAKE_SANDBOX_TIMEOUT_SECS,
   TENSORLAKE_WARM_SNAPSHOT: env.TENSORLAKE_WARM_SNAPSHOT,
+
+  // ─── Session Mode ─────────────────────────────────────────────────────────
+  KORTIX_SESSION_MODE: env.KORTIX_SESSION_MODE as 'simple' | 'project',
+  R2_ACCOUNT_ID: env.R2_ACCOUNT_ID,
+  R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID,
+  R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY,
+  R2_BUCKET_NAME: env.R2_BUCKET_NAME,
+  R2_ENDPOINT: env.R2_ENDPOINT,
 
   // ─── Sandbox Provisioning (Platform) ──────────────────────────────────────
   KORTIX_URL: env.KORTIX_URL,

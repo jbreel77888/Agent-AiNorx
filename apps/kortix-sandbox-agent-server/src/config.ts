@@ -46,6 +46,11 @@ const Schema = z.object({
   KORTIX_BRANCH_NAME: z.string().optional(),
   KORTIX_SESSION_FRESH: z.string().optional(),
   KORTIX_BASE_SHA: z.string().optional(),
+  // Session mode: 'project' (legacy, uses git) or 'simple' (standalone, no git)
+  KORTIX_SESSION_MODE: z.enum(['simple', 'project']).default('project'),
+  // In simple mode, the daemon syncs files to/from the API's R2 storage instead
+  // of cloning a git repo. These control the sync behavior.
+  KORTIX_WORKSPACE_MODE: z.string().optional(), // 'simple' when in simple mode
   // The sandbox credential. KORTIX_SANDBOX_TOKEN is canonical; KORTIX_TOKEN is
   // the legacy alias (resolved with a fallback below).
   KORTIX_SANDBOX_TOKEN: z.string().optional(),
