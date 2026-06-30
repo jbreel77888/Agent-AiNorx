@@ -711,7 +711,18 @@ export async function provisionSessionSandbox(opts: {
       // (delete the snapshot so the next ensureSandboxImage call rebuilds it)
       // and retry once. Capped at one heal per session start. Never on the warm
       // path — there's no per-project Dockerfile snapshot to rebuild.
-      if (!warmBase && isSnapshotMissingOnProvider(bgErr) && imageInfo && !healedStaleSnapshot) {
+      // SKIP healing for Tensorlake when TENSORLAKE_DEFAULT_SNAPSHOT_ID is set —
+      // the provider's createCold() uses the env var directly (not the image
+      // name), so "snapshot not found" here means the env-var snapshot is gone,
+      // not that the image cache is stale. Healing would delete + rebuild the
+      // image, which fails on trial plans (quota) and wastes the 1 sandbox.
+      if (
+        !warmBase &&
+        isSnapshotMissingOnProvider(bgErr) &&
+        imageInfo &&
+        !healedStaleSnapshot &&
+        !(providerName === 'tensorlake' && config.TENSORLAKE_DEFAULT_SNAPSHOT_ID)
+      ) {
         healedStaleSnapshot = true;
         await deleteSandboxImage(opts.gitProject, { slug: imageInfo.slug }).catch((err) =>
           console.warn(

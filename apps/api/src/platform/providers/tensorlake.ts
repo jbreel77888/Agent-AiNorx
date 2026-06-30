@@ -154,12 +154,37 @@ export class TensorlakeProvider implements SandboxProvider {
     const snapshot = opts.snapshot;
     const baseImage = config.TENSORLAKE_DEFAULT_IMAGE || 'tensorlake/ubuntu-systemd';
 
-    // FALLBACK: If no per-session snapshot was resolved but
-    // TENSORLAKE_DEFAULT_SNAPSHOT_ID is set, use it. This bypasses the
-    // ensureSandboxImage → getSnapshotState → buildSnapshot chain entirely
-    // (which fails on trial plans due to quota limits and missing
-    // TENSORLAKE_ORGANIZATION_ID/TENSORLAKE_PROJECT_ID env vars).
-    const effectiveSnapshot = snapshot || config.TENSORLAKE_DEFAULT_SNAPSHOT_ID || undefined;
+    // When TENSORLAKE_DEFAULT_SNAPSHOT_ID is set, ALWAYS use it. This is a REAL
+    // snapshot ID (e.g. "snapshot_sandbox_template_build_xxx") that Sandbox.create()
+    // accepts as `snapshotId`. The `snapshot` arg from ensureSandboxImage is an
+    // IMAGE NAME (e.g. "kortix-default-7e11785ed6de"), NOT a snapshot ID — passing
+    // it as `snapshotId` to Sandbox.create() fails with a "not found" error,
+    // triggering the healing → quota-fallback chain that wastes 4+ minutes and
+    // often hits the 1-concurrent-sandbox quota. The env var short-circuits all
+    // of that: it's the operator's guarantee that this snapshot ID is valid and
+    // active, so we trust it unconditionally.
+    const defaultSnapshotId = config.TENSORLAKE_DEFAULT_SNAPSHOT_ID;
+    let effectiveSnapshot: string | undefined;
+    let effectiveImage: string | undefined;
+
+    if (defaultSnapshotId) {
+      // Operator set a default snapshot ID — use it directly.
+      effectiveSnapshot = defaultSnapshotId;
+      console.log(`[tensorlake] Booting from TENSORLAKE_DEFAULT_SNAPSHOT_ID: ${effectiveSnapshot}`);
+    } else if (snapshot) {
+      // No env var, but ensureSandboxImage resolved a snapshot name.
+      // Distinguish image names (kortix-default-xxx) from raw snapshot IDs
+      // (snapshot_xxx, suspend-xxx). Image names must be passed as `image`,
+      // raw snapshot IDs as `snapshotId`.
+      if (snapshot.startsWith('snapshot_') || snapshot.startsWith('suspend-')) {
+        effectiveSnapshot = snapshot;
+        console.log(`[tensorlake] Booting from snapshot: ${effectiveSnapshot}`);
+      } else {
+        // It's an image name (e.g. kortix-default-xxx) — pass as `image`.
+        effectiveImage = snapshot;
+        console.log(`[tensorlake] Booting from registered image: ${effectiveImage}`);
+      }
+    }
 
     const sandboxName = buildTensorlakeName(opts.accountId, opts.name);
     const autoStopMinutes = opts.autoStopInterval ?? config.KORTIX_SANDBOX_AUTOSTOP_MINUTES;
@@ -168,7 +193,7 @@ export class TensorlakeProvider implements SandboxProvider {
     // Create sandbox from snapshot (if built) or base image (fallback)
     // On cold boot (no snapshot), use a LONGER timeout so the install completes
     // before the sandbox's idle-timer terminates it.
-    const isColdBoot = !effectiveSnapshot;
+    const isColdBoot = !effectiveSnapshot && !effectiveImage;
     const effectiveTimeout = isColdBoot
       ? Math.max(timeoutSecs || 0, COLD_BOOT_TIMEOUT_SECS)
       : (timeoutSecs || DEFAULT_TIMEOUT_SECS);
@@ -183,7 +208,8 @@ export class TensorlakeProvider implements SandboxProvider {
     // snapshotId takes priority (pre-built image), otherwise use base image
     if (effectiveSnapshot) {
       createOpts.snapshotId = effectiveSnapshot;
-      console.log(`[tensorlake] Booting from snapshot: ${effectiveSnapshot}`);
+    } else if (effectiveImage) {
+      createOpts.image = effectiveImage;
     } else {
       createOpts.image = baseImage;
       console.log(`[tensorlake] No snapshot available, booting from base image: ${baseImage}`);
