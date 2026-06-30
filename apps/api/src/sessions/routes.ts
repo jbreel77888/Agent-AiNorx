@@ -425,6 +425,43 @@ sessionFilesApp.post('/:sessionId/start', async (c) => {
   });
 });
 
+// ─── Sandbox health (bypasses Tensorlake proxy via SDK) ──────────────────────
+// The frontend's useSandboxConnection polls this to check if the daemon is ready.
+// We use the SDK to run curl inside the sandbox (localhost:8000) instead of
+// going through the Tensorlake proxy (which returns 502).
+
+sessionFilesApp.get('/:sessionId/health', async (c) => {
+  const sessionId = c.req.param('sessionId');
+
+  const [sandbox] = await db
+    .select()
+    .from(sessionSandboxes)
+    .where(eq(sessionSandboxes.sandboxId, sessionId))
+    .limit(1);
+
+  if (!sandbox || !sandbox.externalId) {
+    return c.json({ status: 'provisioning', runtimeReady: false }, 200);
+  }
+
+  try {
+    const { Sandbox } = await import('../shared/tensorlake');
+    const sb = await Sandbox.connect({ sandboxId: sandbox.externalId });
+    const result = await sb.run('bash', {
+      args: ['-c', 'curl -s http://localhost:8000/kortix/health'],
+      timeout: 5,
+    });
+    const healthJson = String((result as any).stdout ?? '').trim();
+    const health = JSON.parse(healthJson);
+    return c.json(health, 200);
+  } catch (err) {
+    return c.json({
+      status: 'error',
+      runtimeReady: false,
+      error: err instanceof Error ? err.message : String(err),
+    }, 200);
+  }
+});
+
 // ─── List files ───────────────────────────────────────────────────────────────
 
 sessionFilesApp.get('/:sessionId/files', async (c) => {

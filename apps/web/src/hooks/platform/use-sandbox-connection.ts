@@ -3,14 +3,14 @@
 import { useEffect, useRef } from "react";
 import { authenticatedFetch, getAuthToken } from "@/lib/auth-token";
 import {
-	incrementSandboxFail,
-	markInitialCheckDone,
-	resetForServerSwitch,
-	resetSandboxFail,
-	setOpenCodeHealth,
-	setSandboxStatus,
-	setSandboxVersion,
-	useSandboxConnectionStore,
+        incrementSandboxFail,
+        markInitialCheckDone,
+        resetForServerSwitch,
+        resetSandboxFail,
+        setOpenCodeHealth,
+        setSandboxStatus,
+        setSandboxVersion,
+        useSandboxConnectionStore,
 } from "@/stores/sandbox-connection-store";
 import { useServerStore } from "@/stores/server-store";
 
@@ -42,24 +42,24 @@ const POLL_UNREACHABLE = 5_000; // 5s when confirmed unreachable
 const CHECK_TIMEOUT = 20_000;
 
 function isImmediateOfflineStatus(status: number): boolean {
-	return status === 502 || status === 503 || status === 504;
+        return status === 502 || status === 503 || status === 504;
 }
 
 type SandboxHealthResponse = {
-	status?: string;
-	runtimeReady?: boolean;
-	version?: string;
-	opencode?: string | boolean;
-	boot_error?: string | null;
-	reason?: string | null;
-	message?: string | null;
+        status?: string;
+        runtimeReady?: boolean;
+        version?: string;
+        opencode?: string | boolean;
+        boot_error?: string | null;
+        reason?: string | null;
+        message?: string | null;
 };
 
 function isRuntimeReady(health: SandboxHealthResponse | null): boolean {
-	if (!health) return false;
-	if (health.runtimeReady !== undefined) return health.runtimeReady === true;
-	if (health.opencode !== undefined) return health.opencode === "ok" || health.opencode === true;
-	return health.status !== "starting" && health.status !== "down" && health.status !== "error";
+        if (!health) return false;
+        if (health.runtimeReady !== undefined) return health.runtimeReady === true;
+        if (health.opencode !== undefined) return health.opencode === "ok" || health.opencode === true;
+        return health.status !== "starting" && health.status !== "down" && health.status !== "error";
 }
 
 /**
@@ -72,197 +72,230 @@ function isRuntimeReady(health: SandboxHealthResponse | null): boolean {
  *   - If it's the first connection, requires 3 failures (same as before).
  */
 export function useSandboxConnection() {
-	const activeServerId = useServerStore((s) => s.activeServerId);
-	const serverVersion = useServerStore((s) => s.serverVersion);
+        const activeServerId = useServerStore((s) => s.activeServerId);
+        const serverVersion = useServerStore((s) => s.serverVersion);
 
-	const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const abortRef = useRef<AbortController | null>(null);
-	const isMountRef = useRef(true);
-	const prevServerVersionRef = useRef(serverVersion);
-	const portsFetchedRef = useRef(false);
+        const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+        const abortRef = useRef<AbortController | null>(null);
+        const isMountRef = useRef(true);
+        const prevServerVersionRef = useRef(serverVersion);
+        const portsFetchedRef = useRef(false);
 
-	useEffect(() => {
-		const isFirstMount = isMountRef.current;
-		isMountRef.current = false;
-		const isServerSwitch = serverVersion !== prevServerVersionRef.current;
-		prevServerVersionRef.current = serverVersion;
+        useEffect(() => {
+                const isFirstMount = isMountRef.current;
+                isMountRef.current = false;
+                const isServerSwitch = serverVersion !== prevServerVersionRef.current;
+                prevServerVersionRef.current = serverVersion;
 
-		if (isFirstMount || isServerSwitch) {
-			// Full reset — clears wasConnected, failCount, status, everything.
-			// Each instance starts with a clean slate.
-			resetForServerSwitch();
-			portsFetchedRef.current = false;
-		}
+                if (isFirstMount || isServerSwitch) {
+                        // Full reset — clears wasConnected, failCount, status, everything.
+                        // Each instance starts with a clean slate.
+                        resetForServerSwitch();
+                        portsFetchedRef.current = false;
+                }
 
-		let alive = true;
+                let alive = true;
 
-		async function check() {
-			if (!alive) return;
+                async function check() {
+                        if (!alive) return;
 
-			const url = useServerStore.getState().getActiveServerUrl();
-			if (!url) {
-				scheduleNext();
-				return;
-			}
+                        const url = useServerStore.getState().getActiveServerUrl();
+                        if (!url) {
+                                scheduleNext();
+                                return;
+                        }
 
-			// Don't fire health checks until auth is ready — avoids naked requests
-			// that return synthetic 401s and cause false "unreachable" status.
-			const token = await getAuthToken();
-			if (!token) {
-				scheduleNext();
-				return;
-			}
+                        // Don't fire health checks until auth is ready — avoids naked requests
+                        // that return synthetic 401s and cause false "unreachable" status.
+                        const token = await getAuthToken();
+                        if (!token) {
+                                scheduleNext();
+                                return;
+                        }
 
-			abortRef.current?.abort();
-			const controller = new AbortController();
-			abortRef.current = controller;
+                        abortRef.current?.abort();
+                        const controller = new AbortController();
+                        abortRef.current = controller;
 
-			try {
-				const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT);
+                        try {
+                                const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT);
 
-				const res = await authenticatedFetch(`${url}/kortix/health`, {
-					method: "GET",
-					signal: controller.signal,
-				}, { retryOnAuthError: false });
-				clearTimeout(timer);
+                                // First, try the direct proxy health check.
+                                let res = await authenticatedFetch(`${url}/kortix/health`, {
+                                        method: "GET",
+                                        signal: controller.signal,
+                                }, { retryOnAuthError: false });
+                                clearTimeout(timer);
 
-				if (!alive) return;
+                                // If the proxy returns 502 (Tensorlake proxy broken), fall back to
+                                // the session health endpoint which uses the SDK to check the daemon
+                                // directly from inside the sandbox.
+                                if (res.status === 502 || res.status === 504) {
+                                        const activeServer = useServerStore.getState().servers.find(
+                                                (s) => s.id === useServerStore.getState().activeServerId,
+                                        );
+                                        const sessionId = activeServer?.instanceId;
+                                        if (sessionId) {
+                                                const { backendApi } = await import('@/lib/api-client');
+                                                const healthRes = await backendApi.get(
+                                                        `/sessions/${sessionId}/health`,
+                                                        { headers: { Authorization: `Bearer ${token}` }, showErrors: false },
+                                                );
+                                                if (healthRes.success && healthRes.data) {
+                                                        const healthData = healthRes.data as SandboxHealthResponse;
+                                                        resetSandboxFail();
+                                                        setSandboxStatus("connected");
+                                                        setOpenCodeHealth(
+                                                                isRuntimeReady(healthData),
+                                                                healthData?.version,
+                                                                healthData?.boot_error ?? healthData?.message ?? healthData?.reason ?? null,
+                                                        );
+                                                        if (healthData?.version) {
+                                                                setSandboxVersion(healthData.version);
+                                                        }
+                                                        return;
+                                                }
+                                        }
+                                        throw new Error(`Sandbox proxy returned ${res.status}`);
+                                }
 
-				if (res.status === 401) {
-					// Treat 401 like any other failure — respect the threshold
-					// instead of immediately marking unreachable. During transitions
-					// (e.g. provisioning → dashboard), the proxy may briefly return 401
-					// before auth propagates.
-					throw new Error(`Auth error: ${res.status}`);
-				}
+                                if (!alive) return;
 
-				if (res.status === 403) {
-					throw new Error(`Auth error: ${res.status}`);
-				}
+                                if (res.status === 401) {
+                                        // Treat 401 like any other failure — respect the threshold
+                                        // instead of immediately marking unreachable. During transitions
+                                        // (e.g. provisioning → dashboard), the proxy may briefly return 401
+                                        // before auth propagates.
+                                        throw new Error(`Auth error: ${res.status}`);
+                                }
 
-				if (res.status === 503) {
-					const body = await res.text().catch(() => "");
-					let parsed: any = null;
-					try {
-						parsed = body ? JSON.parse(body) : null;
-					} catch {
-						parsed = null;
-					}
-					resetSandboxFail();
-					setSandboxStatus("connected");
-					setOpenCodeHealth(
-						false,
-						parsed?.version,
-						parsed?.boot_error ?? parsed?.message ?? parsed?.reason ?? null,
-					);
-					if (parsed?.version) {
-						setSandboxVersion(parsed.version);
-					}
-					return;
-				}
+                                if (res.status === 403) {
+                                        throw new Error(`Auth error: ${res.status}`);
+                                }
 
-				if (!res.ok) {
-					const body = await res.text().catch(() => "");
-					const offlineSignal =
-						isImmediateOfflineStatus(res.status) ||
-						/no service is responding|not reachable/i.test(body);
-					const error = new Error(
-						`Sandbox health check failed: ${res.status}${body ? ` ${body.slice(0, 120)}` : ""}`,
-					) as Error & { immediateOffline?: boolean };
-					error.immediateOffline = offlineSignal;
-					throw error;
-				}
+                                if (res.status === 503) {
+                                        const body = await res.text().catch(() => "");
+                                        let parsed: any = null;
+                                        try {
+                                                parsed = body ? JSON.parse(body) : null;
+                                        } catch {
+                                                parsed = null;
+                                        }
+                                        resetSandboxFail();
+                                        setSandboxStatus("connected");
+                                        setOpenCodeHealth(
+                                                false,
+                                                parsed?.version,
+                                                parsed?.boot_error ?? parsed?.message ?? parsed?.reason ?? null,
+                                        );
+                                        if (parsed?.version) {
+                                                setSandboxVersion(parsed.version);
+                                        }
+                                        return;
+                                }
 
-				resetSandboxFail();
-				setSandboxStatus("connected");
-				const healthData = await res.json().catch(() => null) as SandboxHealthResponse | null;
-				setOpenCodeHealth(
-					isRuntimeReady(healthData),
-					healthData?.version,
-					healthData?.boot_error ?? healthData?.message ?? healthData?.reason ?? null,
-				);
-				if (healthData?.version) {
-					setSandboxVersion(healthData.version);
-				}
+                                if (!res.ok) {
+                                        const body = await res.text().catch(() => "");
+                                        const offlineSignal =
+                                                isImmediateOfflineStatus(res.status) ||
+                                                /no service is responding|not reachable/i.test(body);
+                                        const error = new Error(
+                                                `Sandbox health check failed: ${res.status}${body ? ` ${body.slice(0, 120)}` : ""}`,
+                                        ) as Error & { immediateOffline?: boolean };
+                                        error.immediateOffline = offlineSignal;
+                                        throw error;
+                                }
 
-				// Fetch port mappings once on first successful connection.
-				if (!portsFetchedRef.current) {
-					portsFetchedRef.current = true;
-					try {
-						const portsRes = await authenticatedFetch(`${url}/kortix/ports`, {
-							signal: AbortSignal.timeout(8000),
-						}, { retryOnAuthError: false });
-						if (portsRes.ok) {
-							const data = await portsRes.json();
-							if (data.ports && Object.keys(data.ports).length > 0) {
-								const activeId = useServerStore.getState().activeServerId;
-								useServerStore.getState().updateServerSilent(activeId, {
-									mappedPorts: data.ports,
-									provider: "local_docker",
-								});
-							}
-						}
-					} catch {
-						/* non-critical — proxy fallback still works */
-					}
-				}
+                                resetSandboxFail();
+                                setSandboxStatus("connected");
+                                const healthData = await res.json().catch(() => null) as SandboxHealthResponse | null;
+                                setOpenCodeHealth(
+                                        isRuntimeReady(healthData),
+                                        healthData?.version,
+                                        healthData?.boot_error ?? healthData?.message ?? healthData?.reason ?? null,
+                                );
+                                if (healthData?.version) {
+                                        setSandboxVersion(healthData.version);
+                                }
 
-			} catch (error) {
-				if (!alive) return;
-				if ((error as { immediateOffline?: boolean } | undefined)?.immediateOffline) {
-					incrementSandboxFail();
-					setSandboxStatus("unreachable");
-				} else {
-					incrementSandboxFail();
+                                // Fetch port mappings once on first successful connection.
+                                if (!portsFetchedRef.current) {
+                                        portsFetchedRef.current = true;
+                                        try {
+                                                const portsRes = await authenticatedFetch(`${url}/kortix/ports`, {
+                                                        signal: AbortSignal.timeout(8000),
+                                                }, { retryOnAuthError: false });
+                                                if (portsRes.ok) {
+                                                        const data = await portsRes.json();
+                                                        if (data.ports && Object.keys(data.ports).length > 0) {
+                                                                const activeId = useServerStore.getState().activeServerId;
+                                                                useServerStore.getState().updateServerSilent(activeId, {
+                                                                        mappedPorts: data.ports,
+                                                                        provider: "local_docker",
+                                                                });
+                                                        }
+                                                }
+                                        } catch {
+                                                /* non-critical — proxy fallback still works */
+                                        }
+                                }
 
-					const { failCount, wasConnected } =
-						useSandboxConnectionStore.getState();
-					const threshold = wasConnected
-						? FAIL_THRESHOLD_RECONNECT
-						: FAIL_THRESHOLD_FIRST;
+                        } catch (error) {
+                                if (!alive) return;
+                                if ((error as { immediateOffline?: boolean } | undefined)?.immediateOffline) {
+                                        incrementSandboxFail();
+                                        setSandboxStatus("unreachable");
+                                } else {
+                                        incrementSandboxFail();
 
-					if (failCount >= threshold) {
-						setSandboxStatus("unreachable");
-					} else if (wasConnected) {
-						setSandboxStatus("connecting");
-					}
-				}
-			} finally {
-				if (alive) {
-					markInitialCheckDone();
-				}
-			}
+                                        const { failCount, wasConnected } =
+                                                useSandboxConnectionStore.getState();
+                                        const threshold = wasConnected
+                                                ? FAIL_THRESHOLD_RECONNECT
+                                                : FAIL_THRESHOLD_FIRST;
 
-			scheduleNext();
-		}
+                                        if (failCount >= threshold) {
+                                                setSandboxStatus("unreachable");
+                                        } else if (wasConnected) {
+                                                setSandboxStatus("connecting");
+                                        }
+                                }
+                        } finally {
+                                if (alive) {
+                                        markInitialCheckDone();
+                                }
+                        }
 
-		function scheduleNext() {
-			if (!alive) return;
-			if (timerRef.current) clearTimeout(timerRef.current);
+                        scheduleNext();
+                }
 
-			const { status, healthy } = useSandboxConnectionStore.getState();
-			let delay: number;
-			if (status === "connected" && healthy === false) {
-				delay = POLL_FAILING;
-			} else if (status === "connected") {
-				delay = POLL_CONNECTED;
-			} else if (status === "unreachable") {
-				delay = POLL_UNREACHABLE;
-			} else {
-				// Initial "connecting" phase (sandbox just went active, opencode
-				// still booting) — poll fast so the runtime appears the moment it's
-				// healthy instead of waiting out a long interval.
-				delay = POLL_FAILING;
-			}
-			timerRef.current = setTimeout(check, delay);
-		}
+                function scheduleNext() {
+                        if (!alive) return;
+                        if (timerRef.current) clearTimeout(timerRef.current);
 
-		check();
+                        const { status, healthy } = useSandboxConnectionStore.getState();
+                        let delay: number;
+                        if (status === "connected" && healthy === false) {
+                                delay = POLL_FAILING;
+                        } else if (status === "connected") {
+                                delay = POLL_CONNECTED;
+                        } else if (status === "unreachable") {
+                                delay = POLL_UNREACHABLE;
+                        } else {
+                                // Initial "connecting" phase (sandbox just went active, opencode
+                                // still booting) — poll fast so the runtime appears the moment it's
+                                // healthy instead of waiting out a long interval.
+                                delay = POLL_FAILING;
+                        }
+                        timerRef.current = setTimeout(check, delay);
+                }
 
-		return () => {
-			alive = false;
-			abortRef.current?.abort();
-			if (timerRef.current) clearTimeout(timerRef.current);
-		};
-	}, [activeServerId, serverVersion]);
+                check();
+
+                return () => {
+                        alive = false;
+                        abortRef.current?.abort();
+                        if (timerRef.current) clearTimeout(timerRef.current);
+                };
+        }, [activeServerId, serverVersion]);
 }
