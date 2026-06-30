@@ -69,9 +69,17 @@ export default function SessionsPage() {
     s.name.toLowerCase().includes(query.toLowerCase())
   ) ?? [];
 
+  if (authLoading || !user) {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <div className="text-muted-foreground text-sm">Loading...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full w-full flex-col">
-      <AppHeader />
+      <AppHeader user={user} breadcrumb="Sessions" logoHref="/sessions" />
       <div className="flex-1 overflow-auto px-6 py-6">
         <div className="mx-auto max-w-5xl space-y-6">
           {/* Header — same layout as projects page */}

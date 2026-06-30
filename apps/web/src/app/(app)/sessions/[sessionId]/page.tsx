@@ -217,9 +217,17 @@ export default function SessionPage() {
     );
   })();
 
+  if (authLoading || !user) {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <SessionStartingLoader stage="provisioning" />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full w-full flex-col">
-      <AppHeader />
+      <AppHeader user={user} breadcrumb="Session" logoHref="/sessions" />
       {inner}
     </div>
   );
