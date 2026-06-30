@@ -25,6 +25,7 @@
 import { and, eq } from 'drizzle-orm';
 
 import { projectSessions } from '@kortix/db';
+import { config } from '../config';
 import { db } from '../shared/db';
 import {
   KORTIX_USER_CONTEXT_HEADER,
@@ -54,13 +55,44 @@ export async function sandboxOpencodeEndpoint(
   const serviceKey = await resolveServiceKey(externalId);
   if (!serviceKey) return null;
   const { url, token } = await resolvePreviewLink(externalId, DAEMON_PORT);
+
+  // Look up the sandbox's provider to determine the correct auth header.
+  // Tensorlake's sandbox proxy (https://<port>-<id>.sandbox.tensorlake.ai)
+  // REQUIRES TENSORLAKE_API_KEY — the kortix_sb_ service key gets 403.
+  // Daytona accepts the service key directly.
+  let provider: string | undefined;
+  try {
+    const { loadSandbox } = await import('../sandbox-proxy/backend');
+    const record = await loadSandbox(externalId);
+    provider = record?.provider ?? undefined;
+  } catch {
+    // Fall through with provider=undefined (treated as Daytona-style)
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${serviceKey}`,
     'X-Daytona-Skip-Preview-Warning': 'true',
     'X-Daytona-Disable-CORS': 'true',
   };
-  if (token) headers['X-Daytona-Preview-Token'] = token;
+
+  if (provider === 'tensorlake') {
+    // Tensorlake proxy: use TENSORLAKE_API_KEY for Authorization.
+    // The service key is still needed for the X-Kortix-User-Context header
+    // (the daemon's internal per-user ACL).
+    if (config.TENSORLAKE_API_KEY) {
+      headers['Authorization'] = `Bearer ${config.TENSORLAKE_API_KEY}`;
+    } else {
+      headers['Authorization'] = `Bearer ${serviceKey}`;
+    }
+    // Tensorlake's resolvePreviewLink returns the TENSORLAKE_API_KEY as the
+    // token — don't send it as X-Daytona-Preview-Token (that's Daytona-only
+    // and the daemon doesn't recognize it).
+  } else {
+    // Daytona / default: service key for Authorization, preview token if present.
+    headers['Authorization'] = `Bearer ${serviceKey}`;
+    if (token) headers['X-Daytona-Preview-Token'] = token;
+  }
+
   const payload = await resolvePreviewUserContext(externalId, userId);
   if (payload) headers[KORTIX_USER_CONTEXT_HEADER] = encodeKortixUserContext(payload, serviceKey);
   return { url: url.replace(/\/$/, ''), headers };
