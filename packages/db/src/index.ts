@@ -9,11 +9,11 @@ export {
   // Enums
   sandboxStatusEnum,
   deploymentStatusEnum,
-	  deploymentSourceEnum,
-	  projectStatusEnum,
-	  projectSessionStatusEnum,
-	  sessionLifecycleCommandStatusEnum,
-	  projectRoleEnum,
+          deploymentSourceEnum,
+          projectStatusEnum,
+          projectSessionStatusEnum,
+          sessionLifecycleCommandStatusEnum,
+          projectRoleEnum,
   projectAccessRequestStatusEnum,
   apiKeyStatusEnum,
   apiKeyTypeEnum,
@@ -43,9 +43,9 @@ export {
   secretShareScopeEnum,
   secretGrantPrincipalEnum,
   projectSecretScopeEnum,
-	  projectTriggerRuntime,
-	  sessionLifecycleCommands,
-	  chatChannelBindings,
+          projectTriggerRuntime,
+          sessionLifecycleCommands,
+          chatChannelBindings,
   chatInstalls,
   chatThreads,
   chatTurnStreams,
@@ -169,6 +169,9 @@ export {
   executorProjectPoliciesRelations,
   executorProjectSettingsRelations,
   projectSecretGrantsRelations,
+  // Session workspace storage (simple mode)
+  sessionWorkspaces,
+  sessionFiles,
 } from './schema/kortix';
 export type { AgentGrant } from './schema/kortix';
 
