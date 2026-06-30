@@ -105,7 +105,8 @@ sessionFilesApp.post('/', async (c) => {
       await provisionSessionSandbox({
         sandboxId: sessionId,
         accountId,
-        projectId: 'sessions', // virtual project ID — provisionSessionSandbox needs one
+        // Use a nil UUID for projectId — the column is UUID type and FK is dropped
+        projectId: '00000000-0000-0000-0000-000000000000' as any,
         userId,
         agentName: 'default',
         provider: (config.ALLOWED_SANDBOX_PROVIDERS as readonly string[])[0] as any,
@@ -119,7 +120,7 @@ sessionFilesApp.post('/', async (c) => {
           KORTIX_PROJECT_AUTO_CLONE: '0', // don't auto-clone — daemon will mkdir /workspace
         },
         gitProject: {
-          projectId: 'sessions',
+          projectId: '00000000-0000-0000-0000-000000000000',
           repoUrl: '', // empty — daemon skips clone in simple mode
           defaultBranch: 'main',
           manifestPath: 'kortix.toml',
