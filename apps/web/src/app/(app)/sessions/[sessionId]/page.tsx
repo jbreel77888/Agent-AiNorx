@@ -56,17 +56,30 @@ export default function SimpleSessionPage() {
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return 1000;
+      // Session was deleted (404) — stop polling immediately. The redirect
+      // effect below will send the user back to /sessions.
+      if ('not_found' in data && data.not_found) return false;
       // Stop polling once we reach a terminal stage ('ready' or 'failed').
-      // The old logic polled forever because `retriable` is true for 'ready'.
-      if (data.stage === 'ready' || data.stage === 'failed' || data.stage === 'stopped') {
+      if (data && 'stage' in data && (data.stage === 'ready' || data.stage === 'failed' || data.stage === 'stopped')) {
         return false;
       }
-      return data.retriable ? 1500 : false;
+      return data && 'retriable' in data && data.retriable ? 1500 : false;
     },
   });
 
-  const sandbox = start?.sandbox ?? null;
-  const startStage = start?.stage ?? 'provisioning';
+  // ── Redirect to /sessions if the session was deleted (404) ─────────────────
+  useEffect(() => {
+    if (start && 'not_found' in start && start.not_found) {
+      console.warn(`[sessions] Session ${sessionId} not found — redirecting to /sessions`);
+      router.replace('/sessions');
+    }
+  }, [start, sessionId, router]);
+
+  // Normalize `start` — when it's `{ not_found: true }`, treat as null so the
+  // rest of the component renders the loader (we're about to redirect anyway).
+  const startData = start && 'not_found' in start ? null : start;
+  const sandbox = startData?.sandbox ?? null;
+  const startStage = startData?.stage ?? 'provisioning';
 
   // Subscribe to the active instance ID so we can gate chat mount on it.
   const activeInstanceId = useServerStore((s) => {
@@ -86,7 +99,7 @@ export default function SimpleSessionPage() {
     sessionMark(sandbox.session_id, 'sandbox-active');
     (async () => {
       try {
-        if (start?.stage === 'ready' && start?.opencode_session_id) {
+        if (startData?.stage === 'ready' && startData?.opencode_session_id) {
           markRuntimeReadyVerified();
         } else {
           markProvisioningVerified();
@@ -113,7 +126,7 @@ export default function SimpleSessionPage() {
         switchingRef.current = false;
       }
     })();
-  }, [sandbox, sessionId, activeInstanceId, start?.stage, start?.opencode_session_id]);
+  }, [sandbox, sessionId, activeInstanceId, startData?.stage, startData?.opencode_session_id]);
 
   useEffect(() => {
     if (sandbox && activeInstanceId === sandbox.sandbox_id) {
@@ -181,7 +194,7 @@ export default function SimpleSessionPage() {
               {mountChat && (
                 <ActiveSessionChat
                   sessionId={sessionId}
-                  pinFromStart={start?.opencode_session_id ?? null}
+                  pinFromStart={startData?.opencode_session_id ?? null}
                   onChatReady={() => setChatReady(true)}
                 />
               )}
@@ -204,8 +217,16 @@ export default function SimpleSessionPage() {
                 title={`Couldn't start session`}
                 message={
                   sandbox?.status === 'error'
-                    ? 'Something went wrong while provisioning this session.'
+                    ? 'The sandbox for this session was terminated or failed to start. The session may have been deleted, or the provider quota was hit. Please delete this session and create a new one.'
                     : 'The sandbox for this session was stopped.'
+                }
+                action={
+                  <button
+                    onClick={() => router.replace('/sessions')}
+                    className="bg-primary text-primary-foreground hover:bg-primary/90 mt-2 rounded-lg px-4 py-2 text-xs font-medium"
+                  >
+                    Back to Sessions
+                  </button>
                 }
               />
             ) : isFresh ? (

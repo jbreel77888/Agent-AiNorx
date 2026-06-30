@@ -387,8 +387,15 @@ export class TensorlakeProvider implements SandboxProvider {
       if (state === 'suspended' || state === 'suspending') return 'stopped';
       if (state === 'terminated') return 'removed';
       return 'unknown';
-    } catch {
+    } catch (err) {
       runningStatusCache.delete(externalId);
+      // Distinguish "not found / terminated" (a 404 from the API) from transient
+      // errors (network, 5xx). A 404 means the sandbox is gone — treat as
+      // 'removed' so callers can mark the row failed instead of polling forever.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/not found|404|does not exist|no such|sandbox.*not/i.test(msg)) {
+        return 'removed';
+      }
       return 'unknown';
     }
   }

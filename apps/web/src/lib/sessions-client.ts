@@ -92,12 +92,30 @@ export async function deleteSession(sessionId: string): Promise<void> {
   await backendApi.delete(`/sessions/${sessionId}`, { headers });
 }
 
-/** Start/resume a session — equivalent to POST /v1/projects/:id/sessions/:sid/start */
-export async function startSession(sessionId: string): Promise<SessionStartResult | null> {
+/** Start/resume a session — equivalent to POST /v1/projects/:id/sessions/:sid/start
+ *
+ * Returns:
+ *   - SessionStartResult on success
+ *   - { not_found: true } when the session was deleted (HTTP 404) — caller MUST
+ *     redirect to /sessions instead of polling forever
+ *   - null on transient errors (network blip, 5xx) — caller should retry
+ */
+export async function startSession(
+  sessionId: string,
+): Promise<SessionStartResult | { not_found: true } | null> {
   const headers = await authHeaders();
-  const res = await backendApi.post(`/sessions/${sessionId}/start`, {}, { headers, showErrors: false });
-  if (!res.success || !res.data) return null;
-  return res.data;
+  const res = await backendApi.post(`/sessions/${sessionId}/start`, {}, {
+    headers,
+    showErrors: false,
+  });
+  if (!res.success) {
+    // 404 = session deleted. Surface as a structured `not_found` so the caller
+    // can redirect to /sessions instead of polling forever.
+    const status = (res.error as any)?.status ?? (res.error as any)?.statusCode;
+    if (status === 404) return { not_found: true };
+    return null;
+  }
+  return res.data ?? null;
 }
 
 /** Stable React Query key for session start polling. */
