@@ -51,6 +51,7 @@ import { startTmpReaper, stopTmpReaper } from './snapshots/tmp-reaper';
 import { startLeaderElection, stopLeaderElection, isLeader, runsSingletonWorkers } from './shared/leader-election';
 import { marketplaceApp } from './marketplace';
 import { oauthApp } from './oauth';
+import { sessionFilesApp } from './sessions/routes';
 import {
   projectWebhooksApp,
   projectsApp,
@@ -769,6 +770,7 @@ app.route('/v1/platform', platformApp); // /v1/platform, /v1/platform/sandbox/ve
 registerLegacyMigrationRoutes(projectsApp); // /v1/projects/legacy-migration/* (lazy migration)
 registerSunaMigrationRoutes(projectsApp); // /v1/projects/suna-migration/* (OG Suna → opencode, user-triggered)
 app.route('/v1/projects', projectsApp); // /v1/projects — Git-backed Kortix projects
+app.route('/v1/sessions', sessionFilesApp); // /v1/sessions/:id/files — simple-mode file API
 app.route('/v1/marketplace', marketplaceApp); // /v1/marketplace — browse the registry catalog
 
 // Universal git smart-HTTP proxy — every git-backed project's client origin.

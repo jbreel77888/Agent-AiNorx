@@ -67,22 +67,27 @@ async function main() {
     return
   }
 
-  try {
-    await configureGlobalGitIdentity(cfg, OPENCODE_HOME)
-  } catch (err) {
-    logger.warn('[boot] default git identity setup failed', {
-      err: err instanceof Error ? err.message : String(err),
-    })
-  }
-  // Make `git push`/`git fetch` against the project remote authenticate
-  // transparently from any shell the agent uses — no token juggling, no
-  // askpass. Best-effort: a sandbox with no managed remote just skips it.
-  try {
-    await configureGitCredentialHelper(cfg, OPENCODE_HOME)
-  } catch (err) {
-    logger.warn('[boot] git credential helper setup failed', {
-      err: err instanceof Error ? err.message : String(err),
-    })
+  // Skip git setup entirely in simple mode — no repo, no git identity needed
+  if (cfg.sessionMode !== 'simple') {
+    try {
+      await configureGlobalGitIdentity(cfg, OPENCODE_HOME)
+    } catch (err) {
+      logger.warn('[boot] default git identity setup failed', {
+        err: err instanceof Error ? err.message : String(err),
+      })
+    }
+    // Make `git push`/`git fetch` against the project remote authenticate
+    // transparently from any shell the agent uses — no token juggling, no
+    // askpass. Best-effort: a sandbox with no managed remote just skips it.
+    try {
+      await configureGitCredentialHelper(cfg, OPENCODE_HOME)
+    } catch (err) {
+      logger.warn('[boot] git credential helper setup failed', {
+        err: err instanceof Error ? err.message : String(err),
+      })
+    }
+  } else {
+    logger.info('[boot] simple mode — skipping git identity and credential helper')
   }
   bootMark('git-identity')
 
@@ -104,12 +109,22 @@ async function main() {
   if (!writeAgentEnvFile(projectEnv)) {
     logger.error('[boot] failed to write agent secret env file; agent shells will lack project secrets')
   }
-  const repoMaterializePromise: Promise<void> = cfg.autoClone
-    ? materializeRepo(cfg).catch((err) => {
+  const repoMaterializePromise: Promise<void> = (async () => {
+    if (cfg.sessionMode === 'simple') {
+      // Simple mode: skip git clone entirely, create empty workspace
+      logger.info('[boot] simple mode — skipping repo clone, creating empty workspace')
+      const { mkdir } = await import('node:fs/promises')
+      await mkdir(cfg.projectTarget, { recursive: true })
+      bootMark('repo-materialized')
+      return
+    }
+    if (cfg.autoClone) {
+      return materializeRepo(cfg).catch((err) => {
         bootState.repoMaterializationError = err instanceof Error ? err.message : String(err)
         logger.error('[boot] repo materialization failed', err)
       })
-    : Promise.resolve()
+    }
+  })()
 
   // Wait for the clone to finish before we let downstream code (config-dir
   // resolution, readiness probe, initial session creation) think the workspace

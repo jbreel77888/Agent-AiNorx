@@ -89,6 +89,7 @@ export type Config = {
   gitUserName: string
   gitUserEmail: string
   cloneFilter: string
+  sessionMode: 'simple' | 'project'
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -139,6 +140,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     gitUserName: parsed.KORTIX_GIT_USER_NAME,
     gitUserEmail: parsed.KORTIX_GIT_USER_EMAIL,
     cloneFilter: parsed.KORTIX_CLONE_FILTER,
+    sessionMode: parsed.KORTIX_SESSION_MODE,
   }
 }
 
