@@ -1,7 +1,7 @@
 /**
  * Sessions API client — for simple-mode session management.
  *
- * Mirrors the patterns in projects-client.ts but targets /v1/sessions
+ * Mirrors the patterns in projects-client.ts but targets /sessions
  * for standalone (no-GitHub) sessions.
  */
 
@@ -57,14 +57,14 @@ async function authHeaders(): Promise<Record<string, string>> {
 /** List the current user's simple-mode sessions. */
 export async function listSessions(): Promise<SimpleSession[]> {
   const headers = await authHeaders();
-  const res = await backendApi.get('/v1/sessions', { headers });
+  const res = await backendApi.get('/sessions', { headers });
   return res.data.sessions ?? [];
 }
 
 /** Get details for a specific session. */
 export async function getSession(sessionId: string): Promise<SimpleSessionDetail> {
   const headers = await authHeaders();
-  const res = await backendApi.get(`/v1/sessions/${sessionId}`, { headers });
+  const res = await backendApi.get(`/sessions/${sessionId}`, { headers });
   return res.data;
 }
 
@@ -76,7 +76,7 @@ export async function createSession(opts: {
   session_id?: string; // client-provided UUID for optimistic creation
 }): Promise<{ session_id: string; status: string; name: string }> {
   const headers = await authHeaders();
-  const res = await backendApi.post('/v1/sessions', {
+  const res = await backendApi.post('/sessions', {
     name: opts.name,
     initial_prompt: opts.initial_prompt,
     opencode_model: opts.opencode_model,
@@ -88,13 +88,13 @@ export async function createSession(opts: {
 /** Delete a session and its workspace. */
 export async function deleteSession(sessionId: string): Promise<void> {
   const headers = await authHeaders();
-  await backendApi.delete(`/v1/sessions/${sessionId}`, { headers });
+  await backendApi.delete(`/sessions/${sessionId}`, { headers });
 }
 
 /** Start/resume a session — equivalent to POST /v1/projects/:id/sessions/:sid/start */
 export async function startSession(sessionId: string): Promise<SessionStartResult | null> {
   const headers = await authHeaders();
-  const res = await backendApi.post(`/v1/sessions/${sessionId}/start`, {}, { headers, showErrors: false });
+  const res = await backendApi.post(`/sessions/${sessionId}/start`, {}, { headers, showErrors: false });
   if (!res.success || !res.data) return null;
   return res.data;
 }
@@ -107,14 +107,14 @@ export function sessionStartKey(sessionId: string) {
 /** List files in a session workspace. */
 export async function listSessionFiles(sessionId: string): Promise<SessionFile[]> {
   const headers = await authHeaders();
-  const res = await backendApi.get(`/v1/sessions/${sessionId}/files`, { headers });
+  const res = await backendApi.get(`/sessions/${sessionId}/files`, { headers });
   return res.data.files ?? [];
 }
 
 /** Read a file's content. */
 export async function readSessionFile(sessionId: string, path: string): Promise<string> {
   const headers = await authHeaders();
-  const res = await backendApi.get(`/v1/sessions/${sessionId}/files/content`, {
+  const res = await backendApi.get(`/sessions/${sessionId}/files/content`, {
     headers,
     params: { path },
     responseType: 'text',
@@ -130,7 +130,7 @@ export async function writeSessionFile(
   mimeType?: string,
 ): Promise<void> {
   const headers = await authHeaders();
-  await backendApi.post(`/v1/sessions/${sessionId}/files`, {
+  await backendApi.post(`/sessions/${sessionId}/files`, {
     path,
     content,
     mimeType,
@@ -140,7 +140,7 @@ export async function writeSessionFile(
 /** Delete a file. */
 export async function deleteSessionFile(sessionId: string, path: string): Promise<void> {
   const headers = await authHeaders();
-  await backendApi.delete(`/v1/sessions/${sessionId}/files`, {
+  await backendApi.delete(`/sessions/${sessionId}/files`, {
     headers,
     params: { path },
   });
