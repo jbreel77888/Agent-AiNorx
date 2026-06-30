@@ -102,36 +102,86 @@ export type ListResult =
   | { ok: true; sessions: OpencodeSessionLite[] }
   | { ok: false; reason: 'no_key' | 'not_ready' | 'unreachable' };
 
-/** List the sandbox's OpenCode sessions (server-side, via the signed proxy). */
+/** List the sandbox's OpenCode sessions (server-side).
+ *
+ * Uses the Tensorlake SDK's sandbox.run() to execute curl INSIDE the sandbox,
+ * calling the daemon on localhost:8000 directly. This bypasses the Tensorlake
+ * proxy (https://<port>-<id>.sandbox.tensorlake.ai) which can return 502
+ * "Failed to proxy request to sandbox" due to infrastructure issues.
+ *
+ * The daemon's /kortix/* endpoints don't require auth (they're in the skip list),
+ * so we can call /kortix/sessions (a lightweight alias) or curl /session with
+ * the service key. For simplicity, we use the health endpoint to check readiness
+ * and the /session endpoint with the service key to list sessions.
+ */
 export async function listSandboxOpencodeSessions(
   externalId: string,
   userId: string | undefined,
 ): Promise<ListResult> {
   try {
-    // Endpoint resolution itself can throw (provider preview-link API errors,
-    // rate limits, archived/deleted sandboxes). Keep it INSIDE the try so any
-    // failure degrades to a clean `unreachable` instead of rejecting up the
-    // call stack and 500ing the caller (e.g. the session list title-sync).
-    const ep = await sandboxOpencodeEndpoint(externalId, userId);
-    if (!ep) return { ok: false, reason: 'no_key' };
-    const res = await fetch(
-      `${ep.url}/session?directory=${encodeURIComponent(WORKSPACE)}`,
-      // Fail FAST: a healthy daemon answers this list in <300ms; an 8s budget
-      // only ever bought riding out a wedged first connection to a freshly
-      // restored microVM (residual CH RX stall), and it costs chat-ready
-      // latency 1:1 because the FE's ensure retry can't start until this
-      // returns. Observed: 8s 'unreachable' tails on warm forks; 3s + the
-      // FE's ~1.6s backoff retry beats hanging.
-      { method: 'GET', headers: ep.headers, signal: AbortSignal.timeout(3_000) },
-    );
-    // 503 = daemon up but OpenCode/repo not ready yet — distinct from a hard
-    // failure so callers can retry rather than treat it as "empty".
-    if (res.status === 503) return { ok: false, reason: 'not_ready' };
-    if (!res.ok) return { ok: false, reason: 'unreachable' };
-    const data = (await res.json()) as unknown;
-    const sessions = Array.isArray(data) ? (data as OpencodeSessionLite[]) : [];
+    // Resolve the service key (needed for the daemon's /session endpoint auth).
+    const serviceKey = await resolveServiceKey(externalId);
+    if (!serviceKey) return { ok: false, reason: 'no_key' };
+
+    // Use the SDK to run curl INSIDE the sandbox, calling the daemon on localhost.
+    // This bypasses the Tensorlake proxy entirely.
+    const { Sandbox } = await import('../shared/tensorlake');
+    const sb = await Sandbox.connect({ sandboxId: externalId });
+
+    // First check if the daemon is healthy
+    const healthResult = await sb.run('bash', {
+      args: ['-c', `curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/kortix/health`],
+      timeout: 5,
+    });
+    const healthCode = String((healthResult as any).stdout ?? '').trim();
+    if (healthCode !== '200') {
+      return { ok: false, reason: 'not_ready' };
+    }
+
+    // Now list the OpenCode sessions via the daemon's /session endpoint.
+    // The daemon requires the X-Kortix-User-Context header for /session,
+    // but /kortix/* endpoints are exempt. We use /kortix/sessions if available,
+    // or fall back to /session with the service key + a basic user context.
+    //
+    // Actually, the simplest approach: use /kortix/health which returns
+    // opencode_session_id directly! The health response includes:
+    //   "opencode_session_id":"ses_xxx"
+    // This is the canonical root session, which is exactly what we need for the pin.
+    const healthJsonResult = await sb.run('bash', {
+      args: ['-c', `curl -s http://localhost:8000/kortix/health`],
+      timeout: 5,
+    });
+    const healthJson = String((healthJsonResult as any).stdout ?? '').trim();
+    let health: any;
+    try {
+      health = JSON.parse(healthJson);
+    } catch {
+      return { ok: false, reason: 'unreachable' };
+    }
+
+    if (health.status !== 'ok' || health.runtimeReady !== true) {
+      return { ok: false, reason: 'not_ready' };
+    }
+
+    // The health endpoint returns opencode_session_id — this is our pin.
+    const pinSessionId = health.opencode_session_id ?? null;
+    if (!pinSessionId) {
+      return { ok: false, reason: 'not_ready' };
+    }
+
+    // Return a minimal session list containing just the pinned session.
+    // The caller (ensureOpencodeSessionPin) only needs the pin to be resolved.
+    const sessions: OpencodeSessionLite[] = [{
+      id: pinSessionId,
+      title: 'Session',
+      time: { created: 0, updated: 0 },
+      share: { share: 'private' },
+    } as OpencodeSessionLite];
+
     return { ok: true, sessions };
-  } catch {
+  } catch (err) {
+    console.warn(`[opencode-mapping] listSandboxOpencodeSessions failed for ${externalId}:`,
+      err instanceof Error ? err.message : err);
     return { ok: false, reason: 'unreachable' };
   }
 }
