@@ -779,7 +779,7 @@ preview.all('/:sandboxId/:port/*', async (c) => {
 
       // Execute curl with the config file
       const result = await sb.run('bash', {
-        args: ['-c', `curl -s -w '\\n%{http_code}' --config ${configFile}`],
+        args: ['-c', `curl -s -w '\\n---HTTP_CODE:%{http_code}---' --config ${configFile}`],
         timeout: 30,
       });
 
@@ -794,10 +794,10 @@ preview.all('/:sandboxId/:port/*', async (c) => {
       // ALWAYS log the result for debugging
       console.log(`[PREVIEW] SDK bridge curl: exitCode=${exitCode} outputLen=${output.length} outputTail=${output.slice(-200)} stderr=${stderr.slice(0, 200)}`);
 
-      // Parse the response: last line is the HTTP status code
-      const lines = output.split('\n');
-      const statusCode = parseInt(lines[lines.length - 1] || '0', 10) || 502;
-      const responseBody = lines.slice(0, -1).join('\n');
+      // Parse the response: the status code is after the ---HTTP_CODE: marker
+      const httpCodeMatch = output.match(/---HTTP_CODE:(\d+)---\s*$/);
+      const statusCode = httpCodeMatch ? parseInt(httpCodeMatch[1], 10) : 502;
+      const responseBody = output.replace(/\n---HTTP_CODE:\d+---\s*$/, '');
 
       // Return the response with the correct status code
       const contentType = responseBody.trimStart().startsWith('{') || responseBody.trimStart().startsWith('[')
