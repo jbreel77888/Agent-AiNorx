@@ -705,6 +705,7 @@ preview.all('/:sandboxId/:port/*', async (c) => {
   // transport to run curl inside the sandbox and return the daemon's response.
   // This is transparent to the frontend — same URL, same auth, same response.
   const record = await loadSandbox(sandboxId);
+  console.log(`[PREVIEW] SDK bridge check: sandboxId=${sandboxId} provider=${record?.provider} status=${record?.status} externalId=${record?.externalId ? 'present' : 'null'}`);
   if (record?.provider === 'tensorlake' && record.status === 'active' && record.externalId) {
     // SSE streams (/global/event) can't be bridged via curl — they hang forever.
     // Return an empty 200 so the frontend's EventSource doesn't retry aggressively.
