@@ -14,7 +14,7 @@ export default function SessionsLayout({ children }: { children: React.ReactNode
   }, [authLoading, user, router]);
 
   if (authLoading || !user) {
-    return <div className="bg-background min-h-screen" />;
+    return <div className="bg-background h-dvh" />;
   }
 
   return (
@@ -24,7 +24,7 @@ export default function SessionsLayout({ children }: { children: React.ReactNode
       showGlobalNewInstanceModal={false}
       showGlobalUserSettingsModal={false}
     >
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="relative flex h-dvh min-h-0 flex-1 flex-col overflow-hidden">
         {children}
       </div>
     </AppProviders>

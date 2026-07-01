@@ -3085,7 +3085,7 @@ function SessionTurn({
 
       {/* ── User message ── */}
       {/* Hide the user bubble when the user message has no visible content
-			    (e.g. background task notification with only synthetic parts). */}
+                            (e.g. background task notification with only synthetic parts). */}
       {hasVisibleUserContent && (
         <div>
           <UserMessageRow
@@ -3159,9 +3159,9 @@ function SessionTurn({
       )}
 
       {/* ── Assistant parts content ──
-			  Renders ALL parts from all assistant messages,
-			  EXCEPT: the response part (last text) is hidden when not working
-			  (it renders separately below as the Response section). */}
+                          Renders ALL parts from all assistant messages,
+                          EXCEPT: the response part (last text) is hidden when not working
+                          (it renders separately below as the Response section). */}
       {(working || hasSteps || hasReasoning) && turn.assistantMessages.length > 0 && (
         <div className="space-y-2">
           {(() => {
@@ -3431,7 +3431,7 @@ function SessionTurn({
       </div>
 
       {/* Inline content: text and answered questions rendered in natural order.
-			    Works both during streaming and after completion. */}
+                            Works both during streaming and after completion. */}
       {working && !hasSteps && !shouldUseInlineContent && response && (
         <div className="text-sm">
           <ThrottledMarkdown content={response} isStreaming />
@@ -3496,15 +3496,15 @@ function SessionTurn({
             ))}
 
           {/* Answered question parts — shown after the response text only when
-				    NONE of the upstream renderers fire. The steps section above is
-				    gated by `working || hasSteps || hasReasoning`; if any of those
-				    is true, the question parts have already been rendered inline
-				    there as AnsweredQuestionCards. Mirroring that guard's inverse
-				    here is the only way to avoid the double-render that showed up
-				    on interrupted sessions that contained reasoning but no tool
-				    steps (e.g. "Planning a process for questions" → user answers
-				    → interrupt; hasSteps=false, working=false, hasReasoning=true,
-				    and without the !hasReasoning check the card rendered twice). */}
+                                    NONE of the upstream renderers fire. The steps section above is
+                                    gated by `working || hasSteps || hasReasoning`; if any of those
+                                    is true, the question parts have already been rendered inline
+                                    there as AnsweredQuestionCards. Mirroring that guard's inverse
+                                    here is the only way to avoid the double-render that showed up
+                                    on interrupted sessions that contained reasoning but no tool
+                                    steps (e.g. "Planning a process for questions" → user answers
+                                    → interrupt; hasSteps=false, working=false, hasReasoning=true,
+                                    and without the !hasReasoning check the card rendered twice). */}
           {!hasSteps && !working && !hasReasoning && answeredQuestionParts.length > 0 && (
             <div className="mt-3 space-y-2">
               {answeredQuestionParts.map(({ part }) => (
@@ -5586,7 +5586,7 @@ export function SessionChat({
           </button>
         </div>
       ) : (
-        <div ref={chatAreaRef} className="relative z-10 min-h-0 flex-1">
+        <div ref={chatAreaRef} className="relative z-10 flex min-h-0 flex-1 flex-col">
           <div
             ref={scrollContainerCallbackRef}
             className={cn(
@@ -5766,10 +5766,10 @@ export function SessionChat({
                 {!showOptimistic && isBusy && turns.length === 0 && <AssistantPendingRow />}
               </div>
               {/* Spacer — ensures the last message can scroll to the top of
-						    the viewport (ChatGPT-style). Without this, scrollToBottom
-						    only brings the last message to the bottom of the screen.
-						    Height is dynamically measured from the scroll container so
-						    the newest message appears flush at the top. */}
+                                                    the viewport (ChatGPT-style). Without this, scrollToBottom
+                                                    only brings the last message to the bottom of the screen.
+                                                    Height is dynamically measured from the scroll container so
+                                                    the newest message appears flush at the top. */}
               <div ref={spacerElRef} />
             </div>
           </div>
@@ -5829,6 +5829,7 @@ export function SessionChat({
 
       {/* Input — hidden in read-only mode (sub-session modal) */}
       {!readOnly && (
+        <div className="shrink-0">
         <SessionChatInput
           onSend={async (text, files, mentions) => {
             await handleSend(text, files, mentions);
@@ -5885,6 +5886,7 @@ export function SessionChat({
             ) : undefined
           }
         />
+        </div>
       )}
       <ConfirmForkDialog
         open={!!confirmForkMessageId}

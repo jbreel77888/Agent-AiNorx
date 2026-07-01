@@ -63,6 +63,11 @@ export function SessionSiteHeader({
   const projectSessionId = projectRoute?.[2];
   const isProjectSession = !!projectId && !!projectSessionId;
 
+  // Simple mode: detect /sessions/:sessionId route (no project)
+  const simpleRoute = pathname?.match(/^\/sessions\/([^/]+)/);
+  const simpleSessionId = simpleRoute?.[1];
+  const isSimpleSession = !isProjectSession && !!simpleSessionId;
+
   const { data: projectSessions } = useQuery({
     queryKey: ['project-sessions', projectId],
     queryFn: () => listProjectSessions(projectId!),
@@ -111,7 +116,7 @@ export function SessionSiteHeader({
               </Hint>
 
               <DropdownMenuContent align="start" className="w-52">
-                {isProjectSession && (
+                {(isProjectSession || isSimpleSession) && (
                   <>
                     <DropdownMenuItem
                       className="cursor-pointer"
@@ -158,7 +163,7 @@ export function SessionSiteHeader({
                   )}
                 </DropdownMenuItem>
 
-                {isProjectSession && (
+                {(isProjectSession || isSimpleSession) && (
                   <DropdownMenuItem
                     className="cursor-pointer"
                     onClick={() => setDeleteOpen(true)}
@@ -235,6 +240,20 @@ export function SessionSiteHeader({
             open={deleteOpen}
             onOpenChange={setDeleteOpen}
             onDeleted={() => router.push(`/projects/${projectId}`)}
+          />
+        </>
+      )}
+
+      {/* Simple mode: delete + rename via simple sessions API */}
+      {isSimpleSession && (
+        <>
+          <SessionDeleteModal
+            projectId="__simple__"
+            sessionId={simpleSessionId!}
+            sessionLabel={sessionTitle}
+            open={deleteOpen}
+            onOpenChange={setDeleteOpen}
+            onDeleted={() => router.push('/sessions')}
           />
         </>
       )}

@@ -2,7 +2,7 @@
 
 import { SidebarLeft } from '@/components/sidebar/sidebar-left';
 import { SidebarRight } from '@/components/sidebar/sidebar-right';
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { RightSidebarProvider } from '@/components/ui/sidebar-right-provider';
 import { SidePanelUserSettings } from '@/features/accounts/settings/side-panel-user-settings';
 import { NewInstanceModal } from '@/features/billing/pricing/new-instance-modal';
@@ -163,7 +163,12 @@ export function AppProviders({
       <SidebarLeftSlot sidebarContent={sidebarContent} />
       <SidebarInset>
         <RightSidebarProvider>
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{content}</div>
+          <div className="flex h-dvh min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="flex items-center gap-2 border-b px-3 py-2 md:hidden">
+              <SidebarTrigger />
+            </div>
+            {content}
+          </div>
           {showRightSidebar && <SidebarRight />}
         </RightSidebarProvider>
       </SidebarInset>
