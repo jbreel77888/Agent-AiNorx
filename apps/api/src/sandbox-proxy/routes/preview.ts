@@ -785,19 +785,22 @@ preview.all('/:sandboxId/:port/*', async (c) => {
         timeout: 30,
       });
 
-      // Read the output body file
+      // Read the output body file using the SDK's readFile method (more reliable than cat)
       let responseBody = '';
       try {
-        const readResult = await sb.run('bash', { args: ['-c', `cat ${outputFile}`], timeout: 5 });
-        responseBody = String((readResult as any).stdout ?? '');
+        const fileBuffer = await sb.readFile(outputFile);
+        responseBody = Buffer.from(fileBuffer).toString('utf-8');
       } catch { /* empty body */ }
 
       // Clean up temp files
       const cleanupFiles = bodyFile ? `${bodyFile} ${configFile} ${outputFile}` : `${configFile} ${outputFile}`;
       await sb.run('bash', { args: ['-c', `rm -f ${cleanupFiles}`], timeout: 3 }).catch(() => {});
 
-      const statusCodeStr = String((result as any).stdout ?? '').trim();
-      const statusCode = parseInt(statusCodeStr, 10) || 502;
+      // The status code is in result.stdout (from -w '%{http_code}')
+      // If -o didn't work, stdout also has the body — detect this by checking
+      // if stdout is a valid HTTP status code (just digits)
+      const stdoutStr = String((result as any).stdout ?? '').trim();
+      const statusCode = /^\d{3}$/.test(stdoutStr) ? parseInt(stdoutStr, 10) : 200;
 
       // Return the response with the correct status code
       const contentType = responseBody.trimStart().startsWith('{') || responseBody.trimStart().startsWith('[')
