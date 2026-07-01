@@ -115,6 +115,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     KORTIX_GIT_USER_NAME: env.KORTIX_GIT_USER_NAME,
     KORTIX_GIT_USER_EMAIL: env.KORTIX_GIT_USER_EMAIL,
     KORTIX_CLONE_FILTER: env.KORTIX_CLONE_FILTER,
+    KORTIX_SESSION_MODE: env.KORTIX_SESSION_MODE,
   })
 
   return {
