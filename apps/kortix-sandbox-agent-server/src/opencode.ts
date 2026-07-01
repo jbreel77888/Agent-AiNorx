@@ -70,11 +70,11 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
         : {}
     out.mcp = {
       ...mcp,
-      'kortix-executor': {
+      'vaelorx-executor': {
         type: 'local',
         // The Executor MCP server is a face of the unified `kortix` CLI
         // (`kortix executor mcp`), baked onto PATH in every sandbox image.
-        command: ['kortix', 'executor', 'mcp'],
+        command: ['vaelorx', 'executor', 'mcp'],
         enabled: true,
         environment: {
           KORTIX_EXECUTOR_TOKEN: executorToken,
@@ -96,7 +96,7 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
         : {}
     out.provider = {
       ...provider,
-      kortix: await buildKortixProvider(llmBaseUrl!, llmApiKey!),
+      vaelorx: await buildVaelorxProvider(llmBaseUrl!, llmApiKey!),
     }
     if (!('model' in out) || typeof out.model !== 'string') {
       out.model = DEFAULT_KORTIX_MODEL
@@ -140,7 +140,7 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
 // The auth secret is still present on the env passed here — materializeOpencodeAuth
 // strips it from the spawned process env later, not from this copy.
 function gatewayEnabledProviders(env: NodeJS.ProcessEnv): string[] {
-  const allow = new Set<string>(['kortix'])
+  const allow = new Set<string>(['vaelorx'])
   const authJson = env[CODEX_AUTH_JSON_SECRET] ?? env[OPENCODE_AUTH_JSON_SECRET]
   if (authJson?.trim()) {
     try {
@@ -154,10 +154,10 @@ function gatewayEnabledProviders(env: NodeJS.ProcessEnv): string[] {
   return [...allow]
 }
 
-async function buildKortixProvider(llmBaseUrl: string, llmApiKey: string): Promise<Record<string, unknown>> {
+async function buildVaelorxProvider(llmBaseUrl: string, llmApiKey: string): Promise<Record<string, unknown>> {
   return {
     npm: '@ai-sdk/openai-compatible',
-    name: 'Kortix',
+    name: 'VaelorX',
     options: {
       baseURL: llmBaseUrl,
       apiKey: llmApiKey,
@@ -173,7 +173,7 @@ const GATEWAY_MODELS_RETRY_DELAYS_MS = [500, 1000, 2000, 4000, 8000]
 async function fetchGatewayModels(
   baseUrl: string,
   apiKey: string,
-): Promise<Record<string, KortixGatewayModel>> {
+): Promise<Record<string, VaelorXGatewayModel>> {
   const url = `${baseUrl.replace(/\/+$/, '')}/models`
   const attempts = GATEWAY_MODELS_RETRY_DELAYS_MS.length + 1
   logger.info(`[opencode] fetching gateway models from ${url}`)
@@ -184,7 +184,7 @@ async function fetchGatewayModels(
         const detail = (await res.text().catch(() => '')).slice(0, 200)
         throw new Error(`HTTP ${res.status}${detail ? ` ${detail}` : ''}`)
       }
-      const body = (await res.json()) as { models?: Record<string, KortixGatewayModel> }
+      const body = (await res.json()) as { models?: Record<string, VaelorXGatewayModel> }
       const models = body.models ?? {}
       if (Object.keys(models).length === 0) throw new Error('gateway returned an empty catalog')
       logger.info(`[opencode] fetched ${Object.keys(models).length} gateway models from ${url}`)
@@ -201,9 +201,9 @@ async function fetchGatewayModels(
   return MINIMAL_FALLBACK_MODELS
 }
 
-const DEFAULT_KORTIX_MODEL = 'kortix/claude-sonnet-4.6'
+const DEFAULT_VAELORX_MODEL = 'vaelorx/claude-sonnet-4.6'
 
-type KortixGatewayModel = {
+type VaelorXGatewayModel = {
   name: string
   reasoning?: boolean
   tool_call?: boolean
@@ -212,7 +212,7 @@ type KortixGatewayModel = {
   limit?: { context?: number; output?: number }
 }
 
-const MINIMAL_FALLBACK_MODELS: Record<string, KortixGatewayModel> = {
+const MINIMAL_FALLBACK_MODELS: Record<string, VaelorXGatewayModel> = {
   'claude-opus-4.8': {
     name: 'Claude Opus 4.8',
     reasoning: true,
@@ -326,9 +326,9 @@ const KNOWN_LIMIT_BY_TAIL: Record<string, { context?: number; output?: number }>
 // context). Backfill from the known-model table (exact id, then bare id), else a
 // conservative default. Models that already declare a usable limit are untouched.
 export function withModelLimits(
-  models: Record<string, KortixGatewayModel>,
-): Record<string, KortixGatewayModel> {
-  const out: Record<string, KortixGatewayModel> = {}
+  models: Record<string, VaelorXGatewayModel>,
+): Record<string, VaelorXGatewayModel> {
+  const out: Record<string, VaelorXGatewayModel> = {}
   for (const [id, model] of Object.entries(models)) {
     if (typeof model.limit?.context === 'number' && model.limit.context > 0) {
       out[id] = model
@@ -515,7 +515,7 @@ export function createOpencodeSupervisor(
       // ~400KB — far over Linux's 128KB per-env-var ceiling (MAX_ARG_STRLEN).
       // Inlining it via OPENCODE_CONFIG_CONTENT makes execve fail with E2BIG and
       // opencode never spawns ("runtime not ready"). Hand it a file path instead.
-      const configPath = join(OPENCODE_CONFIG_HOME, 'kortix-opencode.json')
+      const configPath = join(OPENCODE_CONFIG_HOME, 'vaelorx-opencode.json')
       mkdirSync(dirname(configPath), { recursive: true })
       writeFileSync(configPath, opencodeConfig, { mode: 0o600 })
       env.OPENCODE_CONFIG = configPath

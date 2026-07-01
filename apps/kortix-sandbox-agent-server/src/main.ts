@@ -91,7 +91,7 @@ async function main() {
   }
   bootMark('git-identity')
 
-  // The opencode config dir lives INSIDE the repo (`<workspace>/.kortix/
+  // The opencode config dir lives INSIDE the repo (`<workspace>/.vaelorx/
   // opencode`), so the repo MUST be materialized before we can resolve which
   // config dir opencode should launch with. Resolving before the clone always
   // missed the project's opencode.jsonc and silently fell back to the baked
@@ -418,7 +418,7 @@ async function runPoolMode(
   // (zero-network) so opencode pays its per-directory project init (git scan +
   // file index + LSP + sqlite) ONCE here, FROZEN into the snapshot. Without this
   // every fork paid that ~3.2s init on its own hot path (the runtime-ready
-  // wall). Resolve opencode's config from the scaffold's .kortix/opencode so the
+  // wall). Resolve opencode's config from the scaffold's .vaelorx/opencode so the
   // seed (and every fork) runs the real agents/plugins, not the baked default.
   // Stage-2 (KORTIX_WARM_POOL_CLONE_AT_PARK=1 on a project-scoped seed that
   // carries KORTIX_REPO_URL but no session): clone the REAL project repo at base

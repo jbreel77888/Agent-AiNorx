@@ -146,7 +146,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
 /**
  * Pick the opencode config dir for this sandbox. Honors `[opencode] config_dir`
- * in the project's kortix.toml when present (defaulting to `.kortix/opencode`
+ * in the project's kortix.toml when present (defaulting to `.vaelorx/opencode`
  * relative to the cloned repo) and falls back to KORTIX_DEFAULT_OPENCODE_CONFIG_DIR
  * if the project doesn't have an opencode.jsonc — that's what keeps a freshly
  * provisioned sandbox bootable before a project has been cloned.
@@ -162,7 +162,7 @@ export async function resolveSandboxOnBoot(cfg: Config): Promise<string | null> 
   const fs = await import('node:fs/promises')
   let body: string
   try {
-    body = await fs.readFile(`${cfg.projectTarget}/kortix.toml`, 'utf8')
+    body = await fs.readFile(`${cfg.projectTarget}/vaelorx.toml`, 'utf8')
   } catch {
     return null
   }
@@ -178,7 +178,7 @@ export async function resolveSandboxOnBoot(cfg: Config): Promise<string | null> 
 
 export async function resolveOpencodeConfigDir(cfg: Config): Promise<string> {
   const fs = await import('node:fs/promises')
-  const manifestPath = `${cfg.projectTarget}/kortix.toml`
+  const manifestPath = `${cfg.projectTarget}/vaelorx.toml`
   const relConfigDir = await readOpencodeConfigDirFromManifest(fs, manifestPath)
   const candidate = `${cfg.projectTarget}/${relConfigDir}`
   for (const filename of ['opencode.jsonc', 'opencode.json']) {
@@ -207,7 +207,7 @@ async function readOpencodeConfigDirFromManifest(
   fs: typeof import('node:fs/promises'),
   manifestPath: string,
 ): Promise<string> {
-  const fallback = '.kortix/opencode'
+  const fallback = '.vaelorx/opencode'
   let body: string
   try {
     body = await fs.readFile(manifestPath, 'utf8')

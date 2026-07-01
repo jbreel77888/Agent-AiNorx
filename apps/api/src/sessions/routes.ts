@@ -126,7 +126,7 @@ sessionFilesApp.post('/', async (c) => {
           projectId: '00000000-0000-0000-0000-000000000000',
           repoUrl: '', // empty — daemon skips clone in simple mode
           defaultBranch: 'main',
-          manifestPath: 'kortix.toml',
+          manifestPath: 'vaelorx.toml',
           gitAuthToken: null,
         },
         baseRef: 'main',
