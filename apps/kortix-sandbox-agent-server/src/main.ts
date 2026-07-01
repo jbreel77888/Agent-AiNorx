@@ -114,7 +114,7 @@ async function main() {
       // Simple mode: inject the scaffold (vaelorx.toml, .vaelorx/, etc.) into
       // the workspace instead of cloning a GitHub repo. The scaffold is baked
       // into the sandbox image at /opt/kortix/scaffold.git.
-      logger.info('[boot] simple mode — injecting scaffold into workspace')
+      console.log('[boot] simple mode — injecting scaffold into workspace')
       const { mkdir } = await import('node:fs/promises')
       await mkdir(cfg.projectTarget, { recursive: true })
 
@@ -123,10 +123,10 @@ async function main() {
         const { materializeScaffoldSeed } = await import('./git')
         const seeded = await materializeScaffoldSeed(cfg.projectTarget, 'main')
         if (seeded) {
-          logger.info('[boot] simple mode — scaffold injected successfully')
+          console.log('[boot] simple mode — scaffold injected successfully')
         } else {
           // No scaffold.git baked — create minimal files manually
-          logger.info('[boot] simple mode — no scaffold.git, creating minimal workspace files')
+          console.log('[boot] simple mode — no scaffold.git, creating minimal workspace files')
           const { writeFileSync, mkdirSync } = await import('node:fs')
           const { join } = await import('node:path')
           const ws = cfg.projectTarget
@@ -219,10 +219,10 @@ async function main() {
             '.vaelorx/opencode/cache/',
           ].join('\n'))
 
-          logger.info('[boot] simple mode — minimal workspace files created')
+          console.log('[boot] simple mode — minimal workspace files created')
         }
       } catch (err) {
-        logger.warn('[boot] simple mode — scaffold injection failed, using empty workspace', {
+        console.warn('[boot] simple mode — scaffold injection failed, using empty workspace', {
           err: err instanceof Error ? err.message.slice(0, 200) : String(err),
         })
       }
