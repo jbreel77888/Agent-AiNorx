@@ -743,9 +743,9 @@ preview.all('/:sandboxId/:port/*', async (c) => {
       // Build config file content
       const configParts: string[] = [];
       configParts.push(`url = "${daemonUrl.replace(/"/g, '\\"')}"`);
-      configParts.push('silent');
-      configParts.push('show-error');
-      configParts.push('write-out = "\n%{http_code}"');
+      // NOTE: write-out with %{http_code} doesn't work in curl config files.
+      // We'll get the status code from curl's -o /dev/null -w approach instead.
+      // The config file only has URL, method, headers, and data.
       if (method !== 'GET') configParts.push(`request = "${method}"`);
 
       // Add X-Kortix-User-Context header
@@ -779,7 +779,7 @@ preview.all('/:sandboxId/:port/*', async (c) => {
 
       // Execute curl with the config file
       const result = await sb.run('bash', {
-        args: ['-c', `curl --config ${configFile}`],
+        args: ['-c', `curl -s -w '\\n%{http_code}' --config ${configFile}`],
         timeout: 30,
       });
 
