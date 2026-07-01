@@ -2,10 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/features/providers/auth-provider';
-import { createSession } from '@/lib/sessions-client';
+import { createSession, listSessions, type SimpleSession } from '@/lib/sessions-client';
 import { markSessionFresh } from '@/lib/fresh-sessions';
 import { Plus, MessageSquare } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 export default function SessionsPage() {
@@ -16,6 +16,12 @@ export default function SessionsPage() {
   useEffect(() => {
     if (!authLoading && !user) router.replace('/auth');
   }, [authLoading, user, router]);
+
+  const { data: sessions } = useQuery<SimpleSession[]>({
+    queryKey: ['sessions'],
+    queryFn: listSessions,
+    enabled: !!user,
+  });
 
   const createMutation = useMutation({
     mutationFn: () => {
@@ -37,6 +43,13 @@ export default function SessionsPage() {
     );
   }
 
+  // If there are sessions, redirect to the most recent one
+  useEffect(() => {
+    if (sessions && sessions.length > 0 && !createMutation.isPending) {
+      router.replace(`/sessions/${sessions[0].session_id}`);
+    }
+  }, [sessions, router, createMutation.isPending]);
+
   return (
     <div className="flex h-full w-full items-center justify-center">
       <div className="flex flex-col items-center gap-4 text-center">
@@ -44,7 +57,7 @@ export default function SessionsPage() {
           <MessageSquare className="text-muted-foreground h-8 w-8" />
         </div>
         <div>
-          <h2 className="text-foreground text-lg font-semibold">No session selected</h2>
+          <h2 className="text-foreground text-lg font-semibold">Welcome to VaelorX</h2>
           <p className="text-muted-foreground mt-1 text-sm">
             Create a new session to start chatting with your AI agent
           </p>
