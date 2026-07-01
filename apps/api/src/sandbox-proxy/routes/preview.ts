@@ -327,14 +327,19 @@ export async function forwardToSandbox(
   const serviceKey = record.serviceKey;
 
   // 2. Forward with auto-wake retry.
-  const MAX_RETRIES = 3;
+  // For Tensorlake: the proxy (sandbox.tensorlake.ai) consistently returns 502
+  // because it can't reach the daemon's port. Retrying just wastes ~48s before
+  // returning 502 to the client. Skip retries entirely for Tensorlake — return
+  // the 502 immediately so the frontend can fall back to /sessions/:id/health.
+  const isTensorlake = record.provider === 'tensorlake';
+  const MAX_RETRIES = isTensorlake ? 0 : 3;
   // Short early delays so a transient post-restore RX stall (CH virtio-net misses
   // the first RX interrupt → daemon briefly unreachable ~1s) clears on the next
   // attempt instead of stretching to seconds. The old [2000,5000,8000] turned a
   // ~1s stall into the multi-second session-list lag observed in-browser
   // (opencode-listed +5578ms, 2026-06-14). Later delays stay progressive for a
   // genuinely cold-booting port.
-  const RETRY_DELAYS_MS = [250, 1000, 3000];
+  const RETRY_DELAYS_MS = isTensorlake ? [] : [250, 1000, 3000];
   let wakeTriggered = false;
   // Only a CONFIRMED-dead provider signal (box stopped/archived) errors the row.
   // A transient unreachable / RX stall must NEVER error a sandbox whose daemon

@@ -39,7 +39,7 @@ const POLL_CONNECTED = 30_000; // 30s when healthy
 const POLL_FAILING = 150;
 const POLL_UNREACHABLE = 5_000; // 5s when confirmed unreachable
 
-const CHECK_TIMEOUT = 20_000;
+const CHECK_TIMEOUT = 5_000;
 
 function isImmediateOfflineStatus(status: number): boolean {
         return status === 502 || status === 503 || status === 504;
@@ -242,6 +242,41 @@ export function useSandboxConnection() {
 
                         } catch (error) {
                                 if (!alive) return;
+
+                                // FALLBACK: On ANY error (timeout, 502, network), try the
+                                // session health endpoint which bypasses the Tensorlake proxy.
+                                // The proxy can take 48s to return 502, which exceeds our
+                                // 20s CHECK_TIMEOUT — so we also need to catch the AbortError.
+                                try {
+                                        const activeServer = useServerStore.getState().servers.find(
+                                                (s) => s.id === useServerStore.getState().activeServerId,
+                                        );
+                                        const sid = activeServer?.instanceId;
+                                        if (sid) {
+                                                const { backendApi } = await import("@/lib/api-client");
+                                                const healthRes = await backendApi.get(
+                                                        `/sessions/${sid}/health`,
+                                                        { headers: { Authorization: `Bearer ${token}` }, showErrors: false },
+                                                );
+                                                if (healthRes.success && healthRes.data) {
+                                                        const healthData = healthRes.data as SandboxHealthResponse;
+                                                        resetSandboxFail();
+                                                        setSandboxStatus("connected");
+                                                        setOpenCodeHealth(
+                                                                isRuntimeReady(healthData),
+                                                                healthData?.version,
+                                                                healthData?.boot_error ?? healthData?.message ?? healthData?.reason ?? null,
+                                                        );
+                                                        if (healthData?.version) {
+                                                                setSandboxVersion(healthData.version);
+                                                        }
+                                                        return;
+                                                }
+                                        }
+                                } catch {
+                                        /* fallback failed — continue to normal error handling */
+                                }
+
                                 if ((error as { immediateOffline?: boolean } | undefined)?.immediateOffline) {
                                         incrementSandboxFail();
                                         setSandboxStatus("unreachable");
