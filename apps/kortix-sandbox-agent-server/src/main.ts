@@ -111,10 +111,122 @@ async function main() {
   }
   const repoMaterializePromise: Promise<void> = (async () => {
     if (cfg.sessionMode === 'simple') {
-      // Simple mode: skip git clone entirely, create empty workspace
-      logger.info('[boot] simple mode — skipping repo clone, creating empty workspace')
+      // Simple mode: inject the scaffold (vaelorx.toml, .vaelorx/, etc.) into
+      // the workspace instead of cloning a GitHub repo. The scaffold is baked
+      // into the sandbox image at /opt/kortix/scaffold.git.
+      logger.info('[boot] simple mode — injecting scaffold into workspace')
       const { mkdir } = await import('node:fs/promises')
       await mkdir(cfg.projectTarget, { recursive: true })
+
+      // Try to seed the scaffold from the baked scaffold.git
+      try {
+        const { materializeScaffoldSeed } = await import('./git')
+        const seeded = await materializeScaffoldSeed(cfg.projectTarget, 'main')
+        if (seeded) {
+          logger.info('[boot] simple mode — scaffold injected successfully')
+        } else {
+          // No scaffold.git baked — create minimal files manually
+          logger.info('[boot] simple mode — no scaffold.git, creating minimal workspace files')
+          const { writeFileSync, mkdirSync } = await import('node:fs')
+          const { join } = await import('node:path')
+          const ws = cfg.projectTarget
+
+          // Create .vaelorx directory structure
+          mkdirSync(join(ws, '.vaelorx', 'memory'), { recursive: true })
+          mkdirSync(join(ws, '.vaelorx', 'opencode', 'agents'), { recursive: true })
+          mkdirSync(join(ws, '.vaelorx', 'opencode', 'skills'), { recursive: true })
+          mkdirSync(join(ws, '.vaelorx', 'opencode', 'tools'), { recursive: true })
+
+          // Write minimal vaelorx.toml
+          writeFileSync(join(ws, 'vaelorx.toml'), [
+            '# VaelorX project manifest',
+            'vaelorx_version = 1',
+            '',
+            '[project]',
+            `name = "${cfg.agentName || 'session'}"`,
+            'description = "A VaelorX session."',
+            '',
+            '[env]',
+            'required = []',
+            'optional = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"]',
+            '',
+            '[opencode]',
+            'config_dir = ".vaelorx/opencode"',
+            '',
+            '[[sandbox.templates]]',
+            'slug = "default"',
+            'name = "Default"',
+            '',
+            '[[agents]]',
+            'name = "vaelorx"',
+            'model = "vaelorx/claude-sonnet-4.6"',
+          ].join('\n'))
+
+          // Write minimal README.md
+          writeFileSync(join(ws, 'README.md'), `# ${cfg.agentName || 'Session'}\n`)
+
+          // Write minimal MEMORY.md
+          writeFileSync(join(ws, '.vaelorx', 'memory', 'MEMORY.md'), [
+            '# Session Memory',
+            '',
+            'The **session brain** — durable notes this session keeps about itself.',
+            'Read and written with the `memory` tool.',
+            '',
+          ].join('\n'))
+
+          // Write minimal opencode.jsonc
+          writeFileSync(join(ws, '.vaelorx', 'opencode', 'opencode.jsonc'), JSON.stringify({
+            '$schema': 'https://opencode.ai/config.json',
+            'default_agent': 'vaelorx',
+            'permission': 'allow',
+          }, null, 2))
+
+          // Write minimal agent definition
+          writeFileSync(join(ws, '.vaelorx', 'opencode', 'agents', 'vaelorx.md'), [
+            '---',
+            'description: VaelorX general knowledge worker. Handles coding, research, content, and data tasks.',
+            'mode: primary',
+            'permission:',
+            '  "*": allow',
+            '---',
+            '',
+            'You are a **VaelorX general knowledge worker**.',
+            '',
+            'You are hands-on: you read, edit, run, search, fetch, and ship.',
+            'The session you\'re in is an isolated VM sandbox — your own `/workspace`.',
+            '',
+            '## How you work',
+            '',
+            '1. **Understand first.** Read the relevant files, search the codebase or web.',
+            '2. **Plan briefly.** For non-trivial work, jot the approach to your todo list.',
+            '3. **Do the work.** Make the change directly — edit, write, run, fetch.',
+            '4. **Verify.** Run tests, check output, prove the change works.',
+            '5. **Show your work.** Use the `show` tool to surface files, URLs, images.',
+            '',
+            '## Memory',
+            '',
+            'This session has a **memory** at `.vaelorx/memory/`, read and written',
+            'with the `memory` tool. Record durable knowledge as you go.',
+            '',
+          ].join('\n'))
+
+          // Write .gitignore
+          writeFileSync(join(ws, '.gitignore'), [
+            '# Local OpenCode / VaelorX runtime state — never commit.',
+            '.vaelorx/state/',
+            '.vaelorx/opencode/sessions/',
+            '.vaelorx/opencode/log/',
+            '.vaelorx/opencode/cache/',
+          ].join('\n'))
+
+          logger.info('[boot] simple mode — minimal workspace files created')
+        }
+      } catch (err) {
+        logger.warn('[boot] simple mode — scaffold injection failed, using empty workspace', {
+          err: err instanceof Error ? err.message.slice(0, 200) : String(err),
+        })
+      }
+
       bootMark('repo-materialized')
       return
     }

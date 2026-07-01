@@ -30,7 +30,7 @@ const Schema = z.object({
   KORTIX_STATIC_PORT: z.coerce.number().int().positive().default(3211),
   KORTIX_WORKSPACE: z.string().default('/workspace'),
   // Project repo is cloned directly into the workspace. The repo's
-  // Kortix-owned files live under <workspace>/.kortix/ (Dockerfile +
+  // VaelorX-owned files live under <workspace>/.vaelorx/ (Dockerfile +
   // opencode config dir) — no intermediate clone-target directory.
   KORTIX_PROJECT_TARGET: z.string().default('/workspace'),
   KORTIX_DEFAULT_BRANCH: z.string().default('main'),
@@ -146,13 +146,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
 /**
  * Pick the opencode config dir for this sandbox. Honors `[opencode] config_dir`
- * in the project's kortix.toml when present (defaulting to `.vaelorx/opencode`
+ * in the project's vaelorx.toml when present (defaulting to `.vaelorx/opencode`
  * relative to the cloned repo) and falls back to KORTIX_DEFAULT_OPENCODE_CONFIG_DIR
  * if the project doesn't have an opencode.jsonc — that's what keeps a freshly
  * provisioned sandbox bootable before a project has been cloned.
  */
 /**
- * Read `[sandbox] on_boot` from the project's kortix.toml — a shell command the
+ * Read `[sandbox] on_boot` from the project's vaelorx.toml — a shell command the
  * daemon runs (backgrounded) once the repo is materialized and opencode is up,
  * so a session can auto-start its dev stack (e.g. `on_boot = "pnpm dev"`).
  * Returns null when unset. Parsed with the same regex approach as
@@ -199,7 +199,7 @@ export async function resolveOpencodeConfigDir(cfg: Config): Promise<string> {
 }
 
 /**
- * Pluck `[opencode] config_dir` out of a kortix.toml without dragging in a
+ * Pluck `[opencode] config_dir` out of a vaelorx.toml without dragging in a
  * full TOML parser. The field has one canonical shape; we look for it
  * explicitly and fall back to the default if anything's off.
  */
