@@ -99,10 +99,10 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
       vaelorx: await buildVaelorxProvider(llmBaseUrl!, llmApiKey!),
     }
     if (!('model' in out) || typeof out.model !== 'string') {
-      out.model = DEFAULT_KORTIX_MODEL
+      out.model = DEFAULT_VAELORX_MODEL
     }
     if (!('small_model' in out) || typeof out.small_model !== 'string') {
-      out.small_model = DEFAULT_KORTIX_MODEL
+      out.small_model = DEFAULT_VAELORX_MODEL
     }
     // Lock opencode to the gateway as the ONLY LLM path. enabled_providers is an
     // allowlist — opencode loads ONLY these and ignores every provider it would
