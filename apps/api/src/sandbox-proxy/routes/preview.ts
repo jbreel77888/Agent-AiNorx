@@ -2,7 +2,11 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { getTraceHeaders } from '../../lib/request-context';
 import { syncSandboxEnvForPrompt } from '../../projects/lib/sandbox-env-sync';
-import { canAccessPreviewSandbox, canAccessSandboxSession } from '../../shared/preview-ownership';
+import { canAccessPreviewSandbox, canAccessSandboxSession, resolvePreviewUserContext } from '../../shared/preview-ownership';
+import {
+  KORTIX_USER_CONTEXT_HEADER,
+  encodeKortixUserContext,
+} from '../../shared/kortix-user-context';
 import {
   buildSandboxUpstreamHeaders,
   invalidatePreviewLink,
@@ -713,9 +717,27 @@ preview.all('/:sandboxId/:port/*', async (c) => {
       const curlArgs = ['curl', '-s', '-w', '\n%{http_code}'];
       if (method !== 'GET') curlArgs.push('-X', method);
 
-      // Copy relevant headers
-      const skipHeaders = new Set(['host', 'content-length', 'authorization', 'cookie', 'connection']);
+      // Build the X-Kortix-User-Context header — the daemon requires it for
+      // all non-/kortix/* paths (session, agent, command, provider, etc.).
+      // It's an HMAC-signed JSON payload signed with the service key.
       const headerArgs: string[] = [];
+      if (record.serviceKey && userId) {
+        try {
+          const payload = await resolvePreviewUserContext(record.externalId, userId);
+          if (payload) {
+            const signedHeader = encodeKortixUserContext(payload, record.serviceKey);
+            headerArgs.push('-H', `${KORTIX_USER_CONTEXT_HEADER}: ${signedHeader}`);
+          }
+        } catch (err) {
+          console.warn(`[PREVIEW] Failed to build X-Kortix-User-Context for ${sandboxId}:`, err);
+        }
+      }
+
+      // Copy relevant headers (skip ones that would conflict with the daemon's auth)
+      const skipHeaders = new Set([
+        'host', 'content-length', 'authorization', 'cookie', 'connection',
+        KORTIX_USER_CONTEXT_HEADER.toLowerCase(), // we already added it above
+      ]);
       for (const [key, value] of c.req.raw.headers.entries()) {
         if (skipHeaders.has(key.toLowerCase())) continue;
         headerArgs.push('-H', `${key}: ${value}`);

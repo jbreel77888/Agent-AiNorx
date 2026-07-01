@@ -5,10 +5,12 @@ import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/features/providers/auth-provider';
+import { InstantSessionShell } from '@/features/session/instant-session-shell';
 import { SessionChat } from '@/features/session/session-chat';
 import { SessionStartingLoader } from '@/features/session/session-starting-loader';
 import { OpenCodeEventStreamProvider } from '@/hooks/opencode/use-opencode-events';
 import { useSandboxConnection } from '@/hooks/platform/use-sandbox-connection';
+import { clearSessionFresh, isSessionFresh } from '@/lib/fresh-sessions';
 import {
   sessionStartKey,
   startSession,
@@ -18,6 +20,7 @@ import {
   useSandboxConnectionStore,
 } from '@/stores/sandbox-connection-store';
 import { useServerStore } from '@/stores/server-store';
+import { cn } from '@/lib/utils';
 
 /**
  * /sessions/[sessionId] — simple-mode (no GitHub) session view.
@@ -27,9 +30,13 @@ import { useServerStore } from '@/stores/server-store';
  *   2. Registers the sandbox in the server store + switches active server.
  *   3. Mounts SessionChat once the sandbox is connected + healthy.
  *
- * The page ALWAYS renders the SessionStartingLoader while the sandbox is
- * coming up — no InstantSessionShell, no crossfade, no complex state. This
- * eliminates the white-screen crash that the previous complex page had.
+ * For FRESH sessions (just created): shows InstantSessionShell (a chat input
+ * the user can type into immediately) while the sandbox boots. The setup steps
+ * only appear AFTER the user sends a message — inline below their message,
+ * matching the original project-mode UX.
+ *
+ * For RESUMED sessions: shows the SessionStartingLoader (checklist steps)
+ * while the sandbox wakes up.
  */
 export default function SimpleSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -112,15 +119,41 @@ export default function SimpleSessionPage() {
   );
 
   // ALWAYS mount useSandboxConnection so it can poll health and set runtimeReady.
-  // Previously this was inside RuntimeConnectionWrapper which only mounted when
-  // canShowChat=true — a chicken-and-egg deadlock (canShowChat requires
-  // runtimeReady, which is set BY useSandboxConnection). Now the hook runs
-  // as soon as the sandbox is registered in the server store.
   useSandboxConnection();
 
   // Determine if we can show chat
   const sandboxSwitched = sandbox && activeInstanceId === sandbox.sandbox_id;
   const canShowChat = !!(sandboxSwitched && runtimeReady && opencodeSessionId);
+
+  // ── Fresh session detection ──────────────────────────────────────────────
+  // Fresh = just created (markSessionFresh was called in the sessions list page).
+  // Fresh sessions show InstantSessionShell (chat input) instead of the loader.
+  const [isFresh, setIsFresh] = useState(() => isSessionFresh(sessionId));
+  useEffect(() => {
+    setIsFresh(isSessionFresh(sessionId));
+  }, [sessionId]);
+
+  // Crossfade state: InstantSessionShell → SessionChat
+  const [chatReady, setChatReady] = useState(false);
+  const [shellMounted, setShellMounted] = useState(true);
+
+  // When canShowChat becomes true, mark chat as ready after a brief delay
+  // to allow SessionChat to mount and render before the crossfade.
+  useEffect(() => {
+    if (canShowChat && !chatReady) {
+      const t = setTimeout(() => setChatReady(true), 200);
+      return () => clearTimeout(t);
+    }
+  }, [canShowChat, chatReady]);
+
+  useEffect(() => {
+    if (chatReady) {
+      clearSessionFresh(sessionId);
+      // Unmount the shell after the crossfade completes
+      const t = setTimeout(() => setShellMounted(false), 400);
+      return () => clearTimeout(t);
+    }
+  }, [chatReady, sessionId]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
   if (authLoading || !user) {
@@ -150,18 +183,41 @@ export default function SimpleSessionPage() {
   }
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="relative flex h-full w-full flex-col overflow-hidden">
       {/* Chat layer — mounted only when everything is ready */}
       {canShowChat && (
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div
+          className={cn(
+            'absolute inset-0 flex min-h-0 flex-1 flex-col transition-opacity duration-300 ease-out',
+            chatReady ? 'opacity-100' : 'pointer-events-none opacity-0',
+          )}
+        >
           <OpenCodeEventStreamProvider />
           <SessionChat sessionId={opencodeSessionId!} />
         </div>
       )}
 
-      {/* Loader layer — shown while sandbox is provisioning/booting */}
-      {!canShowChat && (
-        <FullScreenLoader stage={startStage} />
+      {/* Shell / Loader layer — shown while sandbox is provisioning/booting */}
+      {!chatReady && shellMounted && (
+        <div
+          className={cn(
+            'absolute inset-0 flex flex-col transition-opacity duration-300 ease-out',
+            chatReady ? 'pointer-events-none opacity-0' : 'opacity-100',
+          )}
+        >
+          {isFresh ? (
+            <InstantSessionShell
+              sessionId={sessionId}
+              stage={startStage}
+              onSubmit={() => {
+                // The shell handles the pending prompt; SessionChat will
+                // pick it up when it mounts.
+              }}
+            />
+          ) : (
+            <FullScreenLoader stage={startStage} />
+          )}
+        </div>
       )}
     </div>
   );
