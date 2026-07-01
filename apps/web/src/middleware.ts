@@ -171,7 +171,7 @@ export async function middleware(request: NextRequest) {
         (route) => pathname === route || pathname.startsWith(route + '/'),
       );
     if (!isAllowed) {
-      return NextResponse.redirect(new URL('/projects', request.url));
+      return NextResponse.redirect(new URL('/sessions', request.url));
     }
   }
 
@@ -274,14 +274,14 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // FAST PATH: authenticated users hitting the homepage go straight to /projects.
+  // FAST PATH: authenticated users hitting the homepage go straight to /sessions.
   if (pathname === '/' && user) {
-    return NextResponse.redirect(new URL('/projects', request.url));
+    return NextResponse.redirect(new URL('/sessions', request.url));
   }
 
-  // Desktop shell never shows the marketing homepage — bounce to /projects.
+  // Desktop shell never shows the marketing homepage — bounce to /sessions.
   if (pathname === '/' && request.headers.get('user-agent')?.includes('KortixDesktop')) {
-    return NextResponse.redirect(new URL('/projects', request.url));
+    return NextResponse.redirect(new URL('/sessions', request.url));
   }
 
   // Allow all public routes — but return supabaseResponse (not NextResponse.next())

@@ -706,6 +706,12 @@ preview.all('/:sandboxId/:port/*', async (c) => {
   // This is transparent to the frontend — same URL, same auth, same response.
   const record = await loadSandbox(sandboxId);
   if (record?.provider === 'tensorlake' && record.status === 'active' && record.externalId) {
+    // SSE streams (/global/event) can't be bridged via curl — they hang forever.
+    // Return an empty 200 so the frontend's EventSource doesn't retry aggressively.
+    if (remainingPath.includes('/global/event') || remainingPath.includes('/event')) {
+      return new Response('', { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+    }
+
     try {
       const { Sandbox } = await import('../../shared/tensorlake');
       const sb = await Sandbox.connect({ sandboxId: record.externalId });
@@ -713,34 +719,46 @@ preview.all('/:sandboxId/:port/*', async (c) => {
       const queryString = upstreamUrl.search;
       const daemonUrl = `http://localhost:${port}${remainingPath}${queryString}`;
 
-      // Build curl command
-      const curlArgs = ['curl', '-s', '-w', '\n%{http_code}'];
-      if (method !== 'GET') curlArgs.push('-X', method);
-
       // Build the X-Kortix-User-Context header — the daemon requires it for
       // all non-/kortix/* paths (session, agent, command, provider, etc.).
-      // It's an HMAC-signed JSON payload signed with the service key.
-      const headerArgs: string[] = [];
+      let userContextHeader = '';
       if (record.serviceKey && userId) {
         try {
           const payload = await resolvePreviewUserContext(record.externalId, userId);
           if (payload) {
-            const signedHeader = encodeKortixUserContext(payload, record.serviceKey);
-            headerArgs.push('-H', `${KORTIX_USER_CONTEXT_HEADER}: ${signedHeader}`);
+            userContextHeader = encodeKortixUserContext(payload, record.serviceKey);
           }
         } catch (err) {
           console.warn(`[PREVIEW] Failed to build X-Kortix-User-Context for ${sandboxId}:`, err);
         }
       }
 
-      // Copy relevant headers (skip ones that would conflict with the daemon's auth)
+      // Build a curl config file to avoid ALL shell escaping issues.
+      // The X-Kortix-User-Context header is a long JWT-like string that breaks
+      // single-quote escaping. Writing it to a file and using --config is safe.
+      const configFile = `/tmp/curl_cfg_${Date.now()}.txt`;
+      const configLines: string[] = [];
+      configLines.push(`url = "${daemonUrl}"`);
+      configLines.push(`silent`);
+      configLines.push(`show-error`);
+      configLines.push(`write-out = "\n%{http_code}"`);
+      if (method !== 'GET') configLines.push(`request = "${method}"`);
+
+      // Add X-Kortix-User-Context header
+      if (userContextHeader) {
+        configLines.push(`header = "${KORTIX_USER_CONTEXT_HEADER}: ${userContextHeader}"`);
+      }
+
+      // Copy relevant headers (skip ones that would conflict)
       const skipHeaders = new Set([
         'host', 'content-length', 'authorization', 'cookie', 'connection',
-        KORTIX_USER_CONTEXT_HEADER.toLowerCase(), // we already added it above
+        KORTIX_USER_CONTEXT_HEADER.toLowerCase(),
       ]);
       for (const [key, value] of c.req.raw.headers.entries()) {
         if (skipHeaders.has(key.toLowerCase())) continue;
-        headerArgs.push('-H', `${key}: ${value}`);
+        // Escape double quotes in header value
+        const safeValue = value.replace(/"/g, '\\"');
+        configLines.push(`header = "${key}: ${safeValue}"`);
       }
 
       // Write body to temp file if present
@@ -749,26 +767,29 @@ preview.all('/:sandboxId/:port/*', async (c) => {
         bodyFile = `/tmp/proxy_${Date.now()}.bin`;
         const bodyStr = Buffer.from(body).toString('utf-8');
         await sb.run('bash', { args: ['-c', `cat > ${bodyFile}`], stdin: bodyStr, timeout: 5 });
-        curlArgs.push('-d', `@${bodyFile}`);
+        configLines.push(`data = "@${bodyFile}"`);
       }
 
-      const fullArgs = [...curlArgs, ...headerArgs, daemonUrl];
-      // Use a heredoc-safe approach: write the command to a script file
-      const script = fullArgs.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ');
+      const configContent = configLines.join('\n');
+      await sb.run('bash', { args: ['-c', `cat > ${configFile}`], stdin: configContent, timeout: 5 });
+
+      // Execute curl with the config file
       const result = await sb.run('bash', {
-        args: ['-c', script],
+        args: ['-c', `curl --config ${configFile}`],
         timeout: 30,
       });
 
+      // Clean up temp files
+      if (bodyFile) await sb.run('bash', { args: ['-c', `rm -f ${bodyFile} ${configFile}`], timeout: 3 }).catch(() => {});
+      else await sb.run('bash', { args: ['-c', `rm -f ${configFile}`], timeout: 3 }).catch(() => {});
+
       const output = String((result as any).stdout ?? '');
+      const stderr = String((result as any).stderr ?? '');
+      
+      // Parse the response: last line is the HTTP status code
       const lines = output.split('\n');
       const statusCode = parseInt(lines[lines.length - 1] || '0', 10) || 502;
       const responseBody = lines.slice(0, -1).join('\n');
-
-      // Clean up temp file
-      if (bodyFile) {
-        await sb.run('bash', { args: ['-c', `rm -f ${bodyFile}`], timeout: 3 }).catch(() => {});
-      }
 
       // Return the response with the correct status code
       const contentType = responseBody.trimStart().startsWith('{') || responseBody.trimStart().startsWith('[')
