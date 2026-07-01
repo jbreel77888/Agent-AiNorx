@@ -50,6 +50,42 @@ projectsApp.openapi(
   async (c: any) => {
     const projectId = c.req.param('projectId');
     const sessionId = c.req.param('sessionId');
+
+    // ── Simple mode redirect ──────────────────────────────────────────────
+    if (config.KORTIX_SESSION_MODE === 'simple') {
+      const userId = c.get('userId') as string;
+      const { db } = await import('../../shared/db');
+      const { projectSessions, sessionSandboxes } = await import('@kortix/db');
+      const { eq } = await import('drizzle-orm');
+      const [session] = await db.select().from(projectSessions).where(eq(projectSessions.sessionId, sessionId)).limit(1);
+      if (!session) return c.json({ error: 'Session not found' }, 404);
+      const [sandbox] = await db.select().from(sessionSandboxes).where(eq(sessionSandboxes.sandboxId, sessionId)).limit(1);
+      if (!sandbox || !sandbox.externalId) {
+        return c.json({ stage: 'provisioning', retriable: true, sandbox: null, opencode_session_id: null });
+      }
+      if (sandbox.status === 'error') {
+        return c.json({ stage: 'failed', retriable: false, sandbox: { sandbox_id: sandbox.sandboxId, session_id: sessionId, external_id: sandbox.externalId, status: sandbox.status, provider: sandbox.provider }, opencode_session_id: null });
+      }
+      const { getProvider } = await import('../../platform/providers');
+      const { ensureOpencodeSessionPin } = await import('../opencode-mapping');
+      let providerStatus: string = 'unknown';
+      try { const provider = getProvider(sandbox.provider as any); providerStatus = await provider.getStatus(sandbox.externalId) as string; } catch {}
+      if (providerStatus === 'removed') {
+        await db.update(sessionSandboxes).set({ status: 'error', updatedAt: new Date() }).where(eq(sessionSandboxes.sandboxId, sessionId));
+        return c.json({ stage: 'failed', retriable: false, sandbox: { sandbox_id: sandbox.sandboxId, session_id: sessionId, external_id: sandbox.externalId, status: 'error', provider: sandbox.provider }, opencode_session_id: null });
+      }
+      if (providerStatus !== 'running') {
+        if (providerStatus === 'stopped') { try { const p = getProvider(sandbox.provider as any); void p.start(sandbox.externalId).catch(() => {}); } catch {} }
+        return c.json({ stage: 'starting', retriable: true, sandbox: null, opencode_session_id: null });
+      }
+      const currentPin = session.opencodeSessionId ?? null;
+      let ensured;
+      try { ensured = await ensureOpencodeSessionPin({ projectId: '00000000-0000-0000-0000-000000000000', sessionId, accountId: session.accountId, externalId: sandbox.externalId, userId, currentPin }); } catch { ensured = { pin: currentPin, changed: false, reason: 'unreachable' } as any; }
+      if (ensured.pin && ensured.pin !== currentPin) { await db.update(projectSessions).set({ opencodeSessionId: ensured.pin, updatedAt: new Date() }).where(eq(projectSessions.sessionId, sessionId)).catch(() => {}); }
+      const booting = ensured.reason === 'not_ready' || ensured.reason === 'unreachable';
+      return c.json({ stage: booting ? 'starting' : 'ready', retriable: booting, sandbox: { sandbox_id: sandbox.sandboxId, session_id: sessionId, external_id: sandbox.externalId, status: 'active', provider: sandbox.provider }, opencode_session_id: ensured.pin });
+    }
+
     if (!UUID_V4_REGEX.test(sessionId))
       return c.json({ error: 'Invalid session id' }, 400);
 

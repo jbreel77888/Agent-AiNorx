@@ -1,3 +1,4 @@
+import { config } from '../../config';
 import { isSessionVisibleTo, loadSessionGrants, parseSharingIntent, resolveShareSubject, setSessionSharing } from '../../executor/share';
 import { PROJECT_ACTIONS, assertAuthorized } from '../../iam';
 import { auth, errors, json } from '../../openapi';
@@ -331,6 +332,95 @@ projectsApp.openapi(
   }),
   async (c: any) => {
   const projectId = c.req.param('projectId');
+
+  // ── Simple mode redirect ────────────────────────────────────────────────
+  // When KORTIX_SESSION_MODE=simple, redirect ALL project session creation
+  // to the simple sessions API (POST /v1/sessions). This ensures that even
+  // if the frontend's SidebarLeft or Command Palette calls the project API,
+  // the session is created as a simple session (no GitHub, no project).
+  if (config.KORTIX_SESSION_MODE === 'simple') {
+    const body = await readBody(c).catch(() => ({}));
+    const userId = c.get('userId') as string;
+    let accountId = c.get('accountId') as string;
+    if (!accountId && userId) {
+      const { resolveAccountId } = await import('../../shared/resolve-account');
+      accountId = await resolveAccountId(userId);
+    }
+    if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+
+    const sessionId = (body as any)?.session_id || crypto.randomUUID();
+    const now = new Date();
+    const { db } = await import('../../shared/db');
+    const { projectSessions } = await import('@kortix/db');
+    const { eq } = await import('drizzle-orm');
+    const { config: cfg } = await import('../../config');
+
+    await db.insert(projectSessions).values({
+      sessionId,
+      accountId,
+      projectId: null,
+      status: 'provisioning',
+      visibility: 'private',
+      branchName: null,
+      sandboxId: sessionId,
+      metadata: {
+        name: (body as any)?.name || 'New Session',
+        source: 'ui',
+        session_mode: 'simple',
+        initial_prompt: (body as any)?.initial_prompt || null,
+        opencode_model: (body as any)?.opencode_model || null,
+      },
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing();
+
+    // Trigger sandbox provisioning (fire-and-forget, same as POST /v1/sessions)
+    void (async () => {
+      try {
+        const { provisionSessionSandbox } = await import('../../platform/services/session-sandbox');
+        const { buildSessionRuntimeEnv } = await import('../lib/session-runtime-env');
+        const { sandboxFrontendBaseUrl } = await import('../../platform/sandbox-frontend-url');
+        const kortixOrigin = cfg.KORTIX_URL?.replace(/\/+$/, '') || 'http://localhost:8008';
+        const runtimeEnv = buildSessionRuntimeEnv({
+          sessionId,
+          agentName: 'default',
+          apiUrl: `${kortixOrigin}/v1`,
+          frontendUrl: sandboxFrontendBaseUrl(),
+          initialPrompt: (body as any)?.initial_prompt || null,
+          opencodeModel: (body as any)?.opencode_model || null,
+          sessionMode: 'simple',
+        });
+        await provisionSessionSandbox({
+          sandboxId: sessionId,
+          accountId,
+          projectId: '00000000-0000-0000-0000-000000000000' as any,
+          userId,
+          agentName: 'default',
+          provider: (cfg.ALLOWED_SANDBOX_PROVIDERS as readonly string[])[0] as any,
+          metadata: { session_id: sessionId, session_mode: 'simple', name: (body as any)?.name || 'New Session' },
+          extraEnvVars: { ...runtimeEnv, KORTIX_PROJECT_AUTO_CLONE: '0' },
+          gitProject: {
+            projectId: '00000000-0000-0000-0000-000000000000',
+            repoUrl: '',
+            defaultBranch: 'main',
+            manifestPath: 'kortix.toml',
+            gitAuthToken: null,
+          },
+          baseRef: 'main',
+        });
+      } catch (err) {
+        console.error(`[projects/sessions] Simple-mode provisioning failed for ${sessionId}:`, err);
+        await db.update(projectSessions).set({
+          status: 'failed',
+          error: err instanceof Error ? err.message : String(err),
+          updatedAt: new Date(),
+        }).where(eq(projectSessions.sessionId, sessionId));
+      }
+    })();
+
+    return c.json({ session_id: sessionId, status: 'provisioning', name: (body as any)?.name || 'New Session' }, 201);
+  }
+
   const body = await readBody(c);
   const loaded = await loadProjectForUser(c, projectId, 'write');
   if (!loaded) return c.json({ error: 'Not found' }, 404);
