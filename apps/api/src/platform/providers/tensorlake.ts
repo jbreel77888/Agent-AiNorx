@@ -23,6 +23,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
+import { getStarterFiles } from '@kortix/starter';
 import { config, SANDBOX_VERSION } from '../../config';
 import {
   Sandbox,
@@ -658,29 +659,29 @@ export class TensorlakeProvider implements SandboxProvider {
     // (memory, skills, tools, agents) that was previously only available in
     // project mode via GitHub clone.
     try {
-      const { getStarterFiles } = await import('@kortix/starter');
+      console.log('[tensorlake] Starting scaffold injection into /workspace...');
       const starterFiles = getStarterFiles({
         projectName: 'VaelorX Session',
         template: 'general-knowledge-worker',
       });
+      console.log(`[tensorlake] Scaffold files to inject: ${starterFiles.length}`);
 
       let injected = 0;
+      let failed = 0;
       for (const file of starterFiles) {
         const filePath = `/workspace/${file.path}`;
         try {
-          // Create parent directories first
           const dir = filePath.substring(0, filePath.lastIndexOf('/'));
           await sandbox.run('bash', { args: ['-c', `mkdir -p ${dir}`], timeout: 5 });
-          // Write the file
           await sandbox.writeFile(filePath, Buffer.from(file.content, 'utf-8'));
           injected++;
         } catch {
-          // Skip files that fail (e.g., binary files)
+          failed++;
         }
       }
-      console.log(`[tensorlake] Scaffold injected: ${injected} files into /workspace`);
+      console.log(`[tensorlake] Scaffold injected: ${injected} files (${failed} failed) into /workspace`);
     } catch (err) {
-      console.warn(`[tensorlake] Scaffold injection failed:`, err instanceof Error ? err.message : String(err));
+      console.error(`[tensorlake] Scaffold injection FAILED:`, err instanceof Error ? err.message : String(err));
     }
   }
 }
