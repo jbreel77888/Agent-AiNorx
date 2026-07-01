@@ -650,6 +650,38 @@ export class TensorlakeProvider implements SandboxProvider {
     }
 
     console.log(`[tensorlake] Cold-boot setup complete for sandbox ${sandbox.sandboxId}. Last output: ${stdout.split('\n').filter(Boolean).slice(-3).join(' | ')}`);
+
+    // ── Inject scaffold files into /workspace ──────────────────────────────
+    // The scaffold (vaelorx.toml, .vaelorx/opencode/agents, skills, tools, etc.)
+    // is NOT baked into the old snapshot. Inject it directly using the SDK's
+    // writeFile method. This gives the agent the full workspace structure
+    // (memory, skills, tools, agents) that was previously only available in
+    // project mode via GitHub clone.
+    try {
+      const { getStarterFiles } = await import('@kortix/starter');
+      const starterFiles = getStarterFiles({
+        projectName: 'VaelorX Session',
+        template: 'general-knowledge-worker',
+      });
+
+      let injected = 0;
+      for (const file of starterFiles) {
+        const filePath = `/workspace/${file.path}`;
+        try {
+          // Create parent directories first
+          const dir = filePath.substring(0, filePath.lastIndexOf('/'));
+          await sandbox.run('bash', { args: ['-c', `mkdir -p ${dir}`], timeout: 5 });
+          // Write the file
+          await sandbox.writeFile(filePath, Buffer.from(file.content, 'utf-8'));
+          injected++;
+        } catch {
+          // Skip files that fail (e.g., binary files)
+        }
+      }
+      console.log(`[tensorlake] Scaffold injected: ${injected} files into /workspace`);
+    } catch (err) {
+      console.warn(`[tensorlake] Scaffold injection failed:`, err instanceof Error ? err.message : String(err));
+    }
   }
 }
 
