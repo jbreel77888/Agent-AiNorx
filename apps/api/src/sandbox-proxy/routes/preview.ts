@@ -733,20 +733,23 @@ preview.all('/:sandboxId/:port/*', async (c) => {
         }
       }
 
-      // Build a curl config file to avoid ALL shell escaping issues.
-      // The X-Kortix-User-Context header is a long JWT-like string that breaks
-      // single-quote escaping. Writing it to a file and using --config is safe.
+      // Build a shell script that writes the config file and runs curl.
+      // This avoids ALL shell escaping issues — the config file is written
+      // via a heredoc, and curl reads it via --config.
       const configFile = `/tmp/curl_cfg_${Date.now()}.txt`;
-      const configLines: string[] = [];
-      configLines.push(`url = "${daemonUrl}"`);
-      configLines.push(`silent`);
-      configLines.push(`show-error`);
-      configLines.push(`write-out = "\n%{http_code}"`);
-      if (method !== 'GET') configLines.push(`request = "${method}"`);
+      const bodyFile = body && body.byteLength > 0 ? `/tmp/proxy_${Date.now()}.bin` : '';
+
+      // Build config file content
+      const configParts: string[] = [];
+      configParts.push(`url = "${daemonUrl.replace(/"/g, '\\"')}"`);
+      configParts.push('silent');
+      configParts.push('show-error');
+      configParts.push('write-out = "\n%{http_code}"');
+      if (method !== 'GET') configParts.push(`request = "${method}"`);
 
       // Add X-Kortix-User-Context header
       if (userContextHeader) {
-        configLines.push(`header = "${KORTIX_USER_CONTEXT_HEADER}: ${userContextHeader}"`);
+        configParts.push(`header = "${KORTIX_USER_CONTEXT_HEADER}: ${userContextHeader.replace(/"/g, '\\"')}"`);
       }
 
       // Copy relevant headers (skip ones that would conflict)
@@ -756,22 +759,22 @@ preview.all('/:sandboxId/:port/*', async (c) => {
       ]);
       for (const [key, value] of c.req.raw.headers.entries()) {
         if (skipHeaders.has(key.toLowerCase())) continue;
-        // Escape double quotes in header value
         const safeValue = value.replace(/"/g, '\\"');
-        configLines.push(`header = "${key}: ${safeValue}"`);
+        configParts.push(`header = "${key}: ${safeValue}"`);
       }
 
-      // Write body to temp file if present
-      let bodyFile = '';
-      if (body && body.byteLength > 0) {
-        bodyFile = `/tmp/proxy_${Date.now()}.bin`;
-        const bodyStr = Buffer.from(body).toString('utf-8');
-        await sb.run('bash', { args: ['-c', `cat > ${bodyFile}`], stdin: bodyStr, timeout: 5 });
-        configLines.push(`data = "@${bodyFile}"`);
+      if (bodyFile) configParts.push(`data = "@${bodyFile}"`);
+
+      const configContent = configParts.join('\n');
+
+      // Write body file first (if present) — use the SDK's writeFile method
+      // (the SDK's run() method doesn't support stdin)
+      if (bodyFile && body) {
+        await sb.writeFile(bodyFile, Buffer.from(body));
       }
 
-      const configContent = configLines.join('\n');
-      await sb.run('bash', { args: ['-c', `cat > ${configFile}`], stdin: configContent, timeout: 5 });
+      // Write config file — use the SDK's writeFile method
+      await sb.writeFile(configFile, Buffer.from(configContent));
 
       // Execute curl with the config file
       const result = await sb.run('bash', {
