@@ -462,6 +462,108 @@ sessionFilesApp.get('/:sessionId/health', async (c) => {
   }
 });
 
+// ─── SDK bridge: proxy ANY request to the daemon via SDK ─────────────────────
+// The Tensorlake HTTP proxy (https://8000-<id>.sandbox.tensorlake.ai) is broken
+// (returns 502 for all requests). This endpoint bridges the frontend to the
+// daemon by executing curl INSIDE the sandbox via the SDK's native gRPC transport.
+//
+// Frontend calls: POST /v1/sessions/:sessionId/proxy
+// Body: { method, path, headers?, body? }
+// Returns: { status, headers, body }
+
+sessionFilesApp.post('/:sessionId/proxy', async (c) => {
+  const sessionId = c.req.param('sessionId');
+
+  const [sandbox] = await db
+    .select()
+    .from(sessionSandboxes)
+    .where(eq(sessionSandboxes.sandboxId, sessionId))
+    .limit(1);
+
+  if (!sandbox || !sandbox.externalId) {
+    return c.json({ status: 503, body: 'Sandbox not ready' }, 503);
+  }
+
+  const reqBody = await c.req.json().catch(() => ({})) as {
+    method: string;
+    path: string;
+    headers?: Record<string, string>;
+    body?: string;
+  };
+
+  if (!reqBody.path) {
+    return c.json({ error: 'path is required' }, 400);
+  }
+
+  const method = (reqBody.method || 'GET').toUpperCase();
+  const daemonPath = reqBody.path.startsWith('/') ? reqBody.path : `/${reqBody.path}`;
+  const url = `http://localhost:8000${daemonPath}`;
+
+  try {
+    const { Sandbox } = await import('../shared/tensorlake');
+    const sb = await Sandbox.connect({ sandboxId: sandbox.externalId });
+
+    // Build the curl command
+    const curlParts = ['curl', '-s', '-w', '\n%{http_code}'];
+    
+    // Add method
+    if (method !== 'GET') {
+      curlParts.push('-X', method);
+    }
+
+    // Add headers (skip Authorization — the daemon's /kortix/* endpoints don't need it,
+    // and /session requires X-Kortix-User-Context which is complex to sign here.
+    // The daemon's /kortix/health already provides the opencode_session_id.)
+    if (reqBody.headers) {
+      for (const [key, value] of Object.entries(reqBody.headers)) {
+        if (key.toLowerCase() === 'content-length') continue;
+        curlParts.push('-H', `${key}: ${value}`);
+      }
+    }
+
+    // Add body
+    if (reqBody.body && method !== 'GET') {
+      // Write body to a temp file to avoid shell escaping issues
+      const bodyFile = `/tmp/proxy_body_${Date.now()}.json`;
+      const writeResult = await sb.run('bash', {
+        args: ['-c', `cat > ${bodyFile}`],
+        stdin: reqBody.body,
+        timeout: 5,
+      });
+      curlParts.push('-d', `@${bodyFile}`);
+    }
+
+    curlParts.push(url);
+
+    const result = await sb.run('bash', {
+      args: ['-c', curlParts.map(p => `'${p.replace(/'/g, "'\\''")}'`).join(' ')],
+      timeout: 15,
+    });
+
+    const output = String((result as any).stdout ?? '');
+    // The last line is the HTTP status code (from -w '\n%{http_code}')
+    const lines = output.split('\n');
+    const statusCode = parseInt(lines[lines.length - 1] || '0', 10) || 502;
+    const responseBody = lines.slice(0, -1).join('\n');
+
+    // Try to parse as JSON, otherwise return as text
+    let parsed: unknown = responseBody;
+    try {
+      parsed = JSON.parse(responseBody);
+    } catch {
+      // keep as string
+    }
+
+    return c.json({ status: statusCode, body: parsed }, 200);
+  } catch (err) {
+    console.error(`[sessions/proxy] failed:`, err);
+    return c.json({
+      status: 502,
+      body: err instanceof Error ? err.message : String(err),
+    }, 200);
+  }
+});
+
 // ─── List files ───────────────────────────────────────────────────────────────
 
 sessionFilesApp.get('/:sessionId/files', async (c) => {

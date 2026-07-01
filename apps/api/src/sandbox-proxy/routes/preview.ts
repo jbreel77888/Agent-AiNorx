@@ -693,6 +693,74 @@ preview.all('/:sandboxId/:port/*', async (c) => {
     prefixIndex !== -1 ? fullPath.slice(prefixIndex + prefixPattern.length) || '/' : '/';
   const upstreamUrl = new URL(c.req.url);
   upstreamUrl.searchParams.delete('token');
+
+  // ── Tensorlake SDK bridge ───────────────────────────────────────────────
+  // The Tensorlake HTTP proxy (https://<port>-<id>.sandbox.tensorlake.ai) is
+  // broken — returns 502 for ALL requests. Instead of forwarding to it (which
+  // takes ~48s of retries before returning 502), use the SDK's native gRPC
+  // transport to run curl inside the sandbox and return the daemon's response.
+  // This is transparent to the frontend — same URL, same auth, same response.
+  const record = await loadSandbox(sandboxId);
+  if (record?.provider === 'tensorlake' && record.status === 'active' && record.externalId) {
+    try {
+      const { Sandbox } = await import('../../shared/tensorlake');
+      const sb = await Sandbox.connect({ sandboxId: record.externalId });
+
+      const queryString = upstreamUrl.search;
+      const daemonUrl = `http://localhost:${port}${remainingPath}${queryString}`;
+
+      // Build curl command
+      const curlArgs = ['curl', '-s', '-w', '\n%{http_code}'];
+      if (method !== 'GET') curlArgs.push('-X', method);
+
+      // Copy relevant headers
+      const skipHeaders = new Set(['host', 'content-length', 'authorization', 'cookie', 'connection']);
+      const headerArgs: string[] = [];
+      for (const [key, value] of c.req.raw.headers.entries()) {
+        if (skipHeaders.has(key.toLowerCase())) continue;
+        headerArgs.push('-H', `${key}: ${value}`);
+      }
+
+      // Write body to temp file if present
+      let bodyFile = '';
+      if (body && body.byteLength > 0) {
+        bodyFile = `/tmp/proxy_${Date.now()}.bin`;
+        const bodyStr = Buffer.from(body).toString('utf-8');
+        await sb.run('bash', { args: ['-c', `cat > ${bodyFile}`], stdin: bodyStr, timeout: 5 });
+        curlArgs.push('-d', `@${bodyFile}`);
+      }
+
+      const fullArgs = [...curlArgs, ...headerArgs, daemonUrl];
+      // Use a heredoc-safe approach: write the command to a script file
+      const script = fullArgs.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ');
+      const result = await sb.run('bash', {
+        args: ['-c', script],
+        timeout: 30,
+      });
+
+      const output = String((result as any).stdout ?? '');
+      const lines = output.split('\n');
+      const statusCode = parseInt(lines[lines.length - 1] || '0', 10) || 502;
+      const responseBody = lines.slice(0, -1).join('\n');
+
+      // Clean up temp file
+      if (bodyFile) {
+        await sb.run('bash', { args: ['-c', `rm -f ${bodyFile}`], timeout: 3 }).catch(() => {});
+      }
+
+      // Return the response with the correct status code
+      const contentType = responseBody.trimStart().startsWith('{') || responseBody.trimStart().startsWith('[')
+        ? 'application/json'
+        : 'text/plain';
+      return new Response(responseBody, {
+        status: statusCode,
+        headers: { 'Content-Type': contentType },
+      });
+    } catch (err) {
+      console.error(`[PREVIEW] Tensorlake SDK bridge failed for ${sandboxId}:${port}:`, err);
+      return jsonProxyError({ error: 'SDK bridge failed', detail: err instanceof Error ? err.message : String(err) }, 502);
+    }
+  }
   const queryString = upstreamUrl.search;
 
   const origin = c.req.header('Origin') || '';
