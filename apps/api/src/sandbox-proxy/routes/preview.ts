@@ -777,27 +777,27 @@ preview.all('/:sandboxId/:port/*', async (c) => {
       // Write config file — use the SDK's writeFile method
       await sb.writeFile(configFile, Buffer.from(configContent));
 
-      // Execute curl with the config file
+      // Execute curl: write body to a file, get status code separately.
+      // This avoids all parsing issues with -w and large JSON bodies.
+      const outputFile = `/tmp/curl_out_${Date.now()}.txt`;
       const result = await sb.run('bash', {
-        args: ['-c', `curl -s -w '\\n---HTTP_CODE:%{http_code}---' --config ${configFile}`],
+        args: ['-c', `curl -s -o ${outputFile} -w '%{http_code}' --config ${configFile}`],
         timeout: 30,
       });
 
+      // Read the output body file
+      let responseBody = '';
+      try {
+        const readResult = await sb.run('bash', { args: ['-c', `cat ${outputFile}`], timeout: 5 });
+        responseBody = String((readResult as any).stdout ?? '');
+      } catch { /* empty body */ }
+
       // Clean up temp files
-      if (bodyFile) await sb.run('bash', { args: ['-c', `rm -f ${bodyFile} ${configFile}`], timeout: 3 }).catch(() => {});
-      else await sb.run('bash', { args: ['-c', `rm -f ${configFile}`], timeout: 3 }).catch(() => {});
+      const cleanupFiles = bodyFile ? `${bodyFile} ${configFile} ${outputFile}` : `${configFile} ${outputFile}`;
+      await sb.run('bash', { args: ['-c', `rm -f ${cleanupFiles}`], timeout: 3 }).catch(() => {});
 
-      const output = String((result as any).stdout ?? '');
-      const stderr = String((result as any).stderr ?? '');
-      const exitCode = (result as any).exitCode ?? -1;
-
-      // ALWAYS log the result for debugging
-      console.log(`[PREVIEW] SDK bridge curl: exitCode=${exitCode} outputLen=${output.length} outputTail=${output.slice(-200)} stderr=${stderr.slice(0, 200)}`);
-
-      // Parse the response: the status code is after the ---HTTP_CODE: marker
-      const httpCodeMatch = output.match(/---HTTP_CODE:(\d+)---\s*$/);
-      const statusCode = httpCodeMatch ? parseInt(httpCodeMatch[1], 10) : 502;
-      const responseBody = output.replace(/\n---HTTP_CODE:\d+---\s*$/, '');
+      const statusCodeStr = String((result as any).stdout ?? '').trim();
+      const statusCode = parseInt(statusCodeStr, 10) || 502;
 
       // Return the response with the correct status code
       const contentType = responseBody.trimStart().startsWith('{') || responseBody.trimStart().startsWith('[')
