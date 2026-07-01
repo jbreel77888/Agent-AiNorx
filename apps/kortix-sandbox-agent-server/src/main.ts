@@ -143,7 +143,7 @@ async function main() {
             'vaelorx_version = 1',
             '',
             '[project]',
-            `name = "${cfg.agentName || 'session'}"`,
+            `name = "${process.env.KORTIX_AGENT_NAME || 'VaelorX'}"`,
             'description = "A VaelorX session."',
             '',
             '[env]',
@@ -163,7 +163,7 @@ async function main() {
           ].join('\n'))
 
           // Write minimal README.md
-          writeFileSync(join(ws, 'README.md'), `# ${cfg.agentName || 'Session'}\n`)
+          writeFileSync(join(ws, 'README.md'), `# ${process.env.KORTIX_AGENT_NAME || 'VaelorX'}\n`)
 
           // Write minimal MEMORY.md
           writeFileSync(join(ws, '.vaelorx', 'memory', 'MEMORY.md'), [
