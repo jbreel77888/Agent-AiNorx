@@ -13,10 +13,6 @@ export default function SessionsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (!authLoading && !user) router.replace('/auth');
-  }, [authLoading, user, router]);
-
   const { data: sessions } = useQuery<SimpleSession[]>({
     queryKey: ['sessions'],
     queryFn: listSessions,
@@ -35,6 +31,18 @@ export default function SessionsPage() {
     },
   });
 
+  // Redirect to auth if not logged in
+  useEffect(() => {
+    if (!authLoading && !user) router.replace('/auth');
+  }, [authLoading, user, router]);
+
+  // Auto-redirect to the most recent session if one exists
+  useEffect(() => {
+    if (sessions && sessions.length > 0 && !createMutation.isPending) {
+      router.replace(`/sessions/${sessions[0].session_id}`);
+    }
+  }, [sessions, router, createMutation.isPending]);
+
   if (authLoading || !user) {
     return (
       <div className="flex h-full w-full items-center justify-center">
@@ -42,13 +50,6 @@ export default function SessionsPage() {
       </div>
     );
   }
-
-  // If there are sessions, redirect to the most recent one
-  useEffect(() => {
-    if (sessions && sessions.length > 0 && !createMutation.isPending) {
-      router.replace(`/sessions/${sessions[0].session_id}`);
-    }
-  }, [sessions, router, createMutation.isPending]);
 
   return (
     <div className="flex h-full w-full items-center justify-center">
