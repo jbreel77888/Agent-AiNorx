@@ -2,13 +2,16 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Component, type ReactNode } from 'react';
 
 import { useAuth } from '@/features/providers/auth-provider';
+import { InstantSessionShell } from '@/features/session/instant-session-shell';
 import { SessionChat } from '@/features/session/session-chat';
 import { SessionStartingLoader } from '@/features/session/session-starting-loader';
 import { OpenCodeEventStreamProvider } from '@/hooks/opencode/use-opencode-events';
 import { useSandboxConnection } from '@/hooks/platform/use-sandbox-connection';
+import { clearSessionFresh, isSessionFresh } from '@/lib/fresh-sessions';
 import {
   sessionStartKey,
   startSession,
@@ -18,23 +21,26 @@ import {
   useSandboxConnectionStore,
 } from '@/stores/sandbox-connection-store';
 import { useServerStore } from '@/stores/server-store';
+import { cn } from '@/lib/utils';
 
-/**
- * /sessions/[sessionId] — simple-mode (no GitHub) session view.
- *
- * Lifecycle:
- *   1. Polls POST /sessions/:sessionId/start until stage='ready' (with pin).
- *   2. Registers the sandbox in the server store + switches active server.
- *   3. Mounts SessionChat once the sandbox is connected + healthy.
- *
- * 
- * the user can type into immediately) while the sandbox boots. The setup steps
- * only appear AFTER the user sends a message — inline below their message,
- * matching the original project-mode UX.
- *
- * 
- * while the sandbox wakes up.
- */
+// Error boundary to prevent white screens
+class SessionErrorBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
+}
+
 export default function SimpleSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const { user, isLoading: authLoading } = useAuth();
@@ -44,7 +50,6 @@ export default function SimpleSessionPage() {
     if (!authLoading && !user) router.replace('/auth');
   }, [authLoading, user, router]);
 
-  // ── Poll POST /sessions/:sessionId/start until stage='ready' or terminal ──
   const { data: start } = useQuery({
     queryKey: sessionStartKey(sessionId),
     queryFn: () => startSession(sessionId),
@@ -63,26 +68,22 @@ export default function SimpleSessionPage() {
     },
   });
 
-  // ── Redirect to /sessions if the session was deleted (404) ─────────────────
   useEffect(() => {
     if (start && 'not_found' in start && start.not_found) {
       router.replace('/sessions');
     }
   }, [start, sessionId, router]);
 
-  // Normalize start data
   const startData = start && 'not_found' in start ? null : start as SessionStartResult | null;
   const sandbox = startData?.sandbox ?? null;
   const startStage = startData?.stage ?? 'provisioning';
   const opencodeSessionId = startData?.opencode_session_id ?? null;
 
-  // Subscribe to the active instance ID
   const activeInstanceId = useServerStore((s) => {
     const active = s.servers.find((entry) => entry.id === s.activeServerId);
     return active?.instanceId;
   });
 
-  // ── When sandbox becomes ready, register + switch active server ──────────
   const switchingRef = useRef(false);
   useEffect(() => {
     if (!sandbox || !sessionId) return;
@@ -110,26 +111,45 @@ export default function SimpleSessionPage() {
     })();
   }, [sandbox, sessionId, activeInstanceId]);
 
-  // ── Track runtime readiness ───────────────────────────────────────────────
   const runtimeReady = useSandboxConnectionStore(
     (s) => s.status === 'connected' && s.healthy === true,
   );
 
-  // ALWAYS mount useSandboxConnection so it can poll health and set runtimeReady.
   useSandboxConnection();
 
-  // Determine if we can show chat
   const sandboxSwitched = sandbox && activeInstanceId === sandbox.sandbox_id;
   const canShowChat = !!(sandboxSwitched && runtimeReady && opencodeSessionId);
 
-  // Track if this is a fresh session (for future use — currently just shows loader)
+  // Fresh session detection
+  const [isFresh] = useState(() => isSessionFresh(sessionId));
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // Crossfade state
+  const [chatReady, setChatReady] = useState(false);
+  const [shellMounted, setShellMounted] = useState(true);
+
+  useEffect(() => {
+    if (canShowChat && !chatReady) {
+      const t = setTimeout(() => setChatReady(true), 300);
+      return () => clearTimeout(t);
+    }
+  }, [canShowChat, chatReady]);
+
+  useEffect(() => {
+    if (chatReady) {
+      clearSessionFresh(sessionId);
+      const t = setTimeout(() => setShellMounted(false), 400);
+      return () => clearTimeout(t);
+    }
+  }, [chatReady, sessionId]);
+
   if (authLoading || !user) {
-    return <FullScreenLoader stage="provisioning" />;
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <SessionStartingLoader stage="provisioning" />
+      </div>
+    );
   }
 
-  // Fatal error
   if (sandbox && (sandbox.status === 'error' || sandbox.status === 'stopped')) {
     return (
       <div className="flex h-full w-full items-center justify-center px-6">
@@ -153,28 +173,48 @@ export default function SimpleSessionPage() {
 
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden">
-      {/* Chat layer — mounted only when everything is ready */}
+      {/* Chat layer */}
       {canShowChat && (
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div
+          className={cn(
+            'absolute inset-0 flex min-h-0 flex-1 flex-col transition-opacity duration-300 ease-out',
+            chatReady ? 'opacity-100' : 'pointer-events-none opacity-0',
+          )}
+        >
           <OpenCodeEventStreamProvider />
           <SessionChat sessionId={opencodeSessionId!} />
         </div>
       )}
 
-      {/* Loader layer — shown while sandbox is provisioning/booting */}
-      {!canShowChat && (
-        <FullScreenLoader stage={startStage} />
+      {/* Shell / Loader layer */}
+      {!chatReady && shellMounted && (
+        <div
+          className={cn(
+            'absolute inset-0 flex flex-col transition-opacity duration-300 ease-out',
+            chatReady ? 'pointer-events-none opacity-0' : 'opacity-100',
+          )}
+        >
+          <SessionErrorBoundary
+            fallback={
+              <div className="flex h-full w-full items-center justify-center">
+                <SessionStartingLoader stage={startStage} />
+              </div>
+            }
+          >
+            {isFresh ? (
+              <InstantSessionShell
+                sessionId={sessionId}
+                stage={startStage}
+                onSubmit={() => {}}
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center">
+                <SessionStartingLoader stage={startStage} />
+              </div>
+            )}
+          </SessionErrorBoundary>
+        </div>
       )}
-    </div>
-  );
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function FullScreenLoader({ stage }: { stage: string }) {
-  return (
-    <div className="flex h-full w-full items-center justify-center">
-      <SessionStartingLoader stage={stage as any} />
     </div>
   );
 }
