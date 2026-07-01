@@ -1,7 +1,6 @@
 'use client';
 
 import { AppProviders } from '@/features/layout/app-providers';
-import { SimpleSessionList } from '@/components/sidebar/simple-session-list';
 import { useAuth } from '@/features/providers/auth-provider';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -24,7 +23,6 @@ export default function SessionsLayout({ children }: { children: React.ReactNode
       showRightSidebar={false}
       showGlobalNewInstanceModal={false}
       showGlobalUserSettingsModal={false}
-      sidebarContent={<SimpleSessionList />}
     >
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         {children}

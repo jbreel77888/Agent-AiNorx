@@ -1343,8 +1343,31 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
 
   const createSession = useCreateOpenCodeSession();
 
+  // In simple mode, "New Session" creates a new Kortix session (new sandbox)
+  // instead of just an OpenCode session inside the current sandbox.
+  const isSimpleMode = process.env.NEXT_PUBLIC_SESSION_MODE === 'simple';
+
   const handleNewSession = useCallback(async () => {
     posthog.capture('new_task_clicked', { source: 'new_session_button' });
+
+    // Simple mode: create a new Kortix session via POST /v1/sessions
+    if (isSimpleMode) {
+      try {
+        const { createSession: createKortixSession } = await import('@/lib/sessions-client');
+        const { markSessionFresh } = await import('@/lib/fresh-sessions');
+        const sessionId = crypto.randomUUID();
+        markSessionFresh(sessionId);
+        router.push(`/sessions/${sessionId}`);
+        await createKortixSession({ name: 'New Session', session_id: sessionId });
+        if (isMobile) setOpenMobile(false);
+      } catch {
+        router.push('/sessions');
+        if (isMobile) setOpenMobile(false);
+      }
+      return;
+    }
+
+    // Project mode: create an OpenCode session inside the current sandbox
     try {
       const session = await createSession.mutateAsync();
       openTabAndNavigate({
@@ -1365,7 +1388,7 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
       );
       if (isMobile) setOpenMobile(false);
     }
-  }, [createSession, router, isMobile, setOpenMobile, currentInstanceId]);
+  }, [createSession, router, isMobile, setOpenMobile, currentInstanceId, isSimpleMode]);
 
   useEffect(() => {
     if (isMobile) setOpenMobile(false);

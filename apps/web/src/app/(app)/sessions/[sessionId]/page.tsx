@@ -2,12 +2,12 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
-import { Component, type ReactNode } from 'react';
+import { useEffect, useRef, useState, Component, type ReactNode } from 'react';
 
 import { useAuth } from '@/features/providers/auth-provider';
 import { InstantSessionShell } from '@/features/session/instant-session-shell';
 import { SessionChat } from '@/features/session/session-chat';
+import { SessionLayout } from '@/features/session/session-layout';
 import { SessionStartingLoader } from '@/features/session/session-starting-loader';
 import { OpenCodeEventStreamProvider } from '@/hooks/opencode/use-opencode-events';
 import { useSandboxConnection } from '@/hooks/platform/use-sandbox-connection';
@@ -173,7 +173,7 @@ export default function SimpleSessionPage() {
 
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden">
-      {/* Chat layer */}
+      {/* Chat layer — wrapped in SessionLayout for header + side panel + tabs */}
       {canShowChat && (
         <div
           className={cn(
@@ -182,7 +182,9 @@ export default function SimpleSessionPage() {
           )}
         >
           <OpenCodeEventStreamProvider />
-          <SessionChat sessionId={opencodeSessionId!} />
+          <SessionLayout sessionId={opencodeSessionId!}>
+            <SessionChat sessionId={opencodeSessionId!} />
+          </SessionLayout>
         </div>
       )}
 
