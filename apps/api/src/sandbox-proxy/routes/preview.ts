@@ -788,7 +788,13 @@ preview.all('/:sandboxId/:port/*', async (c) => {
 
       const output = String((result as any).stdout ?? '');
       const stderr = String((result as any).stderr ?? '');
-      
+      const exitCode = (result as any).exitCode ?? -1;
+
+      // Log the result for debugging
+      if (exitCode !== 0 || stderr) {
+        console.warn(`[PREVIEW] SDK bridge curl: exitCode=${exitCode} stderr=${stderr.slice(0, 300)} config=${configContent.slice(0, 300)}`);
+      }
+
       // Parse the response: last line is the HTTP status code
       const lines = output.split('\n');
       const statusCode = parseInt(lines[lines.length - 1] || '0', 10) || 502;
