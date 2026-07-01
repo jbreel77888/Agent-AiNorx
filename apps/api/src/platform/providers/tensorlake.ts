@@ -429,10 +429,33 @@ export class TensorlakeProvider implements SandboxProvider {
 
   // ─── Endpoint Resolution ───────────────────────────────────────────────────
 
+  /**
+   * Build the proxy URL for a sandbox port.
+   * Uses the sandbox's actual region-specific domain (e.g. sandbox.gcp-use4.tensorlake.ai)
+   * instead of the generic sandbox.tensorlake.ai which returns 502.
+   */
+  private async getSandboxProxyUrl(externalId: string, port: number): Promise<string> {
+    try {
+      const sb = await Sandbox.connect({ sandboxId: externalId });
+      const info = await sb.info();
+      const sandboxUrl = (info as any).sandboxUrl as string | undefined;
+      if (sandboxUrl) {
+        // sandboxUrl is like: https://<id>.sandbox.gcp-use4.tensorlake.ai
+        // We need: https://<port>-<id>.sandbox.gcp-use4.tensorlake.ai
+        const urlObj = new URL(sandboxUrl);
+        const host = urlObj.hostname;
+        return `https://${port}-${host}`;
+      }
+    } catch (err) {
+      console.warn(`[TENSORLAKE] Failed to get sandbox URL for ${externalId}, using fallback:`, err);
+    }
+    // Fallback to the generic URL (may 502 on region-specific sandboxes)
+    return `https://${port}-${externalId}.sandbox.tensorlake.ai`;
+  }
+
   async resolveEndpoint(externalId: string): Promise<ResolvedEndpoint> {
-    // Tensorlake URLs are deterministic: https://{port}-{id}.sandbox.tensorlake.ai
-    // No preview link resolution or signed URLs needed (unlike Daytona).
-    const url = `https://${AGENT_PORT}-${externalId}.sandbox.tensorlake.ai`;
+    // Use the sandbox's region-specific URL instead of the generic one
+    const url = await this.getSandboxProxyUrl(externalId, AGENT_PORT);
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -475,7 +498,7 @@ export class TensorlakeProvider implements SandboxProvider {
     }
 
     return {
-      url: `https://${port}-${externalId}.sandbox.tensorlake.ai`,
+      url: await this.getSandboxProxyUrl(externalId, port),
       token: config.TENSORLAKE_API_KEY,
     };
   }

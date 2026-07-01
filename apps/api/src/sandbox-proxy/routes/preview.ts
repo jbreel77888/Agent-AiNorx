@@ -336,14 +336,14 @@ export async function forwardToSandbox(
   // returning 502 to the client. Skip retries entirely for Tensorlake — return
   // the 502 immediately so the frontend can fall back to /sessions/:id/health.
   const isTensorlake = record.provider === 'tensorlake';
-  const MAX_RETRIES = isTensorlake ? 0 : 3;
+  const MAX_RETRIES = 3;
   // Short early delays so a transient post-restore RX stall (CH virtio-net misses
   // the first RX interrupt → daemon briefly unreachable ~1s) clears on the next
   // attempt instead of stretching to seconds. The old [2000,5000,8000] turned a
   // ~1s stall into the multi-second session-list lag observed in-browser
   // (opencode-listed +5578ms, 2026-06-14). Later delays stay progressive for a
   // genuinely cold-booting port.
-  const RETRY_DELAYS_MS = isTensorlake ? [] : [250, 1000, 3000];
+  const RETRY_DELAYS_MS = [250, 1000, 3000];
   let wakeTriggered = false;
   // Only a CONFIRMED-dead provider signal (box stopped/archived) errors the row.
   // A transient unreachable / RX stall must NEVER error a sandbox whose daemon
@@ -698,123 +698,11 @@ preview.all('/:sandboxId/:port/*', async (c) => {
   const upstreamUrl = new URL(c.req.url);
   upstreamUrl.searchParams.delete('token');
 
-  // ── Tensorlake SDK bridge ───────────────────────────────────────────────
-  // The Tensorlake HTTP proxy (https://<port>-<id>.sandbox.tensorlake.ai) is
-  // broken — returns 502 for ALL requests. Instead of forwarding to it (which
-  // takes ~48s of retries before returning 502), use the SDK's native gRPC
-  // transport to run curl inside the sandbox and return the daemon's response.
-  // This is transparent to the frontend — same URL, same auth, same response.
-  const record = await loadSandbox(sandboxId);
-  console.log(`[PREVIEW] SDK bridge check: sandboxId=${sandboxId} provider=${record?.provider} status=${record?.status} externalId=${record?.externalId ? 'present' : 'null'}`);
-  if (record?.provider === 'tensorlake' && record.status === 'active' && record.externalId) {
-    // SSE streams (/global/event) can't be bridged via curl — they hang forever.
-    // Return an empty 200 so the frontend's EventSource doesn't retry aggressively.
-    if (remainingPath.includes('/global/event') || remainingPath.includes('/event')) {
-      return new Response('', { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
-    }
-
-    try {
-      const { Sandbox } = await import('../../shared/tensorlake');
-      const sb = await Sandbox.connect({ sandboxId: record.externalId });
-
-      const queryString = upstreamUrl.search;
-      const daemonUrl = `http://localhost:${port}${remainingPath}${queryString}`;
-
-      // Build the X-Kortix-User-Context header — the daemon requires it for
-      // all non-/kortix/* paths (session, agent, command, provider, etc.).
-      let userContextHeader = '';
-      if (record.serviceKey && userId) {
-        try {
-          const payload = await resolvePreviewUserContext(record.externalId, userId);
-          if (payload) {
-            userContextHeader = encodeKortixUserContext(payload, record.serviceKey);
-          }
-        } catch (err) {
-          console.warn(`[PREVIEW] Failed to build X-Kortix-User-Context for ${sandboxId}:`, err);
-        }
-      }
-
-      // Build a shell script that writes the config file and runs curl.
-      // This avoids ALL shell escaping issues — the config file is written
-      // via a heredoc, and curl reads it via --config.
-      const configFile = `/tmp/curl_cfg_${Date.now()}.txt`;
-      const bodyFile = body && body.byteLength > 0 ? `/tmp/proxy_${Date.now()}.bin` : '';
-
-      // Build config file content
-      const configParts: string[] = [];
-      configParts.push(`url = "${daemonUrl.replace(/"/g, '\\"')}"`);
-      // NOTE: write-out with %{http_code} doesn't work in curl config files.
-      // We'll get the status code from curl's -o /dev/null -w approach instead.
-      // The config file only has URL, method, headers, and data.
-      if (method !== 'GET') configParts.push(`request = "${method}"`);
-
-      // Add X-Kortix-User-Context header
-      if (userContextHeader) {
-        configParts.push(`header = "${KORTIX_USER_CONTEXT_HEADER}: ${userContextHeader.replace(/"/g, '\\"')}"`);
-      }
-
-      // Copy relevant headers (skip ones that would conflict)
-      const skipHeaders = new Set([
-        'host', 'content-length', 'authorization', 'cookie', 'connection',
-        KORTIX_USER_CONTEXT_HEADER.toLowerCase(),
-      ]);
-      for (const [key, value] of c.req.raw.headers.entries()) {
-        if (skipHeaders.has(key.toLowerCase())) continue;
-        const safeValue = value.replace(/"/g, '\\"');
-        configParts.push(`header = "${key}: ${safeValue}"`);
-      }
-
-      if (bodyFile) configParts.push(`data = "@${bodyFile}"`);
-
-      const configContent = configParts.join('\n');
-
-      // Write body file first (if present) — use the SDK's writeFile method
-      // (the SDK's run() method doesn't support stdin)
-      if (bodyFile && body) {
-        await sb.writeFile(bodyFile, Buffer.from(body));
-      }
-
-      // Write config file — use the SDK's writeFile method
-      await sb.writeFile(configFile, Buffer.from(configContent));
-
-      // Execute curl: write body to a file, get status code separately.
-      // This avoids all parsing issues with -w and large JSON bodies.
-      const outputFile = `/tmp/curl_out_${Date.now()}.txt`;
-      const result = await sb.run('bash', {
-        args: ['-c', `curl -s -o ${outputFile} -w '%{http_code}' --config ${configFile}`],
-        timeout: 30,
-      });
-
-      // Read the output body file using the SDK's readFile method (more reliable than cat)
-      let responseBody = '';
-      try {
-        const fileBuffer = await sb.readFile(outputFile);
-        responseBody = Buffer.from(fileBuffer).toString('utf-8');
-      } catch { /* empty body */ }
-
-      // Clean up temp files
-      const cleanupFiles = bodyFile ? `${bodyFile} ${configFile} ${outputFile}` : `${configFile} ${outputFile}`;
-      await sb.run('bash', { args: ['-c', `rm -f ${cleanupFiles}`], timeout: 3 }).catch(() => {});
-
-      // The status code is in result.stdout (from -w '%{http_code}')
-      // If -o didn't work, stdout also has the body — detect this by checking
-      // if stdout is a valid HTTP status code (just digits)
-      const stdoutStr = String((result as any).stdout ?? '').trim();
-      const statusCode = /^\d{3}$/.test(stdoutStr) ? parseInt(stdoutStr, 10) : 200;
-
-      // Return the response with the correct status code
-      const contentType = responseBody.trimStart().startsWith('{') || responseBody.trimStart().startsWith('[')
-        ? 'application/json'
-        : 'text/plain';
-      return new Response(responseBody, {
-        status: statusCode,
-        headers: { 'Content-Type': contentType },
-      });
-    } catch (err) {
-      console.error(`[PREVIEW] Tensorlake SDK bridge failed for ${sandboxId}:${port}:`, err);
-      return jsonProxyError({ error: 'SDK bridge failed', detail: err instanceof Error ? err.message : String(err) }, 502);
-    }
-  }
+  // NOTE: The Tensorlake SDK bridge workaround has been REMOVED.
+  // The proxy URL now uses the sandbox's region-specific domain
+  // (e.g. sandbox.gcp-use4.tensorlake.ai) via getSandboxProxyUrl(),
+  // which works correctly. The proxy forwards to the sandbox natively,
+  // supporting SSE streaming, WebSocket, and all HTTP methods.
   const queryString = upstreamUrl.search;
 
   const origin = c.req.header('Origin') || '';
