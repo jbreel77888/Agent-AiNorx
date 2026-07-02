@@ -564,6 +564,64 @@ sessionFilesApp.post('/:sessionId/proxy', async (c) => {
   }
 });
 
+// ─── Rename session ──────────────────────────────────────────────────────────
+
+sessionFilesApp.patch('/:sessionId', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const body = await c.req.json().catch(() => ({})) as { name?: string };
+
+  if (!body.name) {
+    return c.json({ error: 'name is required' }, 400);
+  }
+
+  await db
+    .update(projectSessions)
+    .set({
+      metadata: { name: body.name },
+      updatedAt: new Date(),
+    })
+    .where(eq(projectSessions.sessionId, sessionId));
+
+  return c.json({ ok: true, name: body.name });
+});
+
+// ─── Restart session ─────────────────────────────────────────────────────────
+
+sessionFilesApp.post('/:sessionId/restart', async (c) => {
+  const sessionId = c.req.param('sessionId');
+
+  const [sandbox] = await db
+    .select()
+    .from(sessionSandboxes)
+    .where(eq(sessionSandboxes.sandboxId, sessionId))
+    .limit(1);
+
+  if (!sandbox || !sandbox.externalId) {
+    return c.json({ error: 'Sandbox not found' }, 404);
+  }
+
+  try {
+    const { getProvider } = await import('../platform/providers');
+    const provider = getProvider(sandbox.provider as any);
+    // Stop then start
+    await provider.stop(sandbox.externalId).catch(() => {});
+    await new Promise(r => setTimeout(r, 2000));
+    await provider.start(sandbox.externalId);
+
+    // Reset session status
+    await db
+      .update(projectSessions)
+      .set({ status: 'running', updatedAt: new Date() })
+      .where(eq(projectSessions.sessionId, sessionId));
+
+    return c.json({ ok: true, status: 'restarting' });
+  } catch (err) {
+    return c.json({
+      error: err instanceof Error ? err.message : String(err),
+    }, 500);
+  }
+});
+
 // ─── List files ───────────────────────────────────────────────────────────────
 
 sessionFilesApp.get('/:sessionId/files', async (c) => {

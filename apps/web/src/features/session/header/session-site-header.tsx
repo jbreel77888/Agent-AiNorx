@@ -21,6 +21,7 @@ import { CompactModal } from '@/features/session/header/compact-modal';
 import { ExportTranscriptModal } from '@/features/session/header/export-transcript-modal';
 import { SessionChangesIndicator } from '@/features/session/header/session-changes-indicator';
 import { listProjectSessions, restartProjectSession } from '@/lib/projects-client';
+import { deleteSession, renameSession, restartSession } from '@/lib/sessions-client';
 import { cn } from '@/lib/utils';
 import { Pencil, Share, TrashSolid } from '@mynaui/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -78,13 +79,47 @@ export function SessionSiteHeader({
   const canShare = !!projectSession && projectSession.can_manage_sharing !== false;
 
   const restartMutation = useMutation({
-    mutationFn: () => restartProjectSession(projectId!, projectSessionId!),
+    mutationFn: () => {
+      if (isSimpleSession) {
+        return restartSession(simpleSessionId!);
+      }
+      return restartProjectSession(projectId!, projectSessionId!);
+    },
     onSuccess: () => {
       successToast('Restarting session…');
-      queryClient.invalidateQueries({ queryKey: ['project-sessions', projectId] });
+      if (isProjectSession) {
+        queryClient.invalidateQueries({ queryKey: ['project-sessions', projectId] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
     },
     onError: (err) => {
       errorToast(err instanceof Error ? err.message : 'Failed to restart session');
+    },
+  });
+
+  // Simple mode: inline rename + delete (no modal needed)
+  const simpleDeleteMutation = useMutation({
+    mutationFn: () => deleteSession(simpleSessionId!),
+    onSuccess: () => {
+      successToast('Session deleted');
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      router.push('/sessions');
+    },
+    onError: (err) => {
+      errorToast(err instanceof Error ? err.message : 'Failed to delete session');
+    },
+  });
+
+  const [simpleRenameValue, setSimpleRenameValue] = useState('');
+  const simpleRenameMutation = useMutation({
+    mutationFn: (name: string) => renameSession(simpleSessionId!, name),
+    onSuccess: () => {
+      successToast('Session renamed');
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      setRenameOpen(false);
+    },
+    onError: (err) => {
+      errorToast(err instanceof Error ? err.message : 'Failed to rename session');
     },
   });
 
@@ -120,14 +155,21 @@ export function SessionSiteHeader({
                   <>
                     <DropdownMenuItem
                       className="cursor-pointer"
-                      onClick={() => setRenameOpen(true)}
+                      onClick={() => {
+                        if (isSimpleSession) {
+                          const name = prompt('New session name:', sessionTitle);
+                          if (name && name.trim()) simpleRenameMutation.mutate(name.trim());
+                        } else {
+                          setRenameOpen(true);
+                        }
+                      }}
                     >
                       <Pencil />
                       {tI18nHardcoded.raw(
                         'autoFeaturesSessionHeaderSessionSiteHeaderJsxTextRename41731a53',
                       )}
                     </DropdownMenuItem>
-                    {canShare && (
+                    {isProjectSession && canShare && (
                       <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() => setShareOpen(true)}
@@ -166,7 +208,15 @@ export function SessionSiteHeader({
                 {(isProjectSession || isSimpleSession) && (
                   <DropdownMenuItem
                     className="cursor-pointer"
-                    onClick={() => setDeleteOpen(true)}
+                    onClick={() => {
+                      if (isSimpleSession) {
+                        if (confirm(`Delete "${sessionTitle}"? This cannot be undone.`)) {
+                          simpleDeleteMutation.mutate();
+                        }
+                      } else {
+                        setDeleteOpen(true);
+                      }
+                    }}
                     variant="destructive"
                   >
                     <TrashSolid />
@@ -240,20 +290,6 @@ export function SessionSiteHeader({
             open={deleteOpen}
             onOpenChange={setDeleteOpen}
             onDeleted={() => router.push(`/projects/${projectId}`)}
-          />
-        </>
-      )}
-
-      {/* Simple mode: delete + rename via simple sessions API */}
-      {isSimpleSession && (
-        <>
-          <SessionDeleteModal
-            projectId="__simple__"
-            sessionId={simpleSessionId!}
-            sessionLabel={sessionTitle}
-            open={deleteOpen}
-            onOpenChange={setDeleteOpen}
-            onDeleted={() => router.push('/sessions')}
           />
         </>
       )}

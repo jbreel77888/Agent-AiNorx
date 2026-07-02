@@ -164,3 +164,15 @@ export async function deleteSessionFile(sessionId: string, path: string): Promis
     params: { path },
   });
 }
+
+/** Rename a session. */
+export async function renameSession(sessionId: string, name: string): Promise<void> {
+  const headers = await authHeaders();
+  await backendApi.patch(`/sessions/${sessionId}`, { name }, { headers });
+}
+
+/** Restart a session (stop + start the sandbox). */
+export async function restartSession(sessionId: string): Promise<void> {
+  const headers = await authHeaders();
+  await backendApi.post(`/sessions/${sessionId}/restart`, {}, { headers });
+}
