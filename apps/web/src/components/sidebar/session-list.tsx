@@ -51,6 +51,7 @@ import {
 } from '@/lib/instance-routes';
 import { classifySession, isSidebarHidden } from '@/lib/kortix/session-category';
 import { restartSandbox } from '@/lib/platform-client';
+import { deleteSession as deleteKortixSession, listSessions as listKortixSessions } from '@/lib/sessions-client';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { useOpenCodePendingStore } from '@/stores/opencode-pending-store';
@@ -226,7 +227,8 @@ const SessionRow = memo(function SessionRow({
               <button
                 className={cn(
                   'hover:bg-sidebar-accent text-muted-foreground hover:text-sidebar-foreground cursor-pointer rounded-md p-0.5 transition-colors duration-150',
-                  isHovering ? 'opacity-100' : 'pointer-events-none opacity-0',
+                  // Always visible on mobile (no hover), hover-only on desktop
+                  isHovering ? 'opacity-100' : 'opacity-0 pointer-events-none md:opacity-100 md:pointer-events-auto',
                 )}
                 onClick={(e) => {
                   e.preventDefault();
@@ -778,7 +780,7 @@ export function SessionList({ projectId }: SessionListProps = {}) {
     const isActive = pathname?.includes(sessionToDelete.id);
 
     const tabState = useTabStore.getState();
-    const fallback = buildInstancePath(getActiveInstanceIdFromCookie() || '', '/dashboard');
+    const fallback = '/sessions';
     if (tabState.tabs[sessionToDelete.id]) {
       const nextTabId = tabState.closeTab(sessionToDelete.id);
       if (isActive) {
@@ -789,7 +791,12 @@ export function SessionList({ projectId }: SessionListProps = {}) {
       router.push(fallback);
     }
 
+    // Delete OpenCode session (inside sandbox)
     deleteSession(sessionToDelete.id);
+    // Also delete Kortix session (terminates sandbox + cleans DB)
+    deleteKortixSession(sessionToDelete.id).catch(() => {});
+    // Invalidate sessions list
+    queryClient.invalidateQueries({ queryKey: ['sessions'] });
     setSessionToDelete(null);
   };
 

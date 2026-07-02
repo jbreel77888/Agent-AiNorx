@@ -20,6 +20,7 @@ import {
   ShieldAlert,
   Sparkles,
   SquarePen,
+  Trash2,
   X,
   Zap,
 } from 'lucide-react';
@@ -73,11 +74,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useAdminRole } from '@/hooks/admin';
 import { useIsMobile } from '@/hooks/utils';
 import { cn } from '@/lib/utils';
+import { deleteSession as deleteKortixSession, listSessions as listKortixSessions } from '@/lib/sessions-client';
 import { useDocumentModalStore } from '@/stores/use-document-modal-store';
 
 import {
   useCreateOpenCodeSession,
   useOpenCodeSessions,
+  opencodeKeys,
 } from '@/hooks/opencode/use-opencode-sessions';
 import { useSandbox } from '@/hooks/platform/use-sandbox';
 import { authenticatedFetch } from '@/lib/auth-token';
@@ -1626,6 +1629,31 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
               </span>
               <KbdHint mod={isMac ? '\u2318' : 'Ctrl'} letter="J" />
             </Button>
+
+            {/* Clear all sessions */}
+            {isSimpleMode && (
+              <Button
+                onClick={async () => {
+                  if (!confirm('Delete ALL sessions? This will terminate all sandboxes and cannot be undone.')) return;
+                  try {
+                    const sessions = await listKortixSessions();
+                    await Promise.all(sessions.map(s => deleteKortixSession(s.session_id).catch(() => {})));
+                    // Also clear OpenCode sessions cache
+                    queryClient.invalidateQueries({ queryKey: ['sessions'] });
+                    queryClient.invalidateQueries({ queryKey: opencodeKeys.sessions() });
+                    router.push('/sessions');
+                    toast.success('All sessions deleted');
+                  } catch {
+                    toast.error('Failed to delete all sessions');
+                  }
+                }}
+                variant="sidebar"
+                className="group/row rounded-lg text-muted-foreground/60 hover:text-destructive"
+              >
+                <Trash2 className="flex-shrink-0" />
+                <span className="flex-1 text-left">Clear all sessions</span>
+              </Button>
+            )}
 
             {/* Search */}
             <Button
