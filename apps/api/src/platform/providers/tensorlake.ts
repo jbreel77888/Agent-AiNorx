@@ -261,6 +261,14 @@ export class TensorlakeProvider implements SandboxProvider {
 
     if (!effectiveSnapshot || !agentPresent) {
       await this.installRuntimeInSandbox(sandbox, envVars);
+    } else if (agentPresent) {
+      // Agent binary IS present (from snapshot), but the daemon process is NOT
+      // running (filesystem snapshots don't preserve processes). We need to:
+      // 1. Write the new session.env (with correct session ID)
+      // 2. Write /etc/pt-env
+      // 3. Launch the daemon
+      console.log('[tensorlake] Agent present in snapshot — writing session env + launching daemon');
+      await this.launchDaemonFromSnapshot(sandbox, envVars);
     }
 
     const externalId = sandbox.sandboxId;
@@ -543,6 +551,57 @@ export class TensorlakeProvider implements SandboxProvider {
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
+
+  /**
+   * Launch the daemon when booting from a snapshot that already has the agent
+   * binary. Filesystem snapshots don't preserve running processes, so we need
+   * to write the session env and launch the daemon manually.
+   */
+  private async launchDaemonFromSnapshot(
+    sandbox: InstanceType<typeof Sandbox>,
+    envVars: Record<string, string>,
+  ): Promise<void> {
+    try {
+      // 1. Write /opt/kortix/session.env (export format for sourcing)
+      const envExport = Object.entries(envVars)
+        .map(([k, v]) => `export ${k}='${v}'`)
+        .join('\n');
+      await sandbox.writeFile('/opt/kortix/session.env', Buffer.from(envExport, 'utf-8'));
+      await sandbox.run('bash', { args: ['-c', 'chmod 600 /opt/kortix/session.env'], timeout: 5 });
+
+      // 2. Write /etc/pt-env (key=value format, no quotes)
+      const ptEnv = Object.entries(envVars)
+        .map(([k, v]) => `${k}=${v}`)
+        .join('\n');
+      await sandbox.writeFile('/etc/pt-env', Buffer.from(ptEnv, 'utf-8'));
+
+      // 3. Launch the daemon via the entrypoint (same as cold-boot)
+      await sandbox.run('bash', {
+        args: ['-c', `setsid sudo bash -c 'set -a; source /opt/kortix/session.env; set +a; cd /; exec /usr/local/bin/kortix-entrypoint' </dev/null >/tmp/kortix-agent.log 2>&1 &`],
+        timeout: 10,
+      });
+
+      console.log('[tensorlake] Daemon launched from snapshot — waiting for port 8000...');
+
+      // 4. Wait for the daemon to start (max 30 seconds)
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+          const check = await sandbox.run('bash', {
+            args: ['-c', 'curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/kortix/health'],
+            timeout: 5,
+          });
+          if (String((check as any).stdout ?? '').trim() === '200') {
+            console.log(`[tensorlake] Daemon ready after ${i + 1}s`);
+            return;
+          }
+        } catch { /* keep waiting */ }
+      }
+      console.warn('[tensorlake] Daemon did not become ready within 30s — proceeding anyway');
+    } catch (err) {
+      console.error('[tensorlake] Failed to launch daemon from snapshot:', err);
+    }
+  }
 
   /**
    * Write environment variables as an env file inside the sandbox.
