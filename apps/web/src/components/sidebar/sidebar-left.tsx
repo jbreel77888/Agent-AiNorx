@@ -74,7 +74,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useAdminRole } from '@/hooks/admin';
 import { useIsMobile } from '@/hooks/utils';
 import { cn } from '@/lib/utils';
-import { deleteSession as deleteKortixSession, listSessions as listKortixSessions } from '@/lib/sessions-client';
+import { bulkDeleteSessions, listSessions as listKortixSessions } from '@/lib/sessions-client';
 import { useDocumentModalStore } from '@/stores/use-document-modal-store';
 
 import {
@@ -1324,6 +1324,12 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
   }>({ name: 'Loading...', email: '', avatar: '', isAdmin: false });
   const [isMac, setIsMac] = useState(false);
 
+  // Clear-all-sessions dialog state
+  const sidebarQueryClient = useQueryClient();
+  const [clearAllOpen, setClearAllOpen] = useState(false);
+  const [clearAllCount, setClearAllCount] = useState<number | null>(null);
+  const [isClearingAll, setIsClearingAll] = useState(false);
+
   useEffect(() => {
     const fetchUserData = async () => {
       const supabase = createClient();
@@ -1392,6 +1398,53 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
       if (isMobile) setOpenMobile(false);
     }
   }, [createSession, router, isMobile, setOpenMobile, currentInstanceId, isSimpleMode]);
+
+  // Open the clear-all dialog — pre-fetch session count so we can show it
+  const openClearAllDialog = useCallback(async () => {
+    setClearAllOpen(true);
+    setClearAllCount(null); // loading state
+    try {
+      const sessions = await listKortixSessions();
+      setClearAllCount(sessions.length);
+    } catch {
+      setClearAllCount(0);
+    }
+  }, []);
+
+  // Actually perform the bulk delete via the bulk endpoint
+  const handleClearAll = useCallback(async () => {
+    setIsClearingAll(true);
+    try {
+      const sessions = await listKortixSessions();
+      if (sessions.length === 0) {
+        toast.success('No sessions to delete');
+        setClearAllOpen(false);
+        return;
+      }
+      const ids = sessions.map((s) => s.session_id);
+      const result = await bulkDeleteSessions(ids);
+
+      // Optimistically clear caches so the sidebar empties immediately
+      sidebarQueryClient.setQueryData<unknown[]>(['sessions'], []);
+      sidebarQueryClient.invalidateQueries({ queryKey: ['sessions'] });
+      sidebarQueryClient.invalidateQueries({ queryKey: opencodeKeys.sessions() });
+
+      router.push('/sessions');
+
+      if (result.failed.length === 0) {
+        toast.success(`Deleted ${result.deleted.length} session${result.deleted.length === 1 ? '' : 's'}`);
+      } else {
+        toast.warning(
+          `Deleted ${result.deleted.length}, ${result.failed.length} failed: ${result.failed[0]?.error ?? 'unknown error'}`,
+        );
+      }
+      setClearAllOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete all sessions');
+    } finally {
+      setIsClearingAll(false);
+    }
+  }, [router, sidebarQueryClient]);
 
   useEffect(() => {
     if (isMobile) setOpenMobile(false);
@@ -1633,20 +1686,7 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
             {/* Clear all sessions */}
             {isSimpleMode && (
               <Button
-                onClick={async () => {
-                  if (!confirm('Delete ALL sessions? This will terminate all sandboxes and cannot be undone.')) return;
-                  try {
-                    const sessions = await listKortixSessions();
-                    await Promise.all(sessions.map(s => deleteKortixSession(s.session_id).catch(() => {})));
-                    // Also clear OpenCode sessions cache
-                    queryClient.invalidateQueries({ queryKey: ['sessions'] });
-                    queryClient.invalidateQueries({ queryKey: opencodeKeys.sessions() });
-                    router.push('/sessions');
-                    toast.success('All sessions deleted');
-                  } catch {
-                    toast.error('Failed to delete all sessions');
-                  }
-                }}
+                onClick={openClearAllDialog}
                 variant="sidebar"
                 className="group/row rounded-lg text-muted-foreground/60 hover:text-destructive"
               >
@@ -1711,6 +1751,44 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
       </SidebarFooter>
 
       <SidebarRail />
+
+      {/* Clear-all-sessions confirmation dialog */}
+      <AlertDialog open={clearAllOpen} onOpenChange={(o) => !isClearingAll && setClearAllOpen(o)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete all sessions?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {clearAllCount === null
+                ? 'Counting sessions…'
+                : clearAllCount === 0
+                  ? 'You have no sessions to delete.'
+                  : `This will permanently terminate ${clearAllCount} sandbox${clearAllCount === 1 ? '' : 'es'} and remove all associated files. This action cannot be undone.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isClearingAll || clearAllCount === 0}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isClearingAll || clearAllCount === 0}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleClearAll();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isClearingAll ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting…
+                </>
+              ) : clearAllCount === null ? (
+                'Loading…'
+              ) : (
+                `Delete ${clearAllCount || ''} session${clearAllCount === 1 ? '' : 's'}`
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sidebar>
   );
 }

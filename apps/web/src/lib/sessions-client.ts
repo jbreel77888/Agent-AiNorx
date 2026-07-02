@@ -86,10 +86,42 @@ export async function createSession(opts: {
   return res.data;
 }
 
-/** Delete a session and its workspace. */
-export async function deleteSession(sessionId: string): Promise<void> {
+/** Delete a session and its workspace.
+ *  Throws on failure — caller's mutation onError will fire.
+ *  Returns the server's response payload (typically `{ ok: true }`).
+ */
+export async function deleteSession(sessionId: string): Promise<{ ok: boolean }> {
   const headers = await authHeaders();
-  await backendApi.delete(`/sessions/${sessionId}`, { headers });
+  const res = await backendApi.delete(`/sessions/${sessionId}`, {
+    headers,
+    showErrors: false,
+  });
+  if (!res.success) {
+    const status = (res.error as any)?.status ?? (res.error as any)?.statusCode;
+    const msg = (res.error as any)?.message || `Failed to delete session (HTTP ${status || '?'})`;
+    throw new Error(msg);
+  }
+  return res.data ?? { ok: true };
+}
+
+/** Bulk-delete sessions server-side (single HTTP call, sequential sandbox termination).
+ *  Returns `{ deleted: string[], failed: { id, error }[] }`.
+ */
+export async function bulkDeleteSessions(sessionIds: string[]): Promise<{
+  ok: boolean;
+  deleted: string[];
+  failed: { id: string; error: string }[];
+}> {
+  const headers = await authHeaders();
+  const res = await backendApi.post(`/sessions/bulk-delete`, {
+    session_ids: sessionIds,
+  }, { headers, showErrors: false });
+  if (!res.success) {
+    const status = (res.error as any)?.status ?? (res.error as any)?.statusCode;
+    const msg = (res.error as any)?.message || `Failed to bulk delete (HTTP ${status || '?'})`;
+    throw new Error(msg);
+  }
+  return res.data ?? { ok: true, deleted: [], failed: [] };
 }
 
 /** Start/resume a session — equivalent to POST /v1/projects/:id/sessions/:sid/start

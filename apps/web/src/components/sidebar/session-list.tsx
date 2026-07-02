@@ -39,6 +39,7 @@ import {
   useDeleteOpenCodeSession,
   useOpenCodeSessions,
   useUpdateOpenCodeSession,
+  opencodeKeys,
 } from '@/hooks/opencode/use-opencode-sessions';
 import { useBackgroundSessionPrefetch } from '@/hooks/opencode/use-session-prefetch';
 import { useTriggers } from '@/hooks/scheduled-tasks';
@@ -70,6 +71,7 @@ import {
   ChevronRight,
   Frown,
   Layers,
+  Loader2,
   MessageCircle,
   MoreHorizontal,
   Pencil,
@@ -92,6 +94,8 @@ interface SessionRowProps {
   /** Total number of direct children for this row */
   childCount?: number;
   isExpanded?: boolean;
+  /** Row is currently being deleted — shows spinner + dims opacity */
+  isDeleting?: boolean;
   onToggleExpand?: () => void;
   onClick: (e: React.MouseEvent, sessionId: string) => void;
   onDelete: (sessionId: string, title: string) => void;
@@ -109,6 +113,7 @@ const SessionRow = memo(function SessionRow({
   isChild,
   childCount = 0,
   isExpanded = false,
+  isDeleting = false,
   onToggleExpand,
   onClick,
   onDelete,
@@ -132,12 +137,13 @@ const SessionRow = memo(function SessionRow({
     >
       <div
         className={cn(
-          'flex cursor-pointer items-center gap-2 rounded-lg transition-colors duration-150',
+          'flex cursor-pointer items-center gap-2 rounded-lg transition-all duration-150',
           'pr-1.5',
           isChild ? 'py-0.5 pl-2.5' : 'py-1 pl-2.5',
           isActive
             ? 'bg-sidebar-accent text-sidebar-accent-foreground'
             : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground',
+          isDeleting && 'opacity-40 pointer-events-none',
         )}
         onMouseEnter={() => {
           setIsHovering(true);
@@ -145,8 +151,10 @@ const SessionRow = memo(function SessionRow({
         }}
         onMouseLeave={() => setIsHovering(false)}
       >
-        {/* Status dot — busy or pending */}
-        {isBusy || pendingCount > 0 ? (
+        {/* Deleting spinner — replaces status dot when isDeleting */}
+        {isDeleting ? (
+          <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-muted-foreground" />
+        ) : isBusy || pendingCount > 0 ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <div className="flex-shrink-0">
@@ -309,6 +317,7 @@ interface SessionGroupProps {
   onArchive: (sessionId: string) => void;
   onCompact: (sessionId: string) => void;
   onPrefetch?: (sessionId: string) => void;
+  deletingSessionIds?: Set<string>;
 }
 
 function SessionGroup({
@@ -325,6 +334,7 @@ function SessionGroup({
   onArchive,
   onCompact,
   onPrefetch,
+  deletingSessionIds,
 }: SessionGroupProps) {
   const childIds = childMap.get(session.id);
   const hasChildren = !!childIds && childIds.length > 0;
@@ -363,6 +373,7 @@ function SessionGroup({
           onArchive={onArchive}
           onCompact={onCompact}
           onPrefetch={onPrefetch}
+          deletingSessionIds={deletingSessionIds}
         />
       );
     }
@@ -375,6 +386,7 @@ function SessionGroup({
         isBusy={childStatus.isBusy}
         pendingCount={childStatus.pendingCount}
         isChild
+        isDeleting={deletingSessionIds?.has(child.id) ?? false}
         onClick={onClick}
         onDelete={onDelete}
         onRename={onRename}
@@ -395,6 +407,7 @@ function SessionGroup({
         isBusy={isBusy}
         pendingCount={pendingCount}
         isChild={false}
+        isDeleting={deletingSessionIds?.has(session.id) ?? false}
         childCount={hasChildren ? childSessions.length : 0}
         isExpanded={isExpanded}
         onToggleExpand={hasChildren ? () => onToggleExpand(session.id) : undefined}
@@ -432,6 +445,8 @@ export function SessionList({ projectId }: SessionListProps = {}) {
   const router = useRouter();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<{ id: string; name: string } | null>(null);
+  // Sessions currently being deleted — drives row-level spinner + opacity
+  const [deletingSessionIds, setDeletingSessionIds] = useState<Set<string>>(new Set());
   const [isArchiveDialogOpen, setIsArchiveDialogOpen] = useState(false);
   const [sessionToArchive, setSessionToArchive] = useState<{ id: string; name: string } | null>(
     null,
@@ -774,15 +789,16 @@ export function SessionList({ projectId }: SessionListProps = {}) {
     supportsLayeredHealth,
   ]);
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!sessionToDelete) return;
+    const sessionIdToDelete = sessionToDelete.id;
     setIsDeleteDialogOpen(false);
-    const isActive = pathname?.includes(sessionToDelete.id);
+    const isActive = pathname?.includes(sessionIdToDelete);
 
     const tabState = useTabStore.getState();
     const fallback = '/sessions';
-    if (tabState.tabs[sessionToDelete.id]) {
-      const nextTabId = tabState.closeTab(sessionToDelete.id);
+    if (tabState.tabs[sessionIdToDelete]) {
+      const nextTabId = tabState.closeTab(sessionIdToDelete);
       if (isActive) {
         const nextTab = nextTabId ? useTabStore.getState().tabs[nextTabId] : null;
         router.push(nextTab?.href || fallback);
@@ -791,13 +807,36 @@ export function SessionList({ projectId }: SessionListProps = {}) {
       router.push(fallback);
     }
 
+    // Mark this row as deleting (drives opacity + spinner in SessionRow)
+    setDeletingSessionIds((prev) => new Set(prev).add(sessionIdToDelete));
+
+    // Optimistically remove from cache
+    const prevSessions = queryClient.getQueryData(['sessions']);
+    queryClient.setQueryData<unknown[]>(['sessions'], (old) =>
+      (old ?? []).filter((s: any) => s.session_id !== sessionIdToDelete),
+    );
+
     // Delete OpenCode session (inside sandbox)
-    deleteSession(sessionToDelete.id);
-    // Also delete Kortix session (terminates sandbox + cleans DB)
-    deleteKortixSession(sessionToDelete.id).catch(() => {});
-    // Invalidate sessions list
-    queryClient.invalidateQueries({ queryKey: ['sessions'] });
-    setSessionToDelete(null);
+    deleteSession(sessionIdToDelete);
+    // Also delete Kortix session (terminates sandbox + cleans DB) — now throws on failure
+    try {
+      await deleteKortixSession(sessionIdToDelete);
+      toast.success('Session deleted');
+    } catch (err) {
+      // Rollback the optimistic cache update
+      queryClient.setQueryData(['sessions'], prevSessions);
+      toast.error(err instanceof Error ? err.message : 'Failed to delete session');
+    } finally {
+      setDeletingSessionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(sessionIdToDelete);
+        return next;
+      });
+      // Invalidate sessions list to refetch from server
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: opencodeKeys.sessions() });
+      setSessionToDelete(null);
+    }
   };
 
   const isActiveSession = (sessionId: string) => pathname?.includes(sessionId) || false;
@@ -817,6 +856,7 @@ export function SessionList({ projectId }: SessionListProps = {}) {
     onArchive: handleArchiveSession,
     onCompact: handleCompactSession,
     onPrefetch: prefetchOnHover,
+    deletingSessionIds,
   };
 
   return (

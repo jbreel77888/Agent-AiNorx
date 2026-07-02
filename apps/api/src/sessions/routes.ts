@@ -156,6 +156,8 @@ sessionFilesApp.post('/', async (c) => {
 });
 
 // ─── List user's sessions ────────────────────────────────────────────────────
+// Excludes deleted/archived sessions — they should NOT reappear in the sidebar.
+const EXCLUDED_STATUSES = ['deleted', 'archived'] as const;
 
 sessionFilesApp.get('/', async (c) => {
   const userId = c.get('userId') as string;
@@ -174,12 +176,19 @@ sessionFilesApp.get('/', async (c) => {
       updatedAt: projectSessions.updatedAt,
     })
     .from(projectSessions)
-    .where(eq(projectSessions.accountId, accountId))
+    .where(
+      eq(projectSessions.accountId, accountId),
+      // Filter out deleted/archived — they should not appear in the sidebar
+    )
     .orderBy(desc(projectSessions.updatedAt))
     .limit(50);
 
+  // Client-side filter (drizzle neq on text column is finicky across schemas;
+  // a JS filter is safer and only operates on 50 rows)
+  const visible = sessions.filter(s => !EXCLUDED_STATUSES.includes(s.status as any));
+
   return c.json({
-    sessions: sessions.map(s => ({
+    sessions: visible.map(s => ({
       session_id: s.sessionId,
       status: s.status,
       name: (s.metadata as any)?.name || 'Untitled',
@@ -187,6 +196,84 @@ sessionFilesApp.get('/', async (c) => {
       updated_at: s.updatedAt,
     })),
   });
+});
+
+// ─── Bulk delete sessions ─────────────────────────────────────────────────────
+// POST /v1/sessions/bulk-delete  body: { session_ids: string[] }
+// Returns { ok: true, deleted: string[], failed: { id, error }[] }
+// Processes sessions sequentially (Tensorlake trial plan = 1 concurrent sandbox)
+// so we don't trigger 429s from racing provider.remove() calls.
+sessionFilesApp.post('/bulk-delete', async (c) => {
+  const userId = c.get('userId') as string;
+  let accountId = c.get('accountId') as string;
+  if (!accountId && userId) {
+    accountId = await resolveAccountId(userId);
+  }
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+
+  const body = await c.req.json().catch(() => ({})) as { session_ids?: string[] };
+  const ids = Array.isArray(body.session_ids) ? body.session_ids : [];
+  if (ids.length === 0) return c.json({ ok: true, deleted: [], failed: [] });
+
+  // Cap to avoid abuse
+  if (ids.length > 100) {
+    return c.json({ error: 'Too many sessions in one request (max 100)' }, 400);
+  }
+
+  const deleted: string[] = [];
+  const failed: { id: string; error: string }[] = [];
+
+  // Sequential to avoid hitting Tensorlake's rate limit
+  for (const sessionId of ids) {
+    try {
+      // Look up sandbox for this session
+      const [sandbox] = await db
+        .select()
+        .from(sessionSandboxes)
+        .where(eq(sessionSandboxes.sandboxId, sessionId))
+        .limit(1);
+
+      // Terminate sandbox at provider (best-effort)
+      if (sandbox?.externalId && sandbox.provider) {
+        try {
+          const provider = getProvider(sandbox.provider as SandboxProviderName);
+          await provider.remove(sandbox.externalId);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[sessions:bulk-delete] sandbox ${sandbox.externalId}: ${msg}`);
+          // Don't fail the whole operation — the sandbox may already be gone
+        }
+      }
+
+      // Delete workspace (R2 + DB files)
+      try {
+        await workspaceStore.deleteWorkspace(sessionId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[sessions:bulk-delete] workspace ${sessionId}: ${msg}`);
+      }
+
+      // Mark session as deleted
+      await db
+        .update(projectSessions)
+        .set({ status: 'deleted', updatedAt: new Date() })
+        .where(eq(projectSessions.sessionId, sessionId));
+
+      // Mark sandbox as archived
+      await db
+        .update(sessionSandboxes)
+        .set({ status: 'archived', updatedAt: new Date() })
+        .where(eq(sessionSandboxes.sandboxId, sessionId));
+
+      deleted.push(sessionId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[sessions:bulk-delete] session ${sessionId}:`, err);
+      failed.push({ id: sessionId, error: msg });
+    }
+  }
+
+  return c.json({ ok: true, deleted, failed });
 });
 
 // ─── Get session details ─────────────────────────────────────────────────────
