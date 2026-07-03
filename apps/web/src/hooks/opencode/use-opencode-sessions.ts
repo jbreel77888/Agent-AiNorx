@@ -262,11 +262,15 @@ export function useOpenCodeSession(sessionId: string) {
     },
     enabled: runtimeReady && !!sessionId,
     staleTime: Infinity,
-    // Retry transient failures (sandbox still warming, brief network blip) so a
-    // single failed lookup doesn't settle as "not found" and flash the
-    // not-accessible error. The query stays in its loading state across retries.
+    // Retry transient failures (sandbox still warming, brief network blip, or
+    // active-server-switch in flight) so a single failed lookup doesn't
+    // settle as "not found" and flash the not-accessible error.
+    // The query stays in its loading state across retries.
+    // 8 retries with exponential backoff gives ~5min of total grace period —
+    // enough for a fresh sandbox to fully boot the OpenCode daemon + create
+    // the session row.
     retry: (failureCount, error) =>
-      !isOpenCodeConfigInvalidError(error) && failureCount < 3,
+      !isOpenCodeConfigInvalidError(error) && failureCount < 8,
     retryDelay: (attempt) => Math.min(1000 * Math.pow(2, attempt), 10000),
     placeholderData: () => {
       const sessions = queryClient.getQueryData<Session[]>(opencodeKeys.sessions());

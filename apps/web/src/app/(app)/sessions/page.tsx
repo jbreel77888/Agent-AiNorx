@@ -360,7 +360,7 @@ export default function SessionsPage() {
       {/* Delete confirmation dialog */}
       <AlertDialog
         open={confirmDeleteId !== null}
-        onOpenChange={(o) => !o && setConfirmDeleteId(null)}
+        onOpenChange={(o) => !o && !deleteMutation.isPending && setConfirmDeleteId(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -371,12 +371,12 @@ export default function SessionsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+            {/* NOTE: AlertDialogAction auto-closes on click which cancels the
+                in-flight delete mutation. Use a regular Button instead. */}
+            <Button
+              type="button"
               disabled={deleteMutation.isPending}
-              onClick={(e) => {
-                e.preventDefault();
-                handleConfirmDelete();
-              }}
+              onClick={handleConfirmDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleteMutation.isPending ? (
@@ -387,7 +387,7 @@ export default function SessionsPage() {
               ) : (
                 'Delete'
               )}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
