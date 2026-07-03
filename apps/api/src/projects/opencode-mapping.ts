@@ -207,7 +207,8 @@ export interface EnsureResult {
  * mapping.
  */
 export async function ensureOpencodeSessionPin(input: {
-  projectId: string;
+  /** Project ID — null in simple mode (no GitHub project). */
+  projectId: string | null;
   sessionId: string;
   accountId: string;
   externalId: string;

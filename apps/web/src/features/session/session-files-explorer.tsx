@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { FileExplorerPage, FilesStoreProvider, useFilesStore } from '@/features/files';
+import { isSimpleMode } from '@/lib/feature-flags';
 import { useSessionBrowserStore } from '@/stores/session-browser-store';
 import {
   SessionVersionHeader,
@@ -83,14 +84,19 @@ function SessionFilesExplorerInner({
   };
 
   const showDiff = mode === 'changes' && !!chatSessionId;
+  // In simple mode there's no git workflow — hide the version header
+  // (no branches, no "open change request" button). Just show the file explorer.
+  const hideVersionHeader = isSimpleMode();
 
   return (
     <div className="flex h-full flex-col">
-      <SessionVersionHeader
-        chatSessionId={chatSessionId}
-        mode={mode}
-        onModeChange={onModeChange}
-      />
+      {!hideVersionHeader && (
+        <SessionVersionHeader
+          chatSessionId={chatSessionId}
+          mode={mode}
+          onModeChange={onModeChange}
+        />
+      )}
       <div className="min-h-0 flex-1">
         {showDiff ? (
           <SessionDiffViewer sessionId={chatSessionId!} />

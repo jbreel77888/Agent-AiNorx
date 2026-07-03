@@ -109,7 +109,8 @@ export async function listPublicSharesForSession(sessionId: string) {
 
 export function buildPublicShareInsert(input: PublicShareInput, ctx: {
   sessionId: string;
-  projectId: string;
+  /** Project ID — null in simple mode (no GitHub project). */
+  projectId: string | null;
   accountId: string;
   userId: string;
 }) {
@@ -172,7 +173,8 @@ function parseExpiresAt(value: unknown): Date | null | false {
 
 export async function createPublicShare(input: PublicShareInput, ctx: {
   sessionId: string;
-  projectId: string;
+  /** Project ID — null in simple mode (no GitHub project). */
+  projectId: string | null;
   accountId: string;
   userId: string;
 }) {

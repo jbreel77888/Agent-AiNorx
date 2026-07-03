@@ -108,19 +108,20 @@ function isSnapshotMissingOnProvider(error: unknown): boolean {
 async function mintExecutorToken(opts: {
   accountId: string;
   userId: string;
-  projectId: string;
+  projectId: string | null;
   sandboxId: string;
   agentName: string;
   gitProject: GitBackedProject;
 }): Promise<string | null> {
-  // Simple-mode sessions have no real project (projectId is a nil UUID
-  // sentinel). Skip executor-token minting entirely — the account_tokens
-  // table has an FK constraint on projectId that would reject the nil UUID,
+  // Simple-mode sessions have no real project (projectId is null).
+  // Skip executor-token minting entirely — the account_tokens
+  // table has an FK constraint on projectId that would reject a null value,
   // and simple mode doesn't need a project-scoped executor token anyway
   // (no manifest, no [[agents]] grant to resolve, no LLM gateway attribution
   // by project). The agent runtime inside the sandbox doesn't require one.
+  // (Also accept the legacy nil-UUID sentinel for backward compat.)
   const NIL_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
-  if (opts.projectId === NIL_PROJECT_ID) {
+  if (!opts.projectId || opts.projectId === NIL_PROJECT_ID) {
     console.log(`[session-sandbox] Skipping executor token mint for simple-mode session ${opts.sandboxId}`);
     return null;
   }
@@ -150,7 +151,8 @@ async function mintExecutorToken(opts: {
 export async function provisionSessionSandbox(opts: {
   sandboxId: string;
   accountId: string;
-  projectId: string;
+  /** Project ID — null in simple mode (no GitHub project). */
+  projectId: string | null;
   userId: string;
   /** The selected agent's name (= projectSessions.agentName). Resolves the
    *  per-agent grant stamped onto the session's account token. Defaults to
@@ -377,8 +379,16 @@ export async function provisionSessionSandbox(opts: {
   // billing_model, so legacy paying customers are no longer wrongly stripped to
   // the Zen-only catalog. Per-request affordability stays in the gateway's own
   // billing gate (assertBillingActive + deductForLlmUsage).
+  //
+  // Simple mode: executorToken is null (no project-scoped PAT), but we still
+  // inject the LLM gateway env vars so the in-sandbox `kortix` provider mounts
+  // and the agent can use the gateway. The sandbox token is used as the key
+  // (the gateway accepts it for sandbox-scoped traffic).
+  const isSimpleMode = !opts.projectId;
   const gatewayLlmKey: string | null =
-    config.LLM_GATEWAY_ENABLED && gatewayEntitled ? executorToken : null;
+    config.LLM_GATEWAY_ENABLED && gatewayEntitled
+      ? (executorToken ?? (isSimpleMode ? sandboxKey?.secretKey : null))
+      : null;
 
   const providerCreateInput: CreateSandboxOpts = {
     accountId,

@@ -1784,6 +1784,12 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
 
       {/* ====== FOOTER ====== */}
       <SidebarFooter className="gap-2 px-3 pt-0 pb-3 group-data-[collapsible=icon]:px-0">
+        {/* Skip the config-degradation notice in simple mode — the scaffold
+            is baked into the snapshot, so a "config invalid" notice would
+            be misleading (the daemon's /kortix/projects fix task targets a
+            non-existent project). If the scaffold is genuinely missing,
+            the sandbox failed provisioning entirely — surfaced elsewhere. */}
+        {!isSimpleMode && (
         <SidebarConfigDegradationNotice
           collapsed={effectiveState === 'collapsed'}
           onExpand={() => {
@@ -1793,6 +1799,7 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
             );
           }}
         />
+        )}
         <ScheduledDeletionCard
           collapsed={effectiveState === 'collapsed'}
           onExpand={() => {

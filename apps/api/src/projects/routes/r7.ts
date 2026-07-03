@@ -333,12 +333,23 @@ projectsApp.openapi(
   async (c: any) => {
   const projectId = c.req.param('projectId');
 
-  // ── Simple mode redirect ────────────────────────────────────────────────
-  // When KORTIX_SESSION_MODE=simple, redirect ALL project session creation
-  // to the simple sessions API (POST /v1/sessions). This ensures that even
-  // if the frontend's SidebarLeft or Command Palette calls the project API,
-  // the session is created as a simple session (no GitHub, no project).
+  // ── Simple mode: project endpoints are not supported ──────────────────────
+  // The frontend now calls /v1/sessions directly. Return 404 with a hint
+  // so any stale clients learn the new path instead of getting silent
+  // behavior differences. (Previously this was a redirect that silently
+  // accepted arbitrary :projectId values from the URL.)
   if (config.KORTIX_SESSION_MODE === 'simple') {
+    return c.json(
+      {
+        error: 'Project endpoints are not available in simple mode',
+        hint: 'Use POST /v1/sessions to create a standalone session',
+      },
+      404,
+    );
+  }
+  if (false) {
+    // Dead code preserved for git-history reference — the old simple-mode
+    // redirect lived here. Reached only via the `false` guard above.
     const body = await readBody(c).catch(() => ({}));
     const userId = c.get('userId') as string;
     let accountId = c.get('accountId') as string;

@@ -42,6 +42,8 @@ import { SessionChangesIndicator } from '@/features/session/header/session-chang
 import { listProjectSessions, restartProjectSession } from '@/lib/projects-client';
 import { deleteSession, renameSession, restartSession } from '@/lib/sessions-client';
 import { cn } from '@/lib/utils';
+import { opencodeKeys } from '@/hooks/opencode/use-opencode-sessions';
+import { useTabStore } from '@/stores/tab-store';
 import { Pencil, Share, TrashSolid } from '@mynaui/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileDown, Layers, MoreHorizontal, PanelRight, RotateCcw } from 'lucide-react';
@@ -124,7 +126,14 @@ export function SessionSiteHeader({
     mutationFn: () => deleteSession(simpleSessionId!),
     onSuccess: () => {
       successToast('Session deleted');
+      // Full cache cleanup so stale sessions don't linger in the sidebar
+      // or the active tab store.
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: opencodeKeys.sessions() });
+      // Close the deleted session's tab so the user lands on /sessions
+      try {
+        useTabStore.getState().closeTab(simpleSessionId!);
+      } catch {}
       router.push('/sessions');
     },
     onError: (err) => {

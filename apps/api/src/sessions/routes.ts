@@ -31,6 +31,7 @@ import * as workspaceStore from './workspace-store';
 import { getProvider } from '../platform/providers';
 import type { SandboxProviderName } from '../config';
 import { ensureOpencodeSessionPin } from '../projects/opencode-mapping';
+import { createPublicShare, listPublicSharesForSession } from '../shared/session-public-shares';
 
 export const sessionFilesApp = new Hono();
 
@@ -137,8 +138,10 @@ sessionFilesApp.post('/', async (c) => {
       await provisionSessionSandbox({
         sandboxId: sessionId,
         accountId,
-        // Use a nil UUID for projectId — the column is UUID type and FK is dropped
-        projectId: '00000000-0000-0000-0000-000000000000' as any,
+        // Simple mode has no GitHub project — pass null.
+        // (Was previously the nil-UUID sentinel '00000000-...' — now that
+        //  session_sandboxes.project_id is nullable, we use NULL directly.)
+        projectId: null,
         userId,
         agentName: 'default',
         provider: (config.ALLOWED_SANDBOX_PROVIDERS as readonly string[])[0] as any,
@@ -522,15 +525,14 @@ sessionFilesApp.post('/:sessionId/start', async (c) => {
 
   // Box is provider-running. Resolve OpenCode readiness + the canonical pin
   // server-side. The pin is what the frontend needs to mount SessionChat.
-  // Use a sentinel projectId (nil UUID) for the simple-mode session — the
-  // ensureOpencodeSessionPin function uses it only for the DB update WHERE
-  // clause, and in simple mode project_id is NULL so we match on sessionId
-  // alone via a separate update below if the pin needs to be persisted.
+  // Simple mode: no projectId — pass null. ensureOpencodeSessionPin
+  // matches on sessionId + accountId only (the projectId filter was removed
+  // in Phase 3 Task 3.1 because it didn't match NULL rows anyway).
   const currentPin = session.opencodeSessionId ?? null;
   let ensured;
   try {
     ensured = await ensureOpencodeSessionPin({
-      projectId: '00000000-0000-0000-0000-000000000000',
+      projectId: null,
       sessionId,
       accountId: session.accountId,
       externalId: sandbox.externalId,
@@ -950,4 +952,40 @@ sessionFilesApp.delete('/:sessionId/workspace', async (c) => {
   if (ownershipError) return ownershipError;
   await workspaceStore.deleteWorkspace(sessionId);
   return c.json({ ok: true });
+});
+
+// ─── Public shares (simple mode) ─────────────────────────────────────────────
+// Allows simple-mode sessions to share preview/file URLs publicly.
+// Mirrors the project-mode /v1/projects/:id/sessions/:sid/public-shares endpoints.
+
+sessionFilesApp.get('/:sessionId/shares', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
+
+  const shares = await listPublicSharesForSession(sessionId);
+  return c.json({ shares });
+});
+
+sessionFilesApp.post('/:sessionId/shares', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const userId = c.get('userId') as string;
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
+
+  const body = await c.req.json().catch(() => ({}));
+  const created = await createPublicShare(body, {
+    sessionId,
+    projectId: null, // simple mode has no project
+    accountId,
+    userId,
+  });
+  if (!created.ok) {
+    return c.json({ error: created.error }, created.status as any);
+  }
+  return c.json({ share: created.share }, 201);
 });

@@ -25,6 +25,10 @@ export function SessionChangesIndicator({ sessionId }: { sessionId: string }) {
     sessionId: string;
   }>();
 
+  // Simple mode: no git workflow → no "uncommitted changes vs main" concept.
+  // Hide the indicator entirely (returns null below once we know changedCount).
+  const isSimple = process.env.NEXT_PUBLIC_SESSION_MODE === 'simple';
+
   const statusQuery = useGitStatus();
   const changedFiles = statusQuery.data ?? [];
   const changedCount = changedFiles.length;
@@ -33,7 +37,7 @@ export function SessionChangesIndicator({ sessionId }: { sessionId: string }) {
 
   const [open, setOpen] = useState(false);
 
-  if (changedCount === 0) return null;
+  if (changedCount === 0 || isSimple) return null;
 
   const viewChanges = () => {
     useSessionBrowserStore.getState().setView(sessionId, 'files');

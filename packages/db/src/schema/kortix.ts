@@ -594,7 +594,6 @@ export const projectSessionPublicShares = kortixSchema.table(
       .notNull()
       .references(() => projectSessions.sessionId, { onDelete: 'cascade' }),
     projectId: uuid('project_id')
-      .notNull()
       .references(() => projects.projectId, { onDelete: 'cascade' }),
     accountId: uuid('account_id')
       .notNull()
@@ -852,7 +851,7 @@ export const sessionSandboxes = kortixSchema.table(
     sandboxId: uuid('sandbox_id').primaryKey(),
     sessionId: text('session_id').notNull().unique(),
     accountId: uuid('account_id').notNull(),
-    projectId: uuid('project_id').notNull(),
+    projectId: uuid('project_id'),
     provider: sandboxProviderEnum('provider').default('daytona').notNull(),
     externalId: text('external_id'),
     baseUrl: text('base_url'),
