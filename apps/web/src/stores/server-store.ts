@@ -1097,7 +1097,7 @@ export async function switchToInstanceAsync(
  * fully decoupled from the legacy `kortix.sandboxes` table.
  */
 export async function switchToSessionSandboxAsync(
-  projectId: string,
+  projectId: string | null | undefined,
   sessionId: string,
   /**
    * Already-fetched sandbox row from the caller (the session page queries it to
@@ -1118,8 +1118,17 @@ export async function switchToSessionSandboxAsync(
 
   let sandbox = prefetched ?? null;
   if (!sandbox) {
-    const { startProjectSession } = await import('@/lib/projects-client');
-    sandbox = (await startProjectSession(projectId, sessionId))?.sandbox ?? null;
+    // Simple mode: projectId is null/undefined — call the simple sessions API.
+    // Project mode: call the project-scoped API which expects a real projectId.
+    if (!projectId) {
+      const { startSession } = await import('@/lib/sessions-client');
+      const result = await startSession(sessionId);
+      if (!result || 'not_found' in result) return null;
+      sandbox = result?.sandbox ?? null;
+    } else {
+      const { startProjectSession } = await import('@/lib/projects-client');
+      sandbox = (await startProjectSession(projectId, sessionId))?.sandbox ?? null;
+    }
   }
 
   if (!sandbox || sandbox.status !== 'active' || !sandbox.external_id) {
@@ -1129,10 +1138,10 @@ export async function switchToSessionSandboxAsync(
   const provider = sandbox.provider as SandboxProvider;
   const store = useServerStore.getState();
   const isLocal = provider === 'local_docker';
-  const existing = store.servers.find((s) => s.instanceId === sandbox.sandbox_id);
+  const existing = store.servers.find((s) => s.instanceId === sandbox!.sandbox_id);
   const stableId = isLocal
     ? undefined
-    : existing?.id ?? stableServerIdForInstance(sandbox.sandbox_id, provider);
+    : existing?.id ?? stableServerIdForInstance(sandbox!.sandbox_id, provider);
   const label = `session ${sandbox.sandbox_id.slice(0, 8)}`;
   // Session sandboxes only run on cloud providers today; local_docker has no
   // mapped-port metadata to forward.
