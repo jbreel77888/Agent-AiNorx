@@ -2226,21 +2226,9 @@ export function SessionChatInput({
                 <TooltipContent side="top"><p>{tHardcodedUi.raw('componentsSessionSessionChatInput.line2252JsxTextAttachFiles')}</p></TooltipContent>
               </Tooltip>
 
-              {models.length > 0 && onModelChange && (
-                <ModelSelector
-                  models={models}
-                  selectedModel={selectedModel}
-                  onSelect={onModelChange}
-                  providers={providers}
-                />
-              )}
-              {variants.length > 0 && onVariantChange && (
-                <VariantSelector
-                  variants={variants}
-                  selectedVariant={selectedVariant}
-                  onSelect={onVariantChange}
-                />
-              )}
+              {/* NOTE: ModelSelector and VariantSelector removed — the platform
+                  uses a single default model set by the admin. Users cannot see
+                  or switch models (Phase 5 requirement). */}
 
               {/* AutoContinue — commented out
               {commands.length > 0 && onCommand && !isOnboarding && (

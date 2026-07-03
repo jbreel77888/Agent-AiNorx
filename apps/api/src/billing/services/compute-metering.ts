@@ -70,11 +70,13 @@ export function calculateComputeCost(spec: SandboxSpec, durationSeconds: number)
  * tier model in COMPUTE_TIERS.
  */
 export async function startComputeSession(opts: StartComputeOpts): Promise<string | null> {
-  // Hard gate: self-hosted / billing-disabled deploys never meter compute, even
-  // if a credit_accounts row has billing_model='per_seat' (stale data).
+  // Phase 5: compute metering disabled — the platform uses monthly subscription
+  // plans instead of per-usage billing. All compute is included in the plan.
+  // The functions remain as no-ops so existing callers don't break.
   if (!config.KORTIX_BILLING_INTERNAL_ENABLED) return null;
-  const account = await getCreditAccount(opts.accountId);
-  if (!isPerSeatAccount(account?.billingModel)) return null;
+  // Even with billing enabled, we no longer meter compute per-second.
+  // Subscription plans include all compute usage within plan limits.
+  return null;
 
   // If a row is already open (e.g. duplicate hook), reuse it.
   const existing = await getOpenComputeSession(opts.sandboxId);

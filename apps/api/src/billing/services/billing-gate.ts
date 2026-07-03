@@ -27,40 +27,38 @@ export async function checkBillingActive(accountId: string): Promise<BillingGate
     return { ok: true };
   }
 
+  // Phase 5: Monthly subscription model — if the account has an active
+  // subscription, they're in. No per-usage credit checks.
+  // This simplifies the gate: subscription = access, no subscription = blocked.
+  // The free plan (price $0) counts as an active subscription.
   const account = await getCreditAccount(accountId);
   if (!account) {
     return {
       ok: false,
       reason: 'no_account',
       balance: 0,
-      message: 'No credit account found. Complete account setup first.',
+      message: 'No account found. Complete account setup first.',
     };
   }
 
-  const balance = Number(account.balance ?? 0);
+  // Check for active subscription (Stripe or free plan)
   const hasActiveSub =
     !!account.stripeSubscriptionId &&
     account.stripeSubscriptionStatus !== 'canceled' &&
     account.stripeSubscriptionStatus !== 'unpaid';
 
-  if (isPerSeatAccount(account.billingModel)) {
-    if (hasActiveSub) return { ok: true };
-    if (balance >= MINIMUM_CREDIT_FOR_RUN) return { ok: true };
-    return {
-      ok: false,
-      reason: 'subscription_required',
-      balance,
-      message:
-        'Subscribe to activate your seat. $20/teammate per month includes wallet credits for compute and LLM usage.',
-    };
-  }
+  // Legacy accounts with credit balance can still use the platform
+  const balance = Number(account.balance ?? 0);
 
+  if (hasActiveSub) return { ok: true };
   if (balance >= MINIMUM_CREDIT_FOR_RUN) return { ok: true };
+
+  // No subscription and no credits → need to subscribe
   return {
     ok: false,
-    reason: 'insufficient_credits',
+    reason: 'subscription_required',
     balance,
-    message: 'Out of credits. Top up to continue.',
+    message: 'Subscribe to a plan to start using VaelorX. Plans start at $0/mo.',
   };
 }
 
@@ -74,8 +72,6 @@ export async function assertBillingActive(accountId: string): Promise<void> {
         error: result.message,
         code: result.reason,
         balance: result.balance,
-        // The blocked account — so the upgrade dialog scopes to it instead of
-        // the caller's primary account (see web error-handler → openUpgradeDialog).
         account_id: accountId,
       }),
       { status: 402, headers: { 'content-type': 'application/json' } },

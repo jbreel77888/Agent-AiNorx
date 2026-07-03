@@ -13,7 +13,7 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { projectSessions, sessionSandboxes } from '@kortix/db';
+import { projectSessions, sessionSandboxes, platformModels, platformSettings } from '@kortix/db';
 import { db } from '../../shared/db';
 import { notifySessionProvisioningFailed } from '../../shared/session-failure-notifier';
 import { createApiKey } from '../../repositories/api-keys';
@@ -146,6 +146,38 @@ async function mintExecutorToken(opts: {
     console.warn(`[session-sandbox] failed to mint executor token for ${opts.projectId}:`, err);
     return null;
   }
+}
+
+/**
+ * Read the default model from platform_models (admin-managed).
+ * Falls back to platform_settings default_model, then to 'claude-sonnet-4.6'.
+ * This is injected as KORTIX_DEFAULT_MODEL env var into every sandbox.
+ */
+async function getDefaultModelFromDb(): Promise<string> {
+  try {
+    // Try platform_models first (is_default = true)
+    const [defaultModel] = await db
+      .select({ modelKey: platformModels.modelKey })
+      .from(platformModels)
+      .where(eq(platformModels.isDefault, true))
+      .limit(1);
+    if (defaultModel?.modelKey) return defaultModel.modelKey;
+
+    // Fall back to platform_settings
+    const [setting] = await db
+      .select({ value: platformSettings.value })
+      .from(platformSettings)
+      .where(eq(platformSettings.key, 'default_model'))
+      .limit(1);
+    if (setting?.value) {
+      const val = typeof setting.value === 'string' ? setting.value : JSON.stringify(setting.value);
+      const cleaned = val.replace(/^"|"$/g, '');
+      if (cleaned) return cleaned;
+    }
+  } catch (err) {
+    console.warn('[session-sandbox] failed to read default model from DB:', err);
+  }
+  return 'claude-sonnet-4.6';
 }
 
 export async function provisionSessionSandbox(opts: {
@@ -428,6 +460,10 @@ export async function provisionSessionSandbox(opts: {
             KORTIX_YOLO_URL: llmBaseUrl,
           }
         : {}),
+      // Inject the default model for this session — the daemon reads this
+      // to set opencode's default_model. Admin controls this via platform_settings.
+      // (Phase 5: users cannot see or switch models.)
+      KORTIX_DEFAULT_MODEL: await getDefaultModelFromDb(),
     },
     // Idle lifecycle is owned by the provider-agnostic reaper (projects/
     // sandbox-reaper.ts), keyed off MEANINGFUL activity (real turns), with each

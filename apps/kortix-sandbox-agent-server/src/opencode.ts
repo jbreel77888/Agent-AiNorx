@@ -201,7 +201,11 @@ async function fetchGatewayModels(
   return MINIMAL_FALLBACK_MODELS
 }
 
-const DEFAULT_VAELORX_MODEL = 'vaelorx/claude-sonnet-4.6'
+// Default model — read from env var (set by API from platform_settings/platform_models).
+// Falls back to claude-sonnet-4.6 if not set.
+const DEFAULT_VAELORX_MODEL = process.env.KORTIX_DEFAULT_MODEL
+  ? `vaelorx/${process.env.KORTIX_DEFAULT_MODEL}`
+  : 'vaelorx/claude-sonnet-4.6'
 
 type VaelorXGatewayModel = {
   name: string
