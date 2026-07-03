@@ -164,7 +164,14 @@ export class TensorlakeProvider implements SandboxProvider {
     // often hits the 1-concurrent-sandbox quota. The env var short-circuits all
     // of that: it's the operator's guarantee that this snapshot ID is valid and
     // active, so we trust it unconditionally.
-    const defaultSnapshotId = config.TENSORLAKE_DEFAULT_SNAPSHOT_ID;
+    //
+    // TEMPORARY: set TENSORLAKE_DISABLE_SNAPSHOT=1 to force cold boot from the
+    // base image. Use this when the snapshot contains a stale daemon that needs
+    // updating — the cold-boot path uploads the current daemon binary from
+    // the API Docker image (installRuntimeInSandbox).
+    const disableSnapshot = process.env.TENSORLAKE_DISABLE_SNAPSHOT === '1' ||
+      process.env.TENSORLAKE_DISABLE_SNAPSHOT === 'true';
+    const defaultSnapshotId = disableSnapshot ? undefined : config.TENSORLAKE_DEFAULT_SNAPSHOT_ID;
     let effectiveSnapshot: string | undefined;
     let effectiveImage: string | undefined;
 
@@ -172,6 +179,8 @@ export class TensorlakeProvider implements SandboxProvider {
       // Operator set a default snapshot ID — use it directly.
       effectiveSnapshot = defaultSnapshotId;
       console.log(`[tensorlake] Booting from TENSORLAKE_DEFAULT_SNAPSHOT_ID: ${effectiveSnapshot}`);
+    } else if (disableSnapshot) {
+      console.log(`[tensorlake] TENSORLAKE_DISABLE_SNAPSHOT=1 — forcing cold boot from base image: ${baseImage}`);
     } else if (snapshot) {
       // No env var, but ensureSandboxImage resolved a snapshot name.
       // Distinguish image names (kortix-default-xxx) from raw snapshot IDs
