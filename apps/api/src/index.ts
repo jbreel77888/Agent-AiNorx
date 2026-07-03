@@ -77,6 +77,7 @@ import { auditStateChangingRequest } from './shared/audit';
 import { opsApp } from './ops';
 import { adminApp } from './admin';
 import { platformAdminApp } from './admin/platform';
+import { connectorsApp } from './connectors';
 
 // ─── Process-level crash guards ───────────────────────────────────────────────
 // A stray rejected promise or throw escaping any fire-and-forget path — the
@@ -823,6 +824,10 @@ app.route('/v1/admin', adminApp);
 // /v1/admin/platform/* — platform control (agents, skills, models, billing, settings).
 // DB-backed admin management — no redeploy needed for config changes.
 app.route('/v1/admin/platform', platformAdminApp);
+// /v1/connectors/* — account-scoped connectors (Phase 6). Users manage their
+// own connectors without a project. Backward compatible with /v1/projects/:id/*
+// (used by mobile app).
+app.route('/v1/connectors', connectorsApp);
 
 // OAuth2 provider — public token endpoint, auth on authorize/consent
 app.route('/v1/oauth', oauthApp);

@@ -14,6 +14,7 @@ import {
   Copy,
   FolderOpen,
   History,
+  Plug,
   ListTree,
   Loader2,
   MessageSquare,
@@ -1754,6 +1755,18 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
               >
                 <Trash2 className="flex-shrink-0" />
                 <span className="flex-1 text-left">Clear all sessions</span>
+              </Button>
+            )}
+
+            {/* Connectors — per-user integrations */}
+            {isSimpleMode && (
+              <Button
+                onClick={() => router.push('/connectors')}
+                variant="sidebar"
+                className="group/row rounded-lg"
+              >
+                <Plug className="text-sidebar-foreground flex-shrink-0" />
+                <span className="flex-1 text-left">Connectors</span>
               </Button>
             )}
 

@@ -2824,8 +2824,8 @@ export const executorConnectors = kortixSchema.table(
     accountId: uuid('account_id')
       .notNull()
       .references(() => accounts.accountId, { onDelete: 'cascade' }),
+    /** Project ID — null in simple mode (account-scoped connector). */
     projectId: uuid('project_id')
-      .notNull()
       .references(() => projects.projectId, { onDelete: 'cascade' }),
     slug: varchar('slug', { length: 128 }).notNull(),
     name: varchar('name', { length: 255 }).notNull(),
@@ -2850,7 +2850,6 @@ export const executorConnectors = kortixSchema.table(
   (table) => [
     index('idx_executor_connectors_project').on(table.projectId),
     index('idx_executor_connectors_account').on(table.accountId),
-    uniqueIndex('idx_executor_connectors_project_slug').on(table.projectId, table.slug),
   ],
 );
 
