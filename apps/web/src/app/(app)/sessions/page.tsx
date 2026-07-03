@@ -114,11 +114,15 @@ export default function SessionsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const sessionId = crypto.randomUUID();
+      // Mark fresh FIRST so the session page knows to retry /start on 404
+      // (the POST /v1/sessions call may still be in flight when /start fires).
       markSessionFresh(sessionId);
+      // AWAIT the create call BEFORE navigating — avoids the race where
+      // /start fires before the session row exists and returns 404.
+      await createSession({ name: 'New Session', session_id: sessionId });
       router.push(`/sessions/${sessionId}`);
-      return createSession({ name: 'New Session', session_id: sessionId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] });

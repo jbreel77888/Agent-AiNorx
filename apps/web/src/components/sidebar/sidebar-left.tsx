@@ -1423,11 +1423,17 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
         const { createSession: createKortixSession } = await import('@/lib/sessions-client');
         const { markSessionFresh } = await import('@/lib/fresh-sessions');
         const sessionId = crypto.randomUUID();
+        // Mark fresh FIRST so the session page knows to retry /start on 404
+        // (the POST /v1/sessions call may still be in flight when /start fires).
         markSessionFresh(sessionId);
-        router.push(`/sessions/${sessionId}`);
+        // AWAIT the create call BEFORE navigating — this avoids the race
+        // where /start fires before the session row exists and returns 404,
+        // which previously sent the user back to /sessions.
         await createKortixSession({ name: 'New Session', session_id: sessionId });
+        router.push(`/sessions/${sessionId}`);
         if (isMobile) setOpenMobile(false);
-      } catch {
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to create session');
         router.push('/sessions');
         if (isMobile) setOpenMobile(false);
       }
@@ -1829,11 +1835,19 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isClearingAll || clearAllCount === 0}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={isClearingAll || clearAllCount === 0}
-              onClick={(e) => {
-                e.preventDefault();
+            <AlertDialogCancel
+              disabled={isClearingAll}
+              onClick={() => setClearAllOpen(false)}
+            >
+              Cancel
+            </AlertDialogCancel>
+            {/* NOTE: not using AlertDialogAction — it auto-closes on click
+                which cancels the in-flight bulk-delete. A regular Button with
+                type="button" lets us keep the dialog open during the API call. */}
+            <Button
+              type="button"
+              disabled={isClearingAll || clearAllCount === null || clearAllCount === 0}
+              onClick={() => {
                 void handleClearAll();
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -1846,9 +1860,9 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
               ) : clearAllCount === null ? (
                 'Loading…'
               ) : (
-                `Delete ${clearAllCount || ''} session${clearAllCount === 1 ? '' : 's'}`
+                `Delete ${clearAllCount} session${clearAllCount === 1 ? '' : 's'}`
               )}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -50,6 +50,8 @@ export default function SimpleSessionPage() {
     if (!authLoading && !user) router.replace('/auth');
   }, [authLoading, user, router]);
 
+  const isFresh = isSessionFresh(sessionId);
+
   const { data: start } = useQuery({
     queryKey: sessionStartKey(sessionId),
     queryFn: () => startSession(sessionId),
@@ -58,7 +60,16 @@ export default function SimpleSessionPage() {
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return 1500;
-      if ('not_found' in data && data.not_found) return false;
+      if ('not_found' in data && data.not_found) {
+        // For fresh sessions, the POST /v1/sessions call may still be in
+        // flight — retry for up to 15s before declaring the session gone.
+        // (Frontend optimistically navigates before the create API responds.)
+        if (isFresh && query.state.dataUpdatedAt < Date.now() - 15000) {
+          return false;
+        }
+        if (isFresh) return 1500;
+        return false;
+      }
       if (data && 'stage' in data) {
         if (data.stage === 'ready' || data.stage === 'failed' || data.stage === 'stopped') {
           return false;
@@ -70,9 +81,14 @@ export default function SimpleSessionPage() {
 
   useEffect(() => {
     if (start && 'not_found' in start && start.not_found) {
-      router.replace('/sessions');
+      // Only redirect if this is NOT a fresh session OR enough time has passed.
+      // Fresh sessions may briefly return 404 while the POST /v1/sessions
+      // create call is still in flight.
+      if (!isFresh) {
+        router.replace('/sessions');
+      }
     }
-  }, [start, sessionId, router]);
+  }, [start, sessionId, router, isFresh]);
 
   const startData = start && 'not_found' in start ? null : start as SessionStartResult | null;
   const sandbox = startData?.sandbox ?? null;
@@ -120,8 +136,7 @@ export default function SimpleSessionPage() {
   const sandboxSwitched = sandbox && activeInstanceId === sandbox.sandbox_id;
   const canShowChat = !!(sandboxSwitched && runtimeReady && opencodeSessionId);
 
-  // Fresh session detection
-  const [isFresh] = useState(() => isSessionFresh(sessionId));
+  // (isFresh is computed above — derived from isSessionFresh(sessionId))
 
   // Crossfade state
   const [chatReady, setChatReady] = useState(false);
