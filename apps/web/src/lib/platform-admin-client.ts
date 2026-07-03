@@ -248,3 +248,45 @@ export async function publishPlatform(): Promise<{ ok: boolean; version: string;
   const res = await backendApi.post('/admin/platform/publish', {}, { headers });
   return res.data;
 }
+
+// ─── Provider Catalog + Test + Import ────────────────────────────────────────
+
+export interface ProviderCatalogEntry {
+  displayName: string;
+  baseUrl: string;
+  docs: string;
+}
+
+export async function getProviderCatalog(): Promise<Record<string, ProviderCatalogEntry>> {
+  const headers = await authHeaders();
+  const res = await backendApi.get('/admin/platform/provider-catalog', { headers });
+  return res.data?.providers ?? {};
+}
+
+export async function testProviderConnection(providerKey: string, apiKey: string, baseUrl?: string): Promise<{
+  ok: boolean;
+  provider?: string;
+  modelsCount?: number;
+  models?: Array<{ id: string; name: string }>;
+  error?: string;
+  status?: number;
+}> {
+  const headers = await authHeaders();
+  const res = await backendApi.post('/admin/platform/providers/test', {
+    providerKey, apiKey, baseUrl,
+  }, { headers, showErrors: false });
+  return res.data;
+}
+
+export async function importModels(models: Array<{ id: string; name: string }>, providerKey: string): Promise<{
+  ok: boolean;
+  imported: number;
+  skipped: number;
+  total: number;
+}> {
+  const headers = await authHeaders();
+  const res = await backendApi.post('/admin/platform/providers/import-models', {
+    models, providerKey,
+  }, { headers });
+  return res.data;
+}

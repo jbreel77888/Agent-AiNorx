@@ -408,3 +408,144 @@ platformAdminApp.post('/publish', async (c) => {
     },
   });
 });
+
+// ─── Provider Test + Fetch Models ────────────────────────────────────────────
+// Tests connection to a provider by calling its /models endpoint,
+// returns the list of available models.
+
+// Pre-configured provider catalog (base URLs + env var names)
+const PROVIDER_CATALOG: Record<string, { displayName: string; baseUrl: string; docs: string }> = {
+  'anthropic':    { displayName: 'Anthropic',    baseUrl: 'https://api.anthropic.com/v1',           docs: 'https://console.anthropic.com/settings/keys' },
+  'openai':       { displayName: 'OpenAI',       baseUrl: 'https://api.openai.com/v1',              docs: 'https://platform.openai.com/api-keys' },
+  'openrouter':   { displayName: 'OpenRouter',   baseUrl: 'https://openrouter.ai/api/v1',           docs: 'https://openrouter.ai/keys' },
+  'groq':         { displayName: 'Groq',         baseUrl: 'https://api.groq.com/openai/v1',         docs: 'https://console.groq.com/keys' },
+  'mistral':      { displayName: 'Mistral AI',   baseUrl: 'https://api.mistral.ai/v1',              docs: 'https://console.mistral.ai/api-keys' },
+  'deepseek':     { displayName: 'DeepSeek',     baseUrl: 'https://api.deepseek.com/v1',            docs: 'https://platform.deepseek.com/api_keys' },
+  'togetherai':   { displayName: 'Together AI',  baseUrl: 'https://api.together.xyz/v1',            docs: 'https://api.together.ai/settings/api-keys' },
+  'fireworks-ai': { displayName: 'Fireworks AI', baseUrl: 'https://api.fireworks.ai/inference/v1',  docs: 'https://fireworks.ai/account/api-keys' },
+  'perplexity':   { displayName: 'Perplexity',   baseUrl: 'https://api.perplexity.ai',              docs: 'https://docs.perplexity.ai' },
+  'cerebras':     { displayName: 'Cerebras',     baseUrl: 'https://api.cerebras.ai/v1',             docs: 'https://cloud.cerebras.ai' },
+  'xai':          { displayName: 'xAI (Grok)',   baseUrl: 'https://api.x.ai/v1',                    docs: 'https://console.x.ai' },
+  'google':       { displayName: 'Google AI',    baseUrl: 'https://generativelanguage.googleapis.com/v1beta', docs: 'https://aistudio.google.com/apikey' },
+};
+
+platformAdminApp.get('/provider-catalog', async (c) => {
+  return c.json({ providers: PROVIDER_CATALOG });
+});
+
+platformAdminApp.post('/providers/test', async (c) => {
+  const body = await c.req.json();
+  const { providerKey, apiKey, baseUrl: customBaseUrl } = body;
+
+  if (!apiKey || !providerKey) {
+    return c.json({ error: 'providerKey and apiKey are required' }, 400);
+  }
+
+  const catalogEntry = PROVIDER_CATALOG[providerKey];
+  if (!catalogEntry) {
+    return c.json({ error: `Unknown provider: ${providerKey}` }, 400);
+  }
+
+  const baseUrl = customBaseUrl || catalogEntry.baseUrl;
+  const modelsUrl = `${baseUrl}/models`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+
+    const res = await fetch(modelsUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        ...(providerKey === 'anthropic' ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' } : {}),
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => 'Unknown error');
+      return c.json({
+        ok: false,
+        status: res.status,
+        error: `Provider returned ${res.status}: ${errorText.slice(0, 200)}`,
+      });
+    }
+
+    const data = await res.json();
+    // Different providers return different shapes — normalize to { id, name }
+    let models: Array<{ id: string; name: string }> = [];
+    if (Array.isArray(data.data)) {
+      // OpenAI-compatible: { data: [{ id, ... }] }
+      models = data.data.map((m: any) => ({ id: m.id, name: m.id }));
+    } else if (Array.isArray(data.models)) {
+      // Some providers: { models: [{ id, ... }] }
+      models = data.models.map((m: any) => ({ id: m.id || m.name, name: m.id || m.name }));
+    } else if (Array.isArray(data)) {
+      // Direct array
+      models = data.map((m: any) => ({ id: typeof m === 'string' ? m : m.id, name: typeof m === 'string' ? m : m.id }));
+    }
+
+    return c.json({
+      ok: true,
+      provider: providerKey,
+      modelsCount: models.length,
+      models: models.slice(0, 200), // Cap at 200 to avoid huge payloads
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({
+      ok: false,
+      error: `Connection failed: ${msg}`,
+    });
+  }
+});
+
+// Auto-import models from a tested provider into platform_models
+platformAdminApp.post('/providers/import-models', async (c) => {
+  const body = await c.req.json();
+  const { models, providerKey } = body;
+
+  if (!Array.isArray(models) || !providerKey) {
+    return c.json({ error: 'models (array) and providerKey are required' }, 400);
+  }
+
+  const catalogEntry = PROVIDER_CATALOG[providerKey];
+  if (!catalogEntry) {
+    return c.json({ error: `Unknown provider: ${providerKey}` }, 400);
+  }
+
+  let imported = 0;
+  let skipped = 0;
+
+  for (const model of models) {
+    try {
+      // Check if model already exists
+      const [existing] = await db.select().from(platformModels)
+        .where(eq(platformModels.modelKey, model.id))
+        .limit(1);
+
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      await db.insert(platformModels).values({
+        modelKey: model.id,
+        displayName: model.id,
+        provider: providerKey,
+        upstreamModelId: model.id,
+        isActive: true,
+        isDefault: false,
+        sortOrder: 0,
+      });
+      imported++;
+    } catch (err) {
+      console.warn(`[admin] failed to import model ${model.id}:`, err);
+      skipped++;
+    }
+  }
+
+  return c.json({ ok: true, imported, skipped, total: models.length });
+});

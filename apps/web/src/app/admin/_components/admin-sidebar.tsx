@@ -14,6 +14,7 @@ import {
   CreditCard,
   Settings,
   ShieldCheck,
+  Sparkles,
   Users,
   Wrench,
   type LucideIcon,
@@ -63,13 +64,18 @@ export function AdminSidebar() {
       icon: FileCode,
     },
     {
+      href: '/admin/llm-providers',
+      label: 'LLM Providers',
+      icon: Sparkles,
+    },
+    {
       href: '/admin/models',
       label: 'Models',
       icon: Cpu,
     },
     {
       href: '/admin/providers',
-      label: 'Providers',
+      label: 'Sandbox Providers',
       icon: Boxes,
     },
     {

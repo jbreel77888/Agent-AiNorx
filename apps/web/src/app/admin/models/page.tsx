@@ -80,11 +80,12 @@ export default function AdminModelsPage() {
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
             Manage model catalog. The default model is used for ALL user sessions.
-            Users cannot see or switch models.
+            Users cannot see or switch models. To add models from a provider,
+            go to <a href="/admin/llm-providers" className="text-blue-500 hover:underline">LLM Providers</a> to connect and fetch models.
           </p>
         </div>
         <Button onClick={() => setCreating(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Add Model
+          <Plus className="h-4 w-4" /> Add Model Manually
         </Button>
       </div>
 
@@ -94,7 +95,9 @@ export default function AdminModelsPage() {
         </div>
       ) : !models || models.length === 0 ? (
         <div className="text-muted-foreground rounded-lg border border-dashed p-8 text-center text-sm">
-          No models yet. Click "Add Model" to create one.
+          No models yet. Go to{' '}
+          <a href="/admin/llm-providers" className="text-blue-500 hover:underline">LLM Providers</a>
+          {' '}to connect a provider and fetch models automatically, or click "Add Model Manually".
         </div>
       ) : (
         <div className="space-y-3">
