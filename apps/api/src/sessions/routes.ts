@@ -648,20 +648,31 @@ sessionFilesApp.post('/:sessionId/proxy', async (c) => {
     return c.json({ error: 'path is required' }, 400);
   }
 
+  // SECURITY: validate method + path — they're passed as argv to sb.run
+  // which executes curl. Allow only HTTP methods + paths starting with /.
+  const ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
   const method = (reqBody.method || 'GET').toUpperCase();
+  if (!ALLOWED_METHODS.has(method)) {
+    return c.json({ error: 'Invalid HTTP method' }, 400);
+  }
   const daemonPath = reqBody.path.startsWith('/') ? reqBody.path : `/${reqBody.path}`;
+  if (!/^\/[\w\-./:?&=%]*$/.test(daemonPath)) {
+    return c.json({ error: 'Invalid path' }, 400);
+  }
   const url = `http://localhost:8000${daemonPath}`;
 
   try {
     const { Sandbox } = await import('../shared/tensorlake');
     const sb = await Sandbox.connect({ sandboxId: sandbox.externalId });
 
-    // Build the curl command
-    const curlParts = ['curl', '-s', '-w', '\n%{http_code}'];
-    
-    // Add method
+    // SECURITY: pass curl args as a real argv array (no shell).
+    // The previous implementation built a shell string with hand-rolled
+    // escaping (`'${p.replace(/'/g, "'\\''")}'`), which was vulnerable
+    // to shell injection via malicious header values.
+    const curlArgs = ['-s', '-w', '\n%{http_code}'];
+
     if (method !== 'GET') {
-      curlParts.push('-X', method);
+      curlArgs.push('-X', method);
     }
 
     // Add headers (skip Authorization — the daemon's /kortix/* endpoints don't need it,
@@ -670,28 +681,37 @@ sessionFilesApp.post('/:sessionId/proxy', async (c) => {
     if (reqBody.headers) {
       for (const [key, value] of Object.entries(reqBody.headers)) {
         if (key.toLowerCase() === 'content-length') continue;
-        curlParts.push('-H', `${key}: ${value}`);
+        // Basic header sanity check — reject newlines (CRLF injection)
+        if (/[\r\n]/.test(key) || /[\r\n]/.test(value)) continue;
+        curlArgs.push('-H', `${key}: ${value}`);
       }
     }
 
-    // Add body
+    // Add body — write to temp file via stdin (no shell), then pass @file to curl
+    let bodyFile: string | null = null;
     if (reqBody.body && method !== 'GET') {
-      // Write body to a temp file to avoid shell escaping issues
-      const bodyFile = `/tmp/proxy_body_${Date.now()}.json`;
-      const writeResult = await sb.run('bash', {
-        args: ['-c', `cat > ${bodyFile}`],
+      bodyFile = `/tmp/proxy_body_${Date.now()}_${Math.random().toString(36).slice(2)}.json`;
+      await sb.run('bash', {
+        args: ['-c', 'cat > "$1"', '_', bodyFile],
         stdin: reqBody.body,
         timeout: 5,
       });
-      curlParts.push('-d', `@${bodyFile}`);
+      curlArgs.push('-d', `@${bodyFile}`);
     }
 
-    curlParts.push(url);
+    curlArgs.push(url);
 
-    const result = await sb.run('bash', {
-      args: ['-c', curlParts.map(p => `'${p.replace(/'/g, "'\\''")}'`).join(' ')],
+    // SECURITY: invoke curl directly (not via bash -c with a string).
+    // The args array is passed verbatim — no shell interpretation.
+    const result = await sb.run('curl', {
+      args: curlArgs,
       timeout: 15,
     });
+
+    // Clean up temp file (best-effort)
+    if (bodyFile) {
+      sb.run('rm', { args: ['-f', bodyFile], timeout: 2 }).catch(() => {});
+    }
 
     const output = String((result as any).stdout ?? '');
     // The last line is the HTTP status code (from -w '\n%{http_code}')

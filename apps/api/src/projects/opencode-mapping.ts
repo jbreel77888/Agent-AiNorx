@@ -240,9 +240,14 @@ export async function ensureOpencodeSessionPin(input: {
     .update(projectSessions)
     .set({ opencodeSessionId: resolved, updatedAt: new Date() })
     .where(
+      // NOTE: We intentionally do NOT filter by projectId here.
+      // In simple mode, project_sessions.project_id is NULL, so
+      // `eq(projectId, nil_uuid)` would never match — the UPDATE
+      // would silently affect 0 rows. sessionId + accountId uniquely
+      // identify the row (sessionId is the PK), so the projectId
+      // filter is redundant anyway.
       and(
         eq(projectSessions.sessionId, sessionId),
-        eq(projectSessions.projectId, projectId),
         eq(projectSessions.accountId, accountId),
       ),
     );

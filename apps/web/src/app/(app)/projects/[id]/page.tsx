@@ -8,19 +8,30 @@ import { ProjectShell } from '@/features/co-worker/project-layout/project-shell'
 import { useAccountState } from '@/hooks/billing';
 import { useNewProjectSession } from '@/hooks/projects/use-new-project-session';
 import { isBillingEnabled } from '@/lib/config';
+import { isSimpleMode } from '@/lib/feature-flags';
 import { getProjectDetail } from '@/lib/projects-client';
 import { useUpgradeDialogStore } from '@/stores/upgrade-dialog-store';
 import { useQuery } from '@tanstack/react-query';
-import { useParams } from 'next/navigation';
-import { useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useCallback, useEffect } from 'react';
 
 export default function ProjectIndexPage() {
   const { id: projectId } = useParams<{ id: string }>();
+  const router = useRouter();
+
+  // Simple mode: no projects — redirect to /sessions.
+  // The middleware also catches /projects/* server-side, but this guard
+  // covers client-side navigation (router.push('/projects/abc')).
+  useEffect(() => {
+    if (isSimpleMode()) {
+      router.replace('/sessions');
+    }
+  }, [router]);
 
   const { data: projectDetail } = useQuery({
     queryKey: ['project-detail', projectId],
     queryFn: () => getProjectDetail(projectId),
-    enabled: !!projectId,
+    enabled: !!projectId && !isSimpleMode(),
   });
   const projectAccountId = projectDetail?.project?.account_id ?? undefined;
   const { data: accountState } = useAccountState({ accountId: projectAccountId });

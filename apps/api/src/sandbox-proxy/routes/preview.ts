@@ -359,35 +359,41 @@ export async function forwardToSandbox(
       const targetUrl = previewUrl.replace(/\/$/, '') + remainingPath + queryString;
 
       if (shouldSyncProjectEnvBeforeProxy(port, method, remainingPath)) {
-        try {
-          await syncSandboxEnvForPrompt({
-            projectId: record.projectId,
-            sessionId: record.sessionId,
-            serviceKey,
-            previewUrl,
-            previewToken,
-          });
-        } catch (err) {
-          const message = errorMessage(err, 'project env sync failed');
-          if (isRetryableEnvSyncFailure(message)) {
-            // Treat daemon/preview-transient env-sync failures like any other
-            // sandbox-port reachability miss: retry/wake in the outer loop, then
-            // return the friendly port-unreachable response if the sandbox never
-            // recovers. Throwing HTTPException here bypassed that retry path and
-            // turned expected 502/timeouts from Daytona into Better Stack errors.
-            throw new Error(message);
-          }
-          // For Tensorlake, env sync 401 is expected (proxy auth vs daemon auth
-          // conflict) — the env vars are already baked into /etc/pt-env at boot.
-          // Log a warning and continue proxying instead of returning 502.
-          if (record.provider === 'tensorlake' && message.includes('401')) {
-            console.warn(
-              `[PREVIEW] Tensorlake env sync 401 for ${sandboxId}:${port} — ` +
-              `env vars already in /etc/pt-env, continuing without live sync.`,
-            );
-          } else {
-            console.warn(`[PREVIEW] Project env sync failed for ${sandboxId}:${port}: ${message}`);
-            return jsonProxyError({ error: message }, 502);
+        // Skip env sync in simple mode — there's no project_secrets concept
+        // and resolveOwnerRawEnv returns null for simple-mode sessions anyway
+        // (createdBy is NULL). Skipping avoids a wasted daemon round-trip.
+        const NIL_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
+        if (record.projectId && record.projectId !== NIL_PROJECT_ID) {
+          try {
+            await syncSandboxEnvForPrompt({
+              projectId: record.projectId,
+              sessionId: record.sessionId,
+              serviceKey,
+              previewUrl,
+              previewToken,
+            });
+          } catch (err) {
+            const message = errorMessage(err, 'project env sync failed');
+            if (isRetryableEnvSyncFailure(message)) {
+              // Treat daemon/preview-transient env-sync failures like any other
+              // sandbox-port reachability miss: retry/wake in the outer loop, then
+              // return the friendly port-unreachable response if the sandbox never
+              // recovers. Throwing HTTPException here bypassed that retry path and
+              // turned expected 502/timeouts from Daytona into Better Stack errors.
+              throw new Error(message);
+            }
+            // For Tensorlake, env sync 401 is expected (proxy auth vs daemon auth
+            // conflict) — the env vars are already baked into /etc/pt-env at boot.
+            // Log a warning and continue proxying instead of returning 502.
+            if (record.provider === 'tensorlake' && message.includes('401')) {
+              console.warn(
+                `[PREVIEW] Tensorlake env sync 401 for ${sandboxId}:${port} — ` +
+                `env vars already in /etc/pt-env, continuing without live sync.`,
+              );
+            } else {
+              console.warn(`[PREVIEW] Project env sync failed for ${sandboxId}:${port}: ${message}`);
+              return jsonProxyError({ error: message }, 502);
+            }
           }
         }
       }

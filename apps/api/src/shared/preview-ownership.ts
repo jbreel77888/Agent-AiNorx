@@ -52,13 +52,17 @@ export async function canAccessSandboxSession(input: {
   const cached = sessionVisibilityCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.allowed;
 
+  // NOTE: We intentionally do NOT filter by projectId here.
+  // In simple mode, project_sessions.project_id is NULL, so
+  // `eq(projectId, nil_uuid)` would never match and `allowed` would
+  // default to true — bypassing the visibility check entirely.
+  // sessionId + accountId uniquely identify the row.
   const [row] = await db
     .select({ visibility: projectSessions.visibility, createdBy: projectSessions.createdBy })
     .from(projectSessions)
     .where(
       and(
         eq(projectSessions.sessionId, input.sessionId),
-        eq(projectSessions.projectId, input.projectId),
         eq(projectSessions.accountId, input.accountId),
       ),
     )

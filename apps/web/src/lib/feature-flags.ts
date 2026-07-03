@@ -39,7 +39,24 @@ export const featureFlags = {
     process.env.NEXT_PUBLIC_ENABLE_PROJECTS,
     false,
   ),
+  /**
+   * Simple session mode — users create standalone sessions without GitHub.
+   *
+   * Default: false (project mode — GitHub repos + projects + sessions).
+   * When NEXT_PUBLIC_SESSION_MODE=simple, the app:
+   *   - Redirects /projects/* and /dashboard to /sessions
+   *   - Uses /v1/sessions API instead of /v1/projects/:id/sessions
+   *   - Shows SimpleSessionList in the sidebar (instead of SessionList)
+   *   - Hides agent-switcher dropdown (default VaelorX agent only)
+   *   - Hides SessionVersionHeader + change-request UI (no git branches)
+   */
+  isSimpleMode: process.env.NEXT_PUBLIC_SESSION_MODE === 'simple',
 } as const;
+
+/** Convenience function — readable in any component. */
+export function isSimpleMode(): boolean {
+  return process.env.NEXT_PUBLIC_SESSION_MODE === 'simple';
+}
 
 // Debug: uncomment to inspect feature flags during development
 // if (process.env.NODE_ENV !== 'production') {

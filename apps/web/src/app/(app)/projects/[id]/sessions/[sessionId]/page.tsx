@@ -23,6 +23,7 @@ import { OpenCodeEventStreamProvider } from '@/hooks/opencode/use-opencode-event
 import { useProjectPresence } from '@/hooks/platform/use-project-presence';
 import { useSandboxConnection } from '@/hooks/platform/use-sandbox-connection';
 import { isBillingEnabled } from '@/lib/config';
+import { isSimpleMode } from '@/lib/feature-flags';
 import { clearSessionFresh, isSessionFresh } from '@/lib/fresh-sessions';
 import { setActiveInstanceCookie } from '@/lib/instance-routes';
 import { formatOpenCodeRuntimeError } from '@/lib/opencode-errors';
@@ -67,6 +68,15 @@ export default function ProjectSessionPage() {
   const { id: projectId, sessionId } = useParams<{ id: string; sessionId: string }>();
   const { user, isLoading: authLoading } = useAuth();
   const queryClient = useQueryClient();
+  const router = useRouter();
+
+  // Simple mode: no projects — redirect to /sessions/:sessionId (the simple
+  // session page) so users don't hit a broken project-scoped page.
+  useEffect(() => {
+    if (isSimpleMode() && sessionId) {
+      router.replace(`/sessions/${sessionId}`);
+    }
+  }, [router, sessionId]);
 
   // Warm-pool presence: heartbeat while this project tab is open so a spare stays
   // ready for the next session, and reap it on close. Keeps warm cost scoped to
