@@ -5568,24 +5568,39 @@ export function SessionChat({
           session loader (SessionStartingLoader) carries through here on its
           "Connecting" phase so there's never a second, different loader. */}
       {isNotFound ? (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-          <div className="text-muted-foreground text-sm">
-            {tHardcodedUi.raw(
-              'componentsSessionSessionChat.line5821JsxTextThisSessionIsNotAccessibleRightNow',
-            )}
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+          <div className="space-y-1.5">
+            <div className="text-foreground text-sm font-medium">
+              This session is not accessible right now.
+            </div>
+            <div className="text-muted-foreground text-xs leading-relaxed max-w-sm">
+              The agent's session may have expired or the sandbox was restarted.
+              Try creating a new session or going back to the sessions list.
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              try {
-                if (sessionId) useTabStore.getState().closeTab?.(sessionId);
-              } catch {}
-              if (typeof window !== 'undefined') window.location.assign('/');
-            }}
-            className="text-primary text-sm hover:underline"
-          >
-            {tHardcodedUi.raw('componentsSessionSessionChat.line5833JsxTextGoToHome')}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  if (sessionId) useTabStore.getState().closeTab?.(sessionId);
+                } catch {}
+                if (typeof window !== 'undefined') window.location.assign('/sessions');
+              }}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg px-4 py-2 text-xs font-medium"
+            >
+              Back to Sessions
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined') window.location.reload();
+              }}
+              className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg px-4 py-2 text-xs font-medium"
+            >
+              Reload
+            </button>
+          </div>
         </div>
       ) : (
         <div ref={chatAreaRef} className="relative z-10 flex min-h-0 flex-1 flex-col">
