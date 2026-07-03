@@ -39,7 +39,9 @@ export interface CanonicalOpenCodeSession {
 }
 
 export function useCanonicalOpenCodeSession(params: {
-  projectId: string;
+  /** Project ID — null/undefined in simple mode (no GitHub project).
+   *  In simple mode, the pin comes exclusively from /start (pinFromStart). */
+  projectId?: string | null;
   sessionId: string;
   /** The pin POST /start resolved server-side this render (preferred source). */
   pinFromStart?: string | null;
@@ -47,21 +49,17 @@ export function useCanonicalOpenCodeSession(params: {
   const { projectId, sessionId, pinFromStart } = params;
   const sessionsQuery = useOpenCodeSessions();
 
-  // The Kortix session row carries the authoritative, server-managed pin — used
-  // as a fallback when /start's value isn't in this render's props yet.
-  // The /start pin is authoritative on open, so only fall back to the persisted
-  // row pin when /start didn't hand us one THIS render — i.e. a deep-link refresh
-  // (no /start in flight yet) or the idle-stopped 'starting' window where the box
-  // reads active but the pin isn't resolved (pinFromStart null → query still runs).
-  // On a warm start pinFromStart is always present, so this saves a redundant
-  // round-trip that otherwise contends for connections during boot.
+  // In project mode, fetch the Kortix session row for the persisted pin.
+  // In simple mode, skip — the pin comes from /start (pinFromStart) exclusively.
   const projectSessionQuery = useQuery({
     queryKey: ['project-session', projectId, sessionId],
-    queryFn: () => getProjectSession(projectId, sessionId),
+    queryFn: () => getProjectSession(projectId!, sessionId),
     enabled: !!projectId && !!sessionId && !pinFromStart,
     staleTime: 10_000,
   });
-  const pin = projectSessionQuery.data?.opencode_session_id ?? null;
+  const pin = projectId
+    ? (projectSessionQuery.data?.opencode_session_id ?? null)
+    : null;
   const rootSessionId = pinFromStart ?? pin ?? null;
 
   return {

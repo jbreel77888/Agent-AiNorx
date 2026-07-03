@@ -6,7 +6,7 @@
  * Git-based file system when KORTIX_SESSION_MODE=simple.
  */
 
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../shared/db';
 import { sessionWorkspaces, sessionFiles } from '@kortix/db';
 import { uploadTextFile, uploadBinaryFile, downloadTextFile, downloadBinaryFile, deleteFile, deleteSessionFiles, listSessionFiles, sessionR2Prefix } from './r2-storage';
@@ -80,26 +80,20 @@ export async function readFile(
   sessionId: string,
   filePath: string,
 ): Promise<FileContent | null> {
-  const [row] = await db
+  // Single query: filter by both sessionId AND path (was 3 redundant
+  // queries — one without path filter, another without path filter,
+  // then a third fetching ALL files and filtering in JS).
+  const [file] = await db
     .select()
     .from(sessionFiles)
-    .where(eq(sessionFiles.sessionId, sessionId))
+    .where(
+      and(
+        eq(sessionFiles.sessionId, sessionId),
+        eq(sessionFiles.path, filePath),
+      ),
+    )
     .limit(1);
 
-  // Try DB first for inline text content
-  const [fileRow] = await db
-    .select()
-    .from(sessionFiles)
-    .where(eq(sessionFiles.sessionId, sessionId))
-    .limit(1);
-
-  // Find by path
-  const allFiles = await db
-    .select()
-    .from(sessionFiles)
-    .where(eq(sessionFiles.sessionId, sessionId));
-
-  const file = allFiles.find(f => f.path === filePath);
   if (!file) return null;
 
   if (file.isBinary || file.content === null) {
