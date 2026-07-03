@@ -1914,14 +1914,8 @@ export function SessionChatInput({
       }
     }
 
-    // Tab cycles through agents when no popover is open
-    if (e.key === 'Tab' && primaryAgents.length > 1 && onAgentChange) {
-      e.preventDefault();
-      const currentIdx = primaryAgents.findIndex((a) => a.name === selectedAgent);
-      const nextIdx = (currentIdx + 1) % primaryAgents.length;
-      onAgentChange(primaryAgents[nextIdx].name);
-      return;
-    }
+    // NOTE: Tab-cycling through agents was removed — the system now uses
+    // the default VaelorX agent only (no agent switching UI).
 
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -2189,6 +2183,7 @@ export function SessionChatInput({
                 value={text}
                 onChange={handleInput}
                 onKeyDown={handleKeyDown}
+                dir="auto"
                 onScroll={() => {
                   if (highlightRef.current && textareaRef.current) {
                     highlightRef.current.scrollTop = textareaRef.current.scrollTop;
@@ -2231,13 +2226,6 @@ export function SessionChatInput({
                 <TooltipContent side="top"><p>{tHardcodedUi.raw('componentsSessionSessionChatInput.line2252JsxTextAttachFiles')}</p></TooltipContent>
               </Tooltip>
 
-              {primaryAgents.length > 0 && onAgentChange && (
-                <AgentSelector
-                  agents={primaryAgents}
-                  selectedAgent={selectedAgent}
-                  onSelect={onAgentChange}
-                />
-              )}
               {models.length > 0 && onModelChange && (
                 <ModelSelector
                   models={models}
@@ -2312,13 +2300,13 @@ export function SessionChatInput({
               )}
               {(!isBusy || lockForQuestion) && (
                 <div className="opacity-100">
-					{lockForQuestion && questionButtonLabel && !text.trim() ? (
-						<Button
-							size="sm"
-							disabled={!questionCanAct || disabled}
-							onClick={handleSubmit}
-							className="flex-shrink-0 h-8 rounded-full px-3.5 text-xs font-medium"
-						>
+                                        {lockForQuestion && questionButtonLabel && !text.trim() ? (
+                                                <Button
+                                                        size="sm"
+                                                        disabled={!questionCanAct || disabled}
+                                                        onClick={handleSubmit}
+                                                        className="flex-shrink-0 h-8 rounded-full px-3.5 text-xs font-medium"
+                                                >
                       {questionButtonLabel}
                     </Button>
                   ) : (

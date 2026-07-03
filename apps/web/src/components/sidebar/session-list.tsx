@@ -80,6 +80,7 @@ import {
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 // ============================================================================
 // Session Row — flat, uniform layout for both parent and child sessions
@@ -460,6 +461,7 @@ export function SessionList({ projectId }: SessionListProps = {}) {
   const { prefetchOnHover } = useBackgroundSessionPrefetch(sessions);
   const { mutate: deleteSession, isPending: isDeleting } = useDeleteOpenCodeSession();
   const { mutate: updateSession } = useUpdateOpenCodeSession();
+  const queryClient = useQueryClient();
 
   // Auto-refetch sessions when connection recovers from error state
   const connectionStatus = useSandboxConnectionStore((s) => s.status);

@@ -106,6 +106,7 @@ import {
 } from '@/lib/project-preamble';
 import { playSound } from '@/lib/sounds';
 import { cn } from '@/lib/utils';
+import { detectTextDirection } from '@kortix/shared';
 import {
   extractKortixSystemMessages,
   extractSessionReport,
@@ -1939,6 +1940,7 @@ function UserMessageRow({
           <div className="group relative px-4 py-3">
             <div
               ref={textRef}
+              dir={detectTextDirection(text)}
               className={cn(
                 'min-w-0 text-sm leading-relaxed break-words whitespace-pre-wrap',
                 !expanded && 'max-h-[200px] overflow-hidden',

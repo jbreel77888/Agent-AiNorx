@@ -11,6 +11,7 @@ import { Check, Copy } from 'lucide-react';
 import { codeToHtml, getSingletonHighlighter, type Highlighter, type ShikiTransformer } from 'shiki';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
+import { detectTextDirection } from '@kortix/shared';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { isMermaidCode } from '@/lib/mermaid-utils';
@@ -1191,6 +1192,7 @@ export const UnifiedMarkdown = React.memo<UnifiedMarkdownProps>(({
     <div
       className={cn('kortix-markdown', isStreaming && 'streaming-active', className)}
       data-streaming={isStreaming ? 'true' : 'false'}
+      dir={detectTextDirection(finalContent)}
     >
       <Streamdown
         isAnimating={isStreaming}

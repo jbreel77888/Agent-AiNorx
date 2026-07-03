@@ -59,3 +59,51 @@ export const normalizePathToNFC = (path: string): string => {
     return path;
   }
 };
+
+/**
+ * Detect text direction (RTL/LTR) based on the first strong-directional character.
+ *
+ * RTL ranges:
+ *   - Hebrew:        U+0590–U+05FF
+ *   - Arabic:        U+0600–U+06FF
+ *   - Syriac:        U+0700–U+074F
+ *   - Arabic Supplement: U+0750–U+077F
+ *   - Arabic Presentation Forms-A: U+FB50–U+FDFF
+ *   - Arabic Presentation Forms-B: U+FE70–U+FEFF
+ *
+ * LTR ranges (strong):
+ *   - Basic Latin letters: A-Z, a-z
+ *
+ * Everything else (digits, punctuation, whitespace, CJK) is "weak" / "neutral"
+ * and doesn't determine direction by itself.
+ *
+ * @param text The text to inspect
+ * @returns 'rtl' if the first strong character is RTL, 'ltr' otherwise
+ */
+export const detectTextDirection = (text: string | null | undefined): 'rtl' | 'ltr' => {
+  if (!text) return 'ltr';
+  for (const char of text) {
+    const code = char.codePointAt(0);
+    if (code === undefined) continue;
+    // RTL ranges
+    if (
+      (code >= 0x0590 && code <= 0x05ff) || // Hebrew
+      (code >= 0x0600 && code <= 0x06ff) || // Arabic
+      (code >= 0x0700 && code <= 0x074f) || // Syriac
+      (code >= 0x0750 && code <= 0x077f) || // Arabic Supplement
+      (code >= 0x08a0 && code <= 0x08ff) || // Arabic Extended-A
+      (code >= 0xfb1d && code <= 0xfdff) || // Hebrew + Arabic Presentation Forms-A
+      (code >= 0xfe70 && code <= 0xfeff)    // Arabic Presentation Forms-B
+    ) {
+      return 'rtl';
+    }
+    // LTR strong characters (basic Latin letters)
+    if (
+      (code >= 0x0041 && code <= 0x005a) || // A-Z
+      (code >= 0x0061 && code <= 0x007a)    // a-z
+    ) {
+      return 'ltr';
+    }
+  }
+  return 'ltr'; // default to LTR when no strong char found
+};
