@@ -16,6 +16,7 @@ import {
   History,
   ListTree,
   Loader2,
+  MessageSquare,
   Search,
   ShieldAlert,
   Sparkles,
@@ -32,6 +33,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { createPortal } from 'react-dom';
 
 import { SessionList } from '@/components/sidebar/session-list';
+import { SimpleSessionList } from '@/components/sidebar/simple-session-list';
 import {
   useLegacyThreads,
   useMigrateAllLegacyThreads,
@@ -74,7 +76,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useAdminRole } from '@/hooks/admin';
 import { useIsMobile } from '@/hooks/utils';
 import { cn } from '@/lib/utils';
-import { bulkDeleteSessions, listSessions as listKortixSessions } from '@/lib/sessions-client';
+import { bulkDeleteSessions, listSessions as listKortixSessions, type SimpleSession } from '@/lib/sessions-client';
 import { useDocumentModalStore } from '@/stores/use-document-modal-store';
 
 import {
@@ -371,10 +373,64 @@ function CollapsedIconButton({
 function SessionsFlyout({ collapsed }: { collapsed?: boolean }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const pathname = normalizeAppPathname(usePathname());
+  const isSimpleMode = process.env.NEXT_PUBLIC_SESSION_MODE === 'simple';
   const { data: sessions } = useOpenCodeSessions();
   const permissions = useOpenCodePendingStore((s) => s.permissions);
   const questions = useOpenCodePendingStore((s) => s.questions);
 
+  // In simple mode, fetch the user's standalone sessions instead of OpenCode
+  // sessions (which are scoped to the currently-active sandbox only).
+  const { data: simpleSessions } = useQuery<SimpleSession[]>({
+    queryKey: ['sessions'],
+    queryFn: listKortixSessions,
+    enabled: isSimpleMode,
+  });
+
+  // Simple-mode rendering: list standalone sessions
+  if (isSimpleMode) {
+    const items = simpleSessions ?? [];
+    if (items.length === 0) {
+      return (
+        <div className="text-muted-foreground px-3 py-8 text-center text-xs">
+          No sessions yet
+        </div>
+      );
+    }
+    return (
+      <div className="[scrollbar-width:none] overflow-y-auto py-1 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        {items.slice(0, 50).map((session) => {
+          const active = pathname === `/sessions/${session.session_id}`;
+          return (
+            <button
+              key={session.session_id}
+              onClick={() => {
+                openTabAndNavigate({
+                  id: session.session_id,
+                  title: session.name || 'Session',
+                  type: 'session',
+                  href: `/sessions/${session.session_id}`,
+                  serverId: useServerStore.getState().activeServerId,
+                });
+              }}
+              className={cn(
+                'flex w-full cursor-pointer items-center gap-2 px-3 py-1 text-xs transition-colors duration-100',
+                active
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                  : 'text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground',
+              )}
+            >
+              {!collapsed && (
+                <MessageSquare className="flex-shrink-0" size={12} />
+              )}
+              <span className="flex-1 truncate text-left">{session.name || 'Untitled'}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Project-mode rendering: list OpenCode sessions inside the active sandbox
   const rootSessions = React.useMemo(() => {
     if (!sessions) return [];
     return sessions
@@ -705,6 +761,7 @@ function SidebarSections() {
   const { data: legacyData, isLoading: legacyLoading } = useLegacyThreads();
   const pathname = normalizeAppPathname(usePathname());
   const { isMobile, setOpenMobile } = useSidebar();
+  const isSimpleMode = process.env.NEXT_PUBLIC_SESSION_MODE === 'simple';
 
   // Legacy threads
   const migrateAll = useMigrateAllLegacyThreads();
@@ -754,7 +811,7 @@ function SidebarSections() {
           </CollapsibleTrigger>
         </div>
         <CollapsibleContent className="min-h-0 [scrollbar-width:none] [-ms-overflow-style:none] data-[state=open]:flex-1 data-[state=open]:overflow-y-auto data-[state=open]:pt-1 [&::-webkit-scrollbar]:hidden">
-          <SessionList projectId={null} />
+          {isSimpleMode ? <SimpleSessionList /> : <SessionList projectId={null} />}
         </CollapsibleContent>
       </Collapsible>
 
@@ -1392,9 +1449,7 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
       });
       if (isMobile) setOpenMobile(false);
     } catch {
-      router.push(
-        currentInstanceId ? buildInstancePath(currentInstanceId, '/dashboard') : '/dashboard',
-      );
+      router.push('/sessions');
       if (isMobile) setOpenMobile(false);
     }
   }, [createSession, router, isMobile, setOpenMobile, currentInstanceId, isSimpleMode]);
@@ -1526,16 +1581,16 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
             >
               {/* Symbol — hides on hover */}
               <Link
-                href="/dashboard"
+                href="/sessions"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   openTabAndNavigate(
                     {
-                      id: 'page:/dashboard',
-                      title: 'Dashboard',
-                      type: 'dashboard',
-                      href: '/dashboard',
+                      id: 'page:/sessions',
+                      title: 'Sessions',
+                      type: 'page',
+                      href: '/sessions',
                     },
                     router,
                   );
@@ -1555,15 +1610,15 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
             )}
           >
             <Link
-              href="/dashboard"
+              href="/sessions"
               onClick={(e) => {
                 e.preventDefault();
                 openTabAndNavigate(
                   {
-                    id: 'page:/dashboard',
-                    title: 'Dashboard',
-                    type: 'dashboard',
-                    href: '/dashboard',
+                    id: 'page:/sessions',
+                    title: 'Sessions',
+                    type: 'page',
+                    href: '/sessions',
                   },
                   router,
                 );

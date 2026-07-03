@@ -3,7 +3,25 @@
 import { useTranslations } from 'next-intl';
 
 import { sessionDisplayLabel } from '@/components/projects/session-label';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import Hint from '@/components/ui/hint';
+import { Input } from '@/components/ui/input';
 import { Kbd, KbdGroup } from '@/components/ui/kbd';
 import Loading from '@/components/ui/loading';
 import { errorToast, successToast } from '@/components/ui/toast';
@@ -56,6 +75,9 @@ export function SessionSiteHeader({
   const [shareOpen, setShareOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  // Simple mode dialogs (replace browser prompt()/confirm())
+  const [simpleRenameOpen, setSimpleRenameOpen] = useState(false);
+  const [simpleDeleteOpen, setSimpleDeleteOpen] = useState(false);
 
   // Lifecycle actions (Share / Restart / Delete) operate on the project-level
   // session, which is only addressable on the `/projects/:id/sessions/:id` route.
@@ -157,8 +179,8 @@ export function SessionSiteHeader({
                       className="cursor-pointer"
                       onClick={() => {
                         if (isSimpleSession) {
-                          const name = prompt('New session name:', sessionTitle);
-                          if (name && name.trim()) simpleRenameMutation.mutate(name.trim());
+                          setSimpleRenameValue(sessionTitle);
+                          setSimpleRenameOpen(true);
                         } else {
                           setRenameOpen(true);
                         }
@@ -210,9 +232,7 @@ export function SessionSiteHeader({
                     className="cursor-pointer"
                     onClick={() => {
                       if (isSimpleSession) {
-                        if (confirm(`Delete "${sessionTitle}"? This cannot be undone.`)) {
-                          simpleDeleteMutation.mutate();
-                        }
+                        setSimpleDeleteOpen(true);
                       } else {
                         setDeleteOpen(true);
                       }
@@ -292,6 +312,79 @@ export function SessionSiteHeader({
             onDeleted={() => router.push(`/projects/${projectId}`)}
           />
         </>
+      )}
+
+      {/* Simple mode: rename dialog (replaces browser prompt()) */}
+      {isSimpleSession && (
+        <Dialog open={simpleRenameOpen} onOpenChange={setSimpleRenameOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Rename session</DialogTitle>
+              <DialogDescription>
+                Enter a new name for this session. This will be visible in the sidebar.
+              </DialogDescription>
+            </DialogHeader>
+            <Input
+              autoFocus
+              value={simpleRenameValue}
+              onChange={(e) => setSimpleRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && simpleRenameValue.trim()) {
+                  simpleRenameMutation.mutate(simpleRenameValue.trim());
+                }
+              }}
+              placeholder="Session name"
+            />
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                onClick={() => setSimpleRenameOpen(false)}
+                disabled={simpleRenameMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => simpleRenameValue.trim() && simpleRenameMutation.mutate(simpleRenameValue.trim())}
+                disabled={!simpleRenameValue.trim() || simpleRenameMutation.isPending}
+              >
+                {simpleRenameMutation.isPending ? 'Saving…' : 'Save'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Simple mode: delete dialog (replaces browser confirm()) */}
+      {isSimpleSession && (
+        <AlertDialog
+          open={simpleDeleteOpen}
+          onOpenChange={(o) => !simpleDeleteMutation.isPending && setSimpleDeleteOpen(o)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this session?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will terminate the sandbox and remove all session files.
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={simpleDeleteMutation.isPending}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={simpleDeleteMutation.isPending}
+                onClick={(e) => {
+                  e.preventDefault();
+                  simpleDeleteMutation.mutate();
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {simpleDeleteMutation.isPending ? 'Deleting…' : 'Delete'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </>
   );

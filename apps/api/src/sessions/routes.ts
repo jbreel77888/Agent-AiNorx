@@ -37,6 +37,35 @@ export const sessionFilesApp = new Hono();
 // Auth middleware — all routes require authentication
 sessionFilesApp.use('*', supabaseAuth);
 
+// ─── Ownership helper ──────────────────────────────────────────────────────────
+// Verifies that the session belongs to the calling account.
+// Returns 404 if not found, 403 if owned by another account.
+// Security: every /:sessionId handler MUST call this before doing any work.
+async function assertSessionOwnership(c: any, sessionId: string, accountId: string) {
+  const [row] = await db
+    .select({ accountId: projectSessions.accountId })
+    .from(projectSessions)
+    .where(eq(projectSessions.sessionId, sessionId))
+    .limit(1);
+  if (!row) {
+    return c.json({ error: 'Session not found' }, 404);
+  }
+  if (row.accountId !== accountId) {
+    return c.json({ error: 'Forbidden: session does not belong to your account' }, 403);
+  }
+  return null; // ownership verified
+}
+
+// Convenience: resolve accountId from JWT (most handlers need this)
+async function resolveAccountIdFromContext(c: any): Promise<string | null> {
+  const userId = c.get('userId') as string;
+  let accountId = c.get('accountId') as string;
+  if (!accountId && userId) {
+    accountId = await resolveAccountId(userId);
+  }
+  return accountId || null;
+}
+
 // ─── Create standalone session (simple mode) ─────────────────────────────────
 
 sessionFilesApp.post('/', async (c) => {
@@ -220,11 +249,23 @@ sessionFilesApp.post('/bulk-delete', async (c) => {
     return c.json({ error: 'Too many sessions in one request (max 100)' }, 400);
   }
 
+  // SECURITY: Only allow deleting sessions owned by the calling account.
+  // Without this, a user could terminate other accounts' sandboxes by
+  // guessing session IDs.
+  const ownedRows = await db
+    .select({ sessionId: projectSessions.sessionId })
+    .from(projectSessions)
+    .where(eq(projectSessions.accountId, accountId));
+  const ownedIds = new Set(ownedRows.map((r) => r.sessionId));
+  const safeIds = ids.filter((id) => ownedIds.has(id));
+  // Rejected IDs are silently dropped — do not disclose which IDs exist
+  // but belong to other accounts (that would be an info leak).
+
   const deleted: string[] = [];
   const failed: { id: string; error: string }[] = [];
 
   // Sequential to avoid hitting Tensorlake's rate limit
-  for (const sessionId of ids) {
+  for (const sessionId of safeIds) {
     try {
       // Look up sandbox for this session
       const [sandbox] = await db
@@ -280,6 +321,11 @@ sessionFilesApp.post('/bulk-delete', async (c) => {
 
 sessionFilesApp.get('/:sessionId', async (c) => {
   const sessionId = c.req.param('sessionId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
 
   const [session] = await db
     .select()
@@ -319,6 +365,11 @@ sessionFilesApp.get('/:sessionId', async (c) => {
 
 sessionFilesApp.delete('/:sessionId', async (c) => {
   const sessionId = c.req.param('sessionId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
 
   // Look up the sandbox BEFORE updating DB rows so we can terminate it.
   const [sandbox] = await db
@@ -365,6 +416,11 @@ sessionFilesApp.delete('/:sessionId', async (c) => {
 sessionFilesApp.post('/:sessionId/start', async (c) => {
   const sessionId = c.req.param('sessionId');
   const userId = c.get('userId') as string;
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
 
   // Look up the session
   const [session] = await db
@@ -519,6 +575,11 @@ sessionFilesApp.post('/:sessionId/start', async (c) => {
 
 sessionFilesApp.get('/:sessionId/health', async (c) => {
   const sessionId = c.req.param('sessionId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
 
   const [sandbox] = await db
     .select()
@@ -560,6 +621,11 @@ sessionFilesApp.get('/:sessionId/health', async (c) => {
 
 sessionFilesApp.post('/:sessionId/proxy', async (c) => {
   const sessionId = c.req.param('sessionId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
 
   const [sandbox] = await db
     .select()
@@ -655,27 +721,63 @@ sessionFilesApp.post('/:sessionId/proxy', async (c) => {
 
 sessionFilesApp.patch('/:sessionId', async (c) => {
   const sessionId = c.req.param('sessionId');
+  const userId = c.get('userId') as string;
+  let accountId = c.get('accountId') as string;
+  if (!accountId && userId) {
+    accountId = await resolveAccountId(userId);
+  }
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+
   const body = await c.req.json().catch(() => ({})) as { name?: string };
 
-  if (!body.name) {
+  if (!body.name || !body.name.trim()) {
     return c.json({ error: 'name is required' }, 400);
   }
+
+  // Verify ownership + fetch current metadata so we merge instead of replace.
+  // (Previous code did `metadata: { name: body.name }` which destroyed
+  //  session_mode, initial_prompt, opencode_model, source, etc.)
+  const [existing] = await db
+    .select({
+      accountId: projectSessions.accountId,
+      metadata: projectSessions.metadata,
+    })
+    .from(projectSessions)
+    .where(eq(projectSessions.sessionId, sessionId))
+    .limit(1);
+
+  if (!existing) return c.json({ error: 'Session not found' }, 404);
+  if (existing.accountId !== accountId) {
+    return c.json({ error: 'Forbidden: session does not belong to your account' }, 403);
+  }
+
+  const currentMeta = (existing.metadata as Record<string, unknown>) ?? {};
+  const newName = body.name.trim();
 
   await db
     .update(projectSessions)
     .set({
-      metadata: { name: body.name },
+      metadata: {
+        ...currentMeta,
+        name: newName,
+        custom_name: newName,
+      },
       updatedAt: new Date(),
     })
     .where(eq(projectSessions.sessionId, sessionId));
 
-  return c.json({ ok: true, name: body.name });
+  return c.json({ ok: true, name: newName });
 });
 
 // ─── Restart session ─────────────────────────────────────────────────────────
 
 sessionFilesApp.post('/:sessionId/restart', async (c) => {
   const sessionId = c.req.param('sessionId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
 
   const [sandbox] = await db
     .select()
@@ -713,6 +815,10 @@ sessionFilesApp.post('/:sessionId/restart', async (c) => {
 
 sessionFilesApp.get('/:sessionId/files', async (c) => {
   const sessionId = c.req.param('sessionId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
   const files = await workspaceStore.listFiles(sessionId);
   return c.json({ files });
 });
@@ -721,6 +827,10 @@ sessionFilesApp.get('/:sessionId/files', async (c) => {
 
 sessionFilesApp.get('/:sessionId/files/content', async (c) => {
   const sessionId = c.req.param('sessionId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
   const path = c.req.query('path');
   if (!path) return c.json({ error: 'path query parameter required' }, 400);
 
@@ -743,6 +853,10 @@ sessionFilesApp.get('/:sessionId/files/content', async (c) => {
 
 sessionFilesApp.post('/:sessionId/files', async (c) => {
   const sessionId = c.req.param('sessionId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
   const body = await c.req.json().catch(() => null);
 
   if (!body || !body.path) {
@@ -763,6 +877,10 @@ sessionFilesApp.post('/:sessionId/files', async (c) => {
 
 sessionFilesApp.put('/:sessionId/files/raw', async (c) => {
   const sessionId = c.req.param('sessionId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
   const path = c.req.query('path');
   if (!path) return c.json({ error: 'path query parameter required' }, 400);
 
@@ -778,6 +896,10 @@ sessionFilesApp.put('/:sessionId/files/raw', async (c) => {
 
 sessionFilesApp.delete('/:sessionId/files', async (c) => {
   const sessionId = c.req.param('sessionId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
   const path = c.req.query('path');
   if (!path) return c.json({ error: 'path query parameter required' }, 400);
 
@@ -789,9 +911,12 @@ sessionFilesApp.delete('/:sessionId/files', async (c) => {
 
 sessionFilesApp.post('/:sessionId/workspace', async (c) => {
   const sessionId = c.req.param('sessionId');
-  const accountId = c.get('accountId') as string;
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
 
-  await workspaceStore.createWorkspace(sessionId, accountId);
+  await workspaceStore.createWorkspace(sessionId, accountId!);
   return c.json({ ok: true });
 });
 
@@ -799,6 +924,10 @@ sessionFilesApp.post('/:sessionId/workspace', async (c) => {
 
 sessionFilesApp.delete('/:sessionId/workspace', async (c) => {
   const sessionId = c.req.param('sessionId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
   await workspaceStore.deleteWorkspace(sessionId);
   return c.json({ ok: true });
 });

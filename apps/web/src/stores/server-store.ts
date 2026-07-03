@@ -958,17 +958,17 @@ function deriveSelectionHref(server: ServerEntry | undefined, pathname?: string 
   const normalizedPath = pathname ? normalizeAppPathname(pathname) : '';
   const preserveCurrentPath =
     normalizedPath !== ''
-    && normalizedPath !== '/dashboard'
+    && normalizedPath !== '/sessions'
     && PRESERVABLE_INSTANCE_PATHS.has(normalizedPath)
-    && (!activeTab || activeTab.type === 'dashboard' || tabHref === '/dashboard');
+    && (!activeTab || activeTab.type === 'page' || tabHref === '/sessions');
 
   const fallbackPath = PRESERVABLE_INSTANCE_PATHS.has(normalizedPath)
     ? normalizedPath
-    : '/dashboard';
+    : '/sessions';
 
   const nextPath = preserveCurrentPath
     ? normalizedPath
-    : tabHref || fallbackPath || '/dashboard';
+    : tabHref || fallbackPath || '/sessions';
   return server?.instanceId ? buildInstancePath(server.instanceId, nextPath) : nextPath;
 }
 

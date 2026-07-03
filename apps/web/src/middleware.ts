@@ -91,7 +91,16 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Server-side redirect: /projects → /sessions (simple mode — no GitHub needed)
-  if (pathname === '/projects' || pathname === '/projects/') {
+  if (pathname === '/projects' || pathname === '/projects/' || pathname.startsWith('/projects/')) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/sessions';
+    return NextResponse.redirect(url);
+  }
+
+  // Server-side redirect: /dashboard → /sessions
+  // (The /dashboard route was removed in simple mode but several sidebar/store
+  //  references still link to it. Redirect here so users never see a 404.)
+  if (pathname === '/dashboard' || pathname.startsWith('/dashboard/')) {
     const url = request.nextUrl.clone();
     url.pathname = '/sessions';
     return NextResponse.redirect(url);

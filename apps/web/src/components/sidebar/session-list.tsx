@@ -52,7 +52,7 @@ import {
 } from '@/lib/instance-routes';
 import { classifySession, isSidebarHidden } from '@/lib/kortix/session-category';
 import { restartSandbox } from '@/lib/platform-client';
-import { deleteSession as deleteKortixSession, listSessions as listKortixSessions } from '@/lib/sessions-client';
+import { deleteSession as deleteKortixSession, listSessions as listKortixSessions, renameSession as renameKortixSession } from '@/lib/sessions-client';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { useOpenCodePendingStore } from '@/stores/opencode-pending-store';
@@ -707,7 +707,17 @@ export function SessionList({ projectId }: SessionListProps = {}) {
       setRenameSessionId(null);
       return;
     }
-    updateSession({ sessionId: renameSessionId, title: renameValue.trim() });
+    const newTitle = renameValue.trim();
+    // Update OpenCode session title (inside the sandbox)
+    updateSession({ sessionId: renameSessionId, title: newTitle });
+    // In simple mode, also persist the rename to project_sessions.metadata.name
+    // so it survives page refresh (the OpenCode title only lives inside the
+    // sandbox and is lost when the sandbox is terminated).
+    if (process.env.NEXT_PUBLIC_SESSION_MODE === 'simple') {
+      renameKortixSession(renameSessionId, newTitle).catch((err) => {
+        toast.error(err instanceof Error ? err.message : 'Failed to persist rename');
+      });
+    }
     setRenameSessionId(null);
   };
 
@@ -818,9 +828,16 @@ export function SessionList({ projectId }: SessionListProps = {}) {
       (old ?? []).filter((s: any) => s.session_id !== sessionIdToDelete),
     );
 
-    // Delete OpenCode session (inside sandbox)
-    deleteSession(sessionIdToDelete);
-    // Also delete Kortix session (terminates sandbox + cleans DB) — now throws on failure
+    // In simple mode, only call the Kortix delete (which terminates the
+    // sandbox). Calling the OpenCode SDK delete first races the sandbox
+    // termination and produces an unhandled network-error rejection.
+    // In project mode, the OpenCode session lives inside a long-lived
+    // sandbox so we DO need to delete it explicitly.
+    const isSimpleMode = process.env.NEXT_PUBLIC_SESSION_MODE === 'simple';
+    if (!isSimpleMode) {
+      deleteSession(sessionIdToDelete);
+    }
+    // Delete Kortix session (terminates sandbox + cleans DB) — now throws on failure
     try {
       await deleteKortixSession(sessionIdToDelete);
       toast.success('Session deleted');
