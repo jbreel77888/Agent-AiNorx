@@ -165,6 +165,12 @@ export function isSessionVisibleTo(
 ): boolean {
   if (ownerId && ownerId === subject.userId) return true;
   if (visibility === 'project') return true;
+  // Simple mode: sessions are created with no createdBy (ownerId is null) and
+  // default visibility 'private'. The account owner must be able to access
+  // their own session via the proxy even though ownerId wasn't stamped.
+  // If ownerId is null, fall back to "any account member can access" — the
+  // account-membership gate (canAccessPreviewSandbox) already enforced that.
+  if (ownerId === null) return true;
   if (visibility === 'restricted') {
     for (const g of grants) {
       if (g.principalType === 'member' && g.principalId === subject.userId) return true;

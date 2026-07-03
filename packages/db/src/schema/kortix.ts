@@ -64,6 +64,8 @@ export const projectSessionStatusEnum = kortixSchema.enum('project_session_statu
   'stopped',
   'failed',
   'completed',
+  'deleted',
+  'archived',
 ]);
 
 export const sessionLifecycleCommandStatusEnum = kortixSchema.enum(
