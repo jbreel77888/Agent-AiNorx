@@ -415,18 +415,45 @@ platformAdminApp.post('/publish', async (c) => {
 
 // Pre-configured provider catalog (base URLs + env var names)
 const PROVIDER_CATALOG: Record<string, { displayName: string; baseUrl: string; docs: string }> = {
-  'anthropic':    { displayName: 'Anthropic',    baseUrl: 'https://api.anthropic.com/v1',           docs: 'https://console.anthropic.com/settings/keys' },
-  'openai':       { displayName: 'OpenAI',       baseUrl: 'https://api.openai.com/v1',              docs: 'https://platform.openai.com/api-keys' },
-  'openrouter':   { displayName: 'OpenRouter',   baseUrl: 'https://openrouter.ai/api/v1',           docs: 'https://openrouter.ai/keys' },
-  'groq':         { displayName: 'Groq',         baseUrl: 'https://api.groq.com/openai/v1',         docs: 'https://console.groq.com/keys' },
-  'mistral':      { displayName: 'Mistral AI',   baseUrl: 'https://api.mistral.ai/v1',              docs: 'https://console.mistral.ai/api-keys' },
-  'deepseek':     { displayName: 'DeepSeek',     baseUrl: 'https://api.deepseek.com/v1',            docs: 'https://platform.deepseek.com/api_keys' },
-  'togetherai':   { displayName: 'Together AI',  baseUrl: 'https://api.together.xyz/v1',            docs: 'https://api.together.ai/settings/api-keys' },
-  'fireworks-ai': { displayName: 'Fireworks AI', baseUrl: 'https://api.fireworks.ai/inference/v1',  docs: 'https://fireworks.ai/account/api-keys' },
-  'perplexity':   { displayName: 'Perplexity',   baseUrl: 'https://api.perplexity.ai',              docs: 'https://docs.perplexity.ai' },
-  'cerebras':     { displayName: 'Cerebras',     baseUrl: 'https://api.cerebras.ai/v1',             docs: 'https://cloud.cerebras.ai' },
-  'xai':          { displayName: 'xAI (Grok)',   baseUrl: 'https://api.x.ai/v1',                    docs: 'https://console.x.ai' },
-  'google':       { displayName: 'Google AI',    baseUrl: 'https://generativelanguage.googleapis.com/v1beta', docs: 'https://aistudio.google.com/apikey' },
+  // ── Major providers ──
+  'anthropic':      { displayName: 'Anthropic',       baseUrl: 'https://api.anthropic.com/v1',                              docs: 'https://console.anthropic.com/settings/keys' },
+  'openai':         { displayName: 'OpenAI',          baseUrl: 'https://api.openai.com/v1',                                 docs: 'https://platform.openai.com/api-keys' },
+  'google':         { displayName: 'Google AI',       baseUrl: 'https://generativelanguage.googleapis.com/v1beta',          docs: 'https://aistudio.google.com/apikey' },
+  'openrouter':     { displayName: 'OpenRouter',      baseUrl: 'https://openrouter.ai/api/v1',                              docs: 'https://openrouter.ai/keys' },
+  // ── Fast inference ──
+  'groq':           { displayName: 'Groq',            baseUrl: 'https://api.groq.com/openai/v1',                            docs: 'https://console.groq.com/keys' },
+  'cerebras':       { displayName: 'Cerebras',        baseUrl: 'https://api.cerebras.ai/v1',                                docs: 'https://cloud.cerebras.ai' },
+  'deepinfra':      { displayName: 'Deep Infra',      baseUrl: 'https://api.deepinfra.com/v1',                              docs: 'https://deepinfra.com/dash/api_keys' },
+  // ── Specialized ──
+  'mistral':        { displayName: 'Mistral AI',      baseUrl: 'https://api.mistral.ai/v1',                                 docs: 'https://console.mistral.ai/api-keys' },
+  'deepseek':       { displayName: 'DeepSeek',        baseUrl: 'https://api.deepseek.com/v1',                               docs: 'https://platform.deepseek.com/api_keys' },
+  'togetherai':     { displayName: 'Together AI',     baseUrl: 'https://api.together.xyz/v1',                               docs: 'https://api.together.ai/settings/api-keys' },
+  'fireworks-ai':   { displayName: 'Fireworks AI',    baseUrl: 'https://api.fireworks.ai/inference/v1',                     docs: 'https://fireworks.ai/account/api-keys' },
+  'perplexity':     { displayName: 'Perplexity',      baseUrl: 'https://api.perplexity.ai',                                 docs: 'https://docs.perplexity.ai' },
+  'xai':            { displayName: 'xAI (Grok)',      baseUrl: 'https://api.x.ai/v1',                                       docs: 'https://console.x.ai' },
+  'cohere':         { displayName: 'Cohere',          baseUrl: 'https://api.cohere.ai/v1',                                  docs: 'https://dashboard.cohere.com/api-keys' },
+  // ── Aggregators & Gateways ──
+  'opencode':       { displayName: 'OpenCode Zen',    baseUrl: 'https://opencode.ai/zen/v1',                                docs: 'https://opencode.ai' },
+  'huggingface':    { displayName: 'Hugging Face',    baseUrl: 'https://router.huggingface.co/v1',                          docs: 'https://huggingface.co/settings/tokens' },
+  'nvidia':         { displayName: 'Nvidia',          baseUrl: 'https://integrate.api.nvidia.com/v1',                       docs: 'https://build.nvidia.com' },
+  'nebius':         { displayName: 'Nebius',          baseUrl: 'https://api.tokenfactory.nebius.com/v1',                     docs: 'https://studio.nebius.ai' },
+  // ── Cloud providers ──
+  'azure':          { displayName: 'Azure OpenAI',    baseUrl: '',                                                           docs: 'https://portal.azure.com' },
+  'amazon-bedrock': { displayName: 'Amazon Bedrock',  baseUrl: '',                                                           docs: 'https://console.aws.amazon.com/bedrock' },
+  // ── Chinese providers ──
+  'moonshotai':     { displayName: 'Moonshot AI',     baseUrl: 'https://api.moonshot.ai/v1',                                docs: 'https://platform.moonshot.cn/console/api-keys' },
+  'zhipuai':        { displayName: 'Zhipu AI (GLM)',  baseUrl: 'https://open.bigmodel.cn/api/paas/v4',                       docs: 'https://open.bigmodel.cn/usercenter/apikeys' },
+  'alibaba':        { displayName: 'Alibaba (DashScope)', baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', docs: 'https://dashscope.console.aliyun.com/apiKey' },
+  'siliconflow':    { displayName: 'SiliconFlow',     baseUrl: 'https://api.siliconflow.com/v1',                             docs: 'https://siliconflow.cn' },
+  'minimax':        { displayName: 'MiniMax',         baseUrl: 'https://api.minimax.io/anthropic/v1',                        docs: 'https://platform.minimax.io' },
+  // ── Other ──
+  'v0':             { displayName: 'v0 (Vercel)',     baseUrl: 'https://api.v0.dev/v1',                                     docs: 'https://v0.dev' },
+  'vercel':         { displayName: 'Vercel AI Gateway', baseUrl: 'https://sdk.vercel.ai/api/v1',                             docs: 'https://vercel.com/ai-gateway' },
+  'github-models':  { displayName: 'GitHub Models',   baseUrl: 'https://models.github.ai/inference',                         docs: 'https://github.com/marketplace/models' },
+  'poe':            { displayName: 'Poe',             baseUrl: 'https://api.poe.com/v1',                                    docs: 'https://poe.com' },
+  'ollama-cloud':   { displayName: 'Ollama Cloud',    baseUrl: 'https://ollama.com/v1',                                     docs: 'https://ollama.com' },
+  'requesty':       { displayName: 'Requesty',        baseUrl: 'https://router.requesty.ai/v1',                              docs: 'https://requesty.ai' },
+  'scaleway':       { displayName: 'Scaleway',        baseUrl: 'https://api.scaleway.ai/v1',                                 docs: 'https://console.scaleway.com' },
 };
 
 platformAdminApp.get('/provider-catalog', async (c) => {
@@ -447,6 +474,15 @@ platformAdminApp.post('/providers/test', async (c) => {
   }
 
   const baseUrl = customBaseUrl || catalogEntry.baseUrl;
+
+  // Azure and Bedrock require special setup — can't test with just an API key
+  if (!baseUrl) {
+    return c.json({
+      ok: false,
+      error: `${catalogEntry.displayName} requires manual configuration. Set the base URL and credentials in your environment variables.`,
+    });
+  }
+
   const modelsUrl = `${baseUrl}/models`;
 
   try {

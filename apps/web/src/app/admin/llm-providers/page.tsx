@@ -148,30 +148,37 @@ export default function AdminLLMProvidersPage() {
               {/* API Key input */}
               <div className="mb-3">
                 <label className="text-xs font-medium text-muted-foreground">API Key</label>
-                <div className="mt-1 flex gap-2">
-                  <Input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKeyInputs(prev => ({ ...prev, [key]: e.target.value }))}
-                    placeholder="Enter API key..."
-                    className="text-xs"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setTestingKey(key);
-                      testMut.mutate({ providerKey: key, apiKey });
-                    }}
-                    disabled={!apiKey.trim() || isTesting}
-                    className="flex-shrink-0 text-xs"
-                  >
-                    {isTesting ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Key className="h-3.5 w-3.5" />
-                    )}
-                  </Button>
-                </div>
+                {entry.baseUrl ? (
+                  <div className="mt-1 flex gap-2">
+                    <Input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKeyInputs(prev => ({ ...prev, [key]: e.target.value }))}
+                      placeholder="Enter API key..."
+                      className="text-xs"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setTestingKey(key);
+                        testMut.mutate({ providerKey: key, apiKey });
+                      }}
+                      disabled={!apiKey.trim() || isTesting}
+                      className="flex-shrink-0 text-xs"
+                    >
+                      {isTesting ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Key className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground/60 mt-1 rounded-md bg-muted/50 p-2 text-xs">
+                    This provider requires manual configuration via environment variables.
+                    See <a href={entry.docs} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">docs</a>.
+                  </p>
+                )}
               </div>
 
               {/* Docs link */}
