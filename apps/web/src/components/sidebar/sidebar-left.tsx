@@ -386,6 +386,22 @@ function SessionsFlyout({ collapsed }: { collapsed?: boolean }) {
     enabled: isSimpleMode,
   });
 
+  // Project-mode: derive rootSessions (must be called unconditionally —
+  // React's rules of hooks require hooks to be in the same order every render)
+  const rootSessions = React.useMemo(() => {
+    if (!sessions) return [];
+    return sessions
+      .filter((s) => !s.parentID && !(s.time as any).archived)
+      .sort((a, b) => b.time.updated - a.time.updated);
+  }, [sessions]);
+
+  const getPendingCount = (id: string) => {
+    return (
+      Object.values(permissions).filter((p) => p.sessionID === id).length +
+      Object.values(questions).filter((q) => q.sessionID === id).length
+    );
+  };
+
   // Simple-mode rendering: list standalone sessions
   if (isSimpleMode) {
     const items = simpleSessions ?? [];
@@ -429,21 +445,6 @@ function SessionsFlyout({ collapsed }: { collapsed?: boolean }) {
       </div>
     );
   }
-
-  // Project-mode rendering: list OpenCode sessions inside the active sandbox
-  const rootSessions = React.useMemo(() => {
-    if (!sessions) return [];
-    return sessions
-      .filter((s) => !s.parentID && !(s.time as any).archived)
-      .sort((a, b) => b.time.updated - a.time.updated);
-  }, [sessions]);
-
-  const getPendingCount = (id: string) => {
-    return (
-      Object.values(permissions).filter((p) => p.sessionID === id).length +
-      Object.values(questions).filter((q) => q.sessionID === id).length
-    );
-  };
 
   return (
     <div className="[scrollbar-width:none] overflow-y-auto py-1 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
