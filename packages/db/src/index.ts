@@ -121,6 +121,12 @@ export {
   // Access Control
   accessRequestStatusEnum,
   platformSettings,
+  // Platform Control (admin-managed)
+  platformAgents,
+  platformSkills,
+  platformModels,
+  platformSubscriptionPlans,
+  platformProviders,
   accessAllowlist,
   accessRequests,
   // Pool
