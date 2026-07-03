@@ -76,6 +76,7 @@ import { accountInvitesRouter } from './accounts/invites';
 import { auditStateChangingRequest } from './shared/audit';
 import { opsApp } from './ops';
 import { adminApp } from './admin';
+import { platformAdminApp } from './admin/platform';
 
 // ─── Process-level crash guards ───────────────────────────────────────────────
 // A stray rejected promise or throw escaping any fire-and-forget path — the
@@ -819,6 +820,9 @@ if (!config.KORTIX_BILLING_INTERNAL_ENABLED) {
 // /v1/admin/* — admin console (accounts/users/ledger/credits). supabaseAuth +
 // requireAdmin enforced inside the router. Backs apps/web/src/app/admin/.
 app.route('/v1/admin', adminApp);
+// /v1/admin/platform/* — platform control (agents, skills, models, billing, settings).
+// DB-backed admin management — no redeploy needed for config changes.
+app.route('/v1/admin/platform', platformAdminApp);
 
 // OAuth2 provider — public token endpoint, auth on authorize/consent
 app.route('/v1/oauth', oauthApp);

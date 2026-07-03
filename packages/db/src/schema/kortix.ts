@@ -3110,3 +3110,91 @@ export const sessionFiles = kortixSchema.table(
     index: index('idx_session_files_session').on(table.sessionId),
   }),
 );
+
+// ============================================================================
+// Platform Control Tables (admin-managed, replaces hardcoded config)
+// ============================================================================
+
+export const platformAgents = kortixSchema.table(
+  'platform_agents',
+  {
+    agentId: uuid('agent_id').defaultRandom().primaryKey(),
+    name: text('name').notNull().unique(),
+    description: text('description'),
+    systemPrompt: text('system_prompt').notNull(),
+    mode: text('mode').default('primary'),
+    permission: jsonb('permission').default({}).$type<Record<string, unknown>>(),
+    isDefault: boolean('is_default').default(false),
+    isActive: boolean('is_active').default(true),
+    version: integer('version').default(1),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedBy: uuid('updated_by'),
+  },
+);
+
+export const platformSkills = kortixSchema.table(
+  'platform_skills',
+  {
+    skillId: uuid('skill_id').defaultRandom().primaryKey(),
+    slug: text('slug').notNull().unique(),
+    name: text('name').notNull(),
+    description: text('description'),
+    skillContent: text('skill_content').notNull(),
+    scripts: jsonb('scripts').default({}).$type<Record<string, string>>(),
+    referencesData: jsonb('references_data').default([]).$type<unknown[]>(),
+    isActive: boolean('is_active').default(true),
+    version: integer('version').default(1),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedBy: uuid('updated_by'),
+  },
+);
+
+export const platformModels = kortixSchema.table(
+  'platform_models',
+  {
+    modelId: uuid('model_id').defaultRandom().primaryKey(),
+    modelKey: text('model_key').notNull().unique(),
+    displayName: text('display_name').notNull(),
+    provider: text('provider').notNull(),
+    upstreamModelId: text('upstream_model_id'),
+    isActive: boolean('is_active').default(true),
+    isDefault: boolean('is_default').default(false),
+    sortOrder: integer('sort_order').default(0),
+    metadata: jsonb('metadata').default({}).$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+);
+
+export const platformSubscriptionPlans = kortixSchema.table(
+  'platform_subscription_plans',
+  {
+    planId: uuid('plan_id').defaultRandom().primaryKey(),
+    slug: text('slug').notNull().unique(),
+    name: text('name').notNull(),
+    priceMonthlyUsd: integer('price_monthly_usd').notNull(),
+    description: text('description'),
+    features: jsonb('features').default({}).$type<Record<string, unknown>>(),
+    isActive: boolean('is_active').default(true),
+    sortOrder: integer('sort_order').default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+);
+
+export const platformProviders = kortixSchema.table(
+  'platform_providers',
+  {
+    providerId: uuid('provider_id').defaultRandom().primaryKey(),
+    providerKey: text('provider_key').notNull().unique(),
+    displayName: text('display_name').notNull(),
+    apiKeyEnc: text('api_key_enc'),
+    baseUrl: text('base_url'),
+    isActive: boolean('is_active').default(true),
+    metadata: jsonb('metadata').default({}).$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+);
