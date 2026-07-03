@@ -462,6 +462,39 @@ async function startSessionRuntime(
   }
   const eventHandlers = { onQuestionAsked, onSessionIdle, onSessionError }
   if (bootState.initialOpenCodeSessionRequired) {
+    // SESSION ISOLATION: when a real session boots from a snapshot that was
+    // captured with a pre-existing OpenCode session (warm-seed builder), the
+    // snapshot contains the OLD session's conversation history + pin file.
+    // Without cleanup, every new session would inherit the old conversation
+    // (user reported: "opening a new session shows a previous conversation").
+    // Fix: when KORTIX_SESSION_ID is set (real session, not seed builder),
+    // wipe the snapshot's leftover session state so a fresh OpenCode session
+    // is created for THIS session.
+    const realSessionId = (process.env.KORTIX_SESSION_ID ?? '').trim()
+    if (realSessionId) {
+      try {
+        const { rmSync, existsSync } = await import('node:fs')
+        const ws = cfg.projectTarget
+        const sessionsDir = `${ws}/.vaelorx/opencode/sessions`
+        const stateDir = `${ws}/.vaelorx/state`
+        const logDir = `${ws}/.vaelorx/opencode/log`
+        const cacheDir = `${ws}/.vaelorx/opencode/cache`
+        // Wipe leftover OpenCode session files (conversation history, messages)
+        for (const dir of [sessionsDir, stateDir, logDir, cacheDir]) {
+          if (existsSync(dir)) {
+            rmSync(dir, { recursive: true, force: true })
+            console.log(`[boot] session isolation — wiped ${dir}`)
+          }
+        }
+        // Wipe the pin file so resolveExistingRoot doesn't find the old session
+        if (existsSync(OPENCODE_SESSION_PIN_PATH)) {
+          rmSync(OPENCODE_SESSION_PIN_PATH, { force: true })
+          console.log(`[boot] session isolation — wiped pin file ${OPENCODE_SESSION_PIN_PATH}`)
+        }
+      } catch (err) {
+        console.warn('[boot] session isolation cleanup failed:', err instanceof Error ? err.message : String(err))
+      }
+    }
     await maybeCreateInitialOpencodeSession(cfg.opencodeInternalPort, bootState, bootMark).catch((err) => {
       bootState.initialOpenCodeSessionError = err instanceof Error ? err.message : String(err)
       logger.warn('[boot] initial opencode session setup failed', err)
