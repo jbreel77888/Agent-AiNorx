@@ -12,8 +12,8 @@
  * path in sandbox-cloud.ts.
  */
 
-import { eq } from 'drizzle-orm';
-import { projectSessions, sessionSandboxes, platformModels, platformSettings } from '@kortix/db';
+import { eq, and } from 'drizzle-orm';
+import { projectSessions, sessionSandboxes, platformModels, platformSettings, platformProviders } from '@kortix/db';
 import { db } from '../../shared/db';
 import { notifySessionProvisioningFailed } from '../../shared/session-failure-notifier';
 import { createApiKey } from '../../repositories/api-keys';
@@ -149,35 +149,88 @@ async function mintExecutorToken(opts: {
 }
 
 /**
- * Read the default model from platform_models (admin-managed).
- * Falls back to platform_settings default_model, then to 'claude-sonnet-4.6'.
- * This is injected as KORTIX_DEFAULT_MODEL env var into every sandbox.
+ * Read the default model AND its provider credentials from the DB.
+ * Returns the model key, provider's API key, and provider's base URL.
+ * These are injected as env vars into every sandbox so the daemon connects
+ * directly to the provider (NOT through the OpenRouter gateway).
+ *
+ * Flow:
+ * 1. Find the default model in platform_models (is_default = true)
+ * 2. Find its provider in platform_providers (by provider key)
+ * 3. Return { modelKey, apiKey, baseUrl }
+ *
+ * Falls back to platform_settings, then to OpenRouter gateway defaults.
  */
-async function getDefaultModelFromDb(): Promise<string> {
+async function getDefaultModelConfig(): Promise<{
+  modelKey: string;
+  apiKey: string | null;
+  baseUrl: string | null;
+}> {
   try {
-    // Try platform_models first (is_default = true)
+    // 1. Find the default model
     const [defaultModel] = await db
-      .select({ modelKey: platformModels.modelKey })
+      .select({
+        modelKey: platformModels.modelKey,
+        provider: platformModels.provider,
+        upstreamModelId: platformModels.upstreamModelId,
+      })
       .from(platformModels)
       .where(eq(platformModels.isDefault, true))
       .limit(1);
-    if (defaultModel?.modelKey) return defaultModel.modelKey;
 
-    // Fall back to platform_settings
-    const [setting] = await db
-      .select({ value: platformSettings.value })
-      .from(platformSettings)
-      .where(eq(platformSettings.key, 'default_model'))
-      .limit(1);
-    if (setting?.value) {
-      const val = typeof setting.value === 'string' ? setting.value : JSON.stringify(setting.value);
-      const cleaned = val.replace(/^"|"$/g, '');
-      if (cleaned) return cleaned;
+    let modelKey = '';
+    let providerKey = '';
+
+    if (defaultModel) {
+      modelKey = defaultModel.upstreamModelId || defaultModel.modelKey;
+      providerKey = defaultModel.provider;
+    } else {
+      // Fall back to platform_settings
+      const [setting] = await db
+        .select({ value: platformSettings.value })
+        .from(platformSettings)
+        .where(eq(platformSettings.key, 'default_model'))
+        .limit(1);
+      if (setting?.value) {
+        const val = typeof setting.value === 'string' ? setting.value : JSON.stringify(setting.value);
+        modelKey = val.replace(/^"|"$/g, '');
+      }
     }
+
+    if (!modelKey) {
+      modelKey = 'anthropic/claude-sonnet-4.6';
+      providerKey = 'openrouter';
+    }
+
+    // 2. Find the provider's credentials
+    if (providerKey) {
+      const [provider] = await db
+        .select({
+          apiKeyEnc: platformProviders.apiKeyEnc,
+          baseUrl: platformProviders.baseUrl,
+          isActive: platformProviders.isActive,
+        })
+        .from(platformProviders)
+        .where(eq(platformProviders.providerKey, providerKey))
+        .limit(1);
+
+      if (provider?.isActive && provider.apiKeyEnc) {
+        console.log(`[session-sandbox] using provider "${providerKey}" directly (baseUrl=${provider.baseUrl})`);
+        return {
+          modelKey,
+          apiKey: provider.apiKeyEnc,
+          baseUrl: provider.baseUrl,
+        };
+      }
+    }
+
+    // 3. No direct provider — fall back to gateway (OpenRouter)
+    console.log('[session-sandbox] no direct provider configured, using gateway fallback');
+    return { modelKey, apiKey: null, baseUrl: null };
   } catch (err) {
-    console.warn('[session-sandbox] failed to read default model from DB:', err);
+    console.warn('[session-sandbox] failed to read model config from DB:', err);
+    return { modelKey: 'anthropic/claude-sonnet-4.6', apiKey: null, baseUrl: null };
   }
-  return 'claude-sonnet-4.6';
 }
 
 export async function provisionSessionSandbox(opts: {
@@ -460,10 +513,25 @@ export async function provisionSessionSandbox(opts: {
             KORTIX_YOLO_URL: llmBaseUrl,
           }
         : {}),
-      // Inject the default model for this session — the daemon reads this
-      // to set opencode's default_model. Admin controls this via platform_settings.
-      // (Phase 5: users cannot see or switch models.)
-      KORTIX_DEFAULT_MODEL: await getDefaultModelFromDb(),
+      // Phase 5: Inject the default model + provider credentials directly.
+      // The admin connects providers (NVIDIA, OpenCode Zen, etc.) via the
+      // admin dashboard and sets a default model. The daemon connects
+      // directly to the provider — NOT through the OpenRouter gateway.
+      ...(async () => {
+        const modelConfig = await getDefaultModelConfig();
+        const envVars: Record<string, string> = {
+          KORTIX_DEFAULT_MODEL: modelConfig.modelKey,
+        };
+        // If the admin configured a direct provider, override the gateway
+        // credentials with the provider's own API key + base URL.
+        if (modelConfig.apiKey && modelConfig.baseUrl) {
+          envVars.KORTIX_LLM_API_KEY = modelConfig.apiKey;
+          envVars.KORTIX_LLM_BASE_URL = modelConfig.baseUrl;
+          envVars.KORTIX_YOLO_API_KEY = modelConfig.apiKey;
+          envVars.KORTIX_YOLO_URL = modelConfig.baseUrl;
+        }
+        return envVars;
+      })(),
     },
     // Idle lifecycle is owned by the provider-agnostic reaper (projects/
     // sandbox-reaper.ts), keyed off MEANINGFUL activity (real turns), with each
