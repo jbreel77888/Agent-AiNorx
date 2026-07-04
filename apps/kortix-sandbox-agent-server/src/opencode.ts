@@ -155,6 +155,30 @@ function gatewayEnabledProviders(env: NodeJS.ProcessEnv): string[] {
 }
 
 async function buildVaelorxProvider(llmBaseUrl: string, llmApiKey: string): Promise<Record<string, unknown>> {
+  const gatewayModels = await fetchGatewayModels(llmBaseUrl, llmApiKey)
+
+  // Ensure the default model exists in the catalog. If it doesn't, add it
+  // so OpenCode doesn't fall back to the first model in the list (which
+  // could be anything — e.g. "big-pickle" from OpenRouter).
+  const defaultModelKey = DEFAULT_VAELORX_MODEL.replace(/^vaelorx\//, '')
+  if (gatewayModels[defaultModelKey] === undefined) {
+    logger.warn(`[opencode] default model "${defaultModelKey}" not in gateway catalog — adding it forcibly`)
+    gatewayModels[defaultModelKey] = {
+      name: defaultModelKey,
+      tool_call: true,
+      attachment: true,
+      temperature: true,
+    }
+  }
+
+  // Reorder: put the default model FIRST so OpenCode picks it even if
+  // it ignores the `model` config field.
+  const orderedModels: Record<string, VaelorXGatewayModel> = {}
+  orderedModels[defaultModelKey] = gatewayModels[defaultModelKey]
+  for (const [key, val] of Object.entries(gatewayModels)) {
+    if (key !== defaultModelKey) orderedModels[key] = val
+  }
+
   return {
     npm: '@ai-sdk/openai-compatible',
     name: 'VaelorX',
@@ -162,7 +186,7 @@ async function buildVaelorxProvider(llmBaseUrl: string, llmApiKey: string): Prom
       baseURL: llmBaseUrl,
       apiKey: llmApiKey,
     },
-    models: withModelLimits(await fetchGatewayModels(llmBaseUrl, llmApiKey)),
+    models: withModelLimits(orderedModels),
   }
 }
 
