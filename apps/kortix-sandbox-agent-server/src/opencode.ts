@@ -157,26 +157,29 @@ function gatewayEnabledProviders(env: NodeJS.ProcessEnv): string[] {
 async function buildVaelorxProvider(llmBaseUrl: string, llmApiKey: string): Promise<Record<string, unknown>> {
   const gatewayModels = await fetchGatewayModels(llmBaseUrl, llmApiKey)
 
-  // Ensure the default model exists in the catalog. If it doesn't, add it
-  // so OpenCode doesn't fall back to the first model in the list (which
-  // could be anything — e.g. "big-pickle" from OpenRouter).
-  const defaultModelKey = DEFAULT_VAELORX_MODEL.replace(/^vaelorx\//, '')
-  if (gatewayModels[defaultModelKey] === undefined) {
-    logger.warn(`[opencode] default model "${defaultModelKey}" not in gateway catalog — adding it forcibly`)
-    gatewayModels[defaultModelKey] = {
-      name: defaultModelKey,
+  // The gateway /models endpoint proxies OpenRouter's /models verbatim.
+  // Model ids are in OpenRouter format: "provider/model" (e.g.
+  // "anthropic/claude-sonnet-4.6", "deepseek/deepseek-v4-flash").
+  //
+  // The default model (DEFAULT_VAELORX_MODEL) is set from KORTIX_DEFAULT_MODEL
+  // env var and should be in the same OpenRouter format.
+  //
+  // Ensure the default model exists in the catalog. If not, add it.
+  if (gatewayModels[DEFAULT_VAELORX_MODEL] === undefined) {
+    logger.warn(`[opencode] default model "${DEFAULT_VAELORX_MODEL}" not in gateway catalog — adding it`)
+    gatewayModels[DEFAULT_VAELORX_MODEL] = {
+      name: DEFAULT_VAELORX_MODEL,
       tool_call: true,
       attachment: true,
       temperature: true,
     }
   }
 
-  // Reorder: put the default model FIRST so OpenCode picks it even if
-  // it ignores the `model` config field.
+  // Reorder: put the default model FIRST so OpenCode picks it as default
   const orderedModels: Record<string, VaelorXGatewayModel> = {}
-  orderedModels[defaultModelKey] = gatewayModels[defaultModelKey]
+  orderedModels[DEFAULT_VAELORX_MODEL] = gatewayModels[DEFAULT_VAELORX_MODEL]
   for (const [key, val] of Object.entries(gatewayModels)) {
-    if (key !== defaultModelKey) orderedModels[key] = val
+    if (key !== DEFAULT_VAELORX_MODEL) orderedModels[key] = val
   }
 
   return {
@@ -226,10 +229,15 @@ async function fetchGatewayModels(
 }
 
 // Default model — read from env var (set by API from platform_settings/platform_models).
-// Falls back to claude-sonnet-4.6 if not set.
-const DEFAULT_VAELORX_MODEL = process.env.KORTIX_DEFAULT_MODEL
-  ? `vaelorx/${process.env.KORTIX_DEFAULT_MODEL}`
-  : 'vaelorx/claude-sonnet-4.6'
+// The value should be a model id that exists in the gateway's /models response
+// (which is proxied from OpenRouter). Examples: "anthropic/claude-sonnet-4.6",
+// "deepseek/deepseek-v4-flash", "google/gemini-3.5-flash".
+// Falls back to "anthropic/claude-sonnet-4.6" if not set.
+// Note: NO "vaelorx/" prefix — the gateway proxies to OpenRouter which expects
+// provider/model format. The "vaelorx" prefix is only the opencode provider name,
+// not part of the model id sent to the upstream.
+const DEFAULT_VAELORX_MODEL = process.env.KORTIX_DEFAULT_MODEL?.trim()
+  || 'anthropic/claude-sonnet-4.6'
 
 type VaelorXGatewayModel = {
   name: string
