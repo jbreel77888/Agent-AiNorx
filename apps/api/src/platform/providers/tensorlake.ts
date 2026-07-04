@@ -757,20 +757,71 @@ export class TensorlakeProvider implements SandboxProvider {
       });
       console.log(`[tensorlake] Scaffold files to inject: ${starterFiles.length}`);
 
+      // Batch inject: create a tar.gz of all files, upload once, extract inside sandbox.
+      // Much faster than 304 individual writeFile calls (which timeout).
       let injected = 0;
       let failed = 0;
-      for (const file of starterFiles) {
-        const filePath = `/workspace/${file.path}`;
-        try {
+      try {
+        // Build a tar.gz in memory
+        const tar = await import('tar');
+        const tmpTarPath = `/tmp/scaffold-${Date.now()}.tar.gz`;
+        // Write all files to a temp dir first
+        const fs = await import('fs/promises');
+        const tmpDir = `/tmp/scaffold-${Date.now()}`;
+        await fs.mkdir(tmpDir, { recursive: true });
+        for (const file of starterFiles) {
+          const filePath = `${tmpDir}/${file.path}`;
           const dir = filePath.substring(0, filePath.lastIndexOf('/'));
-          await sandbox.run('bash', { args: ['-c', `mkdir -p ${dir}`], timeout: 5 });
-          await sandbox.writeFile(filePath, Buffer.from(file.content, 'utf-8'));
-          injected++;
-        } catch {
-          failed++;
+          await fs.mkdir(dir, { recursive: true });
+          await fs.writeFile(filePath, file.content, 'utf-8');
         }
+        // Create tar.gz
+        await tar.create({ gzip: true, cwd: tmpDir, file: tmpTarPath }, starterFiles.map(f => f.path));
+        const tarBuffer = await fs.readFile(tmpTarPath);
+        console.log(`[tensorlake] Scaffold tar.gz size: ${(tarBuffer.length / 1024).toFixed(1)} KB`);
+
+        // Upload tar.gz to sandbox and extract
+        await sandbox.writeFile('/tmp/scaffold.tar.gz', tarBuffer);
+        const extractResult = await sandbox.run('bash', {
+          args: ['-c', 'cd /workspace && tar xzf /tmp/scaffold.tar.gz && rm /tmp/scaffold.tar.gz && echo OK'],
+          timeout: 30,
+        });
+        const extractStdout = String((extractResult as any).stdout ?? '').trim();
+        if (extractStdout === 'OK') {
+          injected = starterFiles.length;
+          console.log(`[tensorlake] Scaffold injected: ${injected} files (0 failed) via tar.gz batch`);
+        } else {
+          console.warn(`[tensorlake] Scaffold tar extract result: exit=${(extractResult as any).exitCode}, stdout=${extractStdout}, stderr=${String((extractResult as any).stderr ?? '').slice(0, 200)}`);
+          // Fallback: inject critical files only (agent definition, opencode config)
+          failed = starterFiles.length;
+        }
+
+        // Cleanup temp
+        await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+        await fs.unlink(tmpTarPath).catch(() => {});
+      } catch (batchErr) {
+        console.warn(`[tensorlake] Batch scaffold injection failed: ${batchErr instanceof Error ? batchErr.message : String(batchErr)} — falling back to individual files`);
+        // Fallback: inject critical files only
+        const criticalFiles = starterFiles.filter(f =>
+          f.path.includes('vaelorx.md') ||
+          f.path.includes('opencode.jsonc') ||
+          f.path.includes('MEMORY.md') ||
+          f.path.includes('vaelorx.toml') ||
+          f.path.includes('.gitignore')
+        );
+        for (const file of criticalFiles) {
+          const filePath = `/workspace/${file.path}`;
+          try {
+            const dir = filePath.substring(0, filePath.lastIndexOf('/'));
+            await sandbox.run('bash', { args: ['-c', `mkdir -p ${dir}`], timeout: 5 });
+            await sandbox.writeFile(filePath, Buffer.from(file.content, 'utf-8'));
+            injected++;
+          } catch {
+            failed++;
+          }
+        }
+        console.log(`[tensorlake] Scaffold injected: ${injected} critical files (${failed} failed) via fallback`);
       }
-      console.log(`[tensorlake] Scaffold injected: ${injected} files (${failed} failed) into /workspace`);
     } catch (err) {
       console.error(`[tensorlake] Scaffold injection FAILED:`, err instanceof Error ? err.message : String(err));
     }
