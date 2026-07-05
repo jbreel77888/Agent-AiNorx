@@ -95,52 +95,50 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
         ? (out.provider as Record<string, unknown>)
         : {}
 
-    // When the base URL is OpenCode Zen (opencode.ai/zen), OpenCode has a
-    // built-in "opencode" provider. We just need to set the API key and
-    // enable it — NO need to fetch models or create a custom provider.
-    // OpenCode Zen discovers its own models internally.
-    const isOpencodeZen = llmBaseUrl?.includes('opencode.ai/zen')
-
-    if (isOpencodeZen) {
-      // OpenCode Zen: just set the API key on the built-in "opencode" provider
-      // and enable it. Do NOT fetch models (Zen's /models returns empty).
-      const existingOpencode = provider.opencode as Record<string, unknown> | undefined
-      out.provider = {
-        ...provider,
-        opencode: {
-          ...(existingOpencode || {}),
-          options: {
-            baseURL: llmBaseUrl,
-            apiKey: llmApiKey,
-          },
-        },
-      }
-      // Set model with "opencode/" prefix
-      const modelWithPrefix = `opencode/${DEFAULT_VAELORX_MODEL}`
-      out.model = modelWithPrefix
-      out.small_model = modelWithPrefix
-    } else {
-      // Non-Zen provider (OpenRouter, NVIDIA, etc.): create custom "vaelorx" provider
-      out.provider = {
-        ...provider,
-        vaelorx: {
-          npm: '@ai-sdk/openai-compatible',
-          name: 'VaelorX',
-          options: {
-            baseURL: llmBaseUrl,
-            apiKey: llmApiKey,
-          },
-          models: withModelLimits(await fetchGatewayModels(llmBaseUrl!, llmApiKey!)),
-        },
-      }
-      const modelWithPrefix = `vaelorx/${DEFAULT_VAELORX_MODEL}`
-      if (!('model' in out) || typeof out.model !== 'string') {
-        out.model = modelWithPrefix
-      }
-      if (!('small_model' in out) || typeof out.small_model !== 'string') {
-        out.small_model = modelWithPrefix
+    // Use a custom "vaelorx" provider for ALL gateway types (OpenRouter, NVIDIA,
+    // OpenCode Zen, etc.). The @ai-sdk/openai-compatible npm package works with
+    // any OpenAI-compatible endpoint, and we explicitly list the models fetched
+    // from the gateway's /models endpoint so OpenCode never marks them disabled.
+    //
+    // We DO NOT use OpenCode's built-in "opencode" provider for Zen, because
+    // that provider's internal catalog (from Models.dev) may not include every
+    // model Zen actually serves (e.g. deepseek-v4-flash-free). OpenCode would
+    // then say "Model is disabled" even though Zen's /models lists it.
+    const gatewayModels = await fetchGatewayModels(llmBaseUrl!, llmApiKey!)
+    // Make absolutely sure the default model is in the catalog (the gateway
+    // should already return it, but if the fetch fell back to MINIMAL_FALLBACK
+    // we add it explicitly so OpenCode never marks it disabled).
+    if (gatewayModels[DEFAULT_VAELORX_MODEL] === undefined) {
+      logger.warn(`[opencode] default model "${DEFAULT_VAELORX_MODEL}" not in gateway catalog — adding it`)
+      gatewayModels[DEFAULT_VAELORX_MODEL] = {
+        name: DEFAULT_VAELORX_MODEL,
+        tool_call: true,
+        attachment: true,
+        temperature: true,
       }
     }
+    // Reorder: put the default model FIRST so OpenCode picks it as default
+    const orderedModels: Record<string, VaelorXGatewayModel> = {}
+    orderedModels[DEFAULT_VAELORX_MODEL] = gatewayModels[DEFAULT_VAELORX_MODEL]
+    for (const [key, val] of Object.entries(gatewayModels)) {
+      if (key !== DEFAULT_VAELORX_MODEL) orderedModels[key] = val
+    }
+    out.provider = {
+      ...provider,
+      vaelorx: {
+        npm: '@ai-sdk/openai-compatible',
+        name: 'VaelorX',
+        options: {
+          baseURL: llmBaseUrl,
+          apiKey: llmApiKey,
+        },
+        models: withModelLimits(orderedModels),
+      },
+    }
+    const modelWithPrefix = `vaelorx/${DEFAULT_VAELORX_MODEL}`
+    out.model = modelWithPrefix
+    out.small_model = modelWithPrefix
+
     // Lock opencode to the gateway as the ONLY LLM path. enabled_providers is an
     // allowlist — opencode loads ONLY these and ignores every provider it would
     // otherwise auto-detect from env (e.g. GITHUB_TOKEN → GitHub Models,
@@ -150,16 +148,13 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
     // by some path the deny-list didn't enumerate). We keep `kortix` plus any
     // providers the Codex/OpenCode subscription auth.json enables — those are the
     // user's own subscription (consumed into auth.json, intentionally not gated).
-    // Use the correct provider key in the allowlist
     const allowList = gatewayEnabledProviders(env)
-    if (isOpencodeZen) {
-      if (!allowList.includes('opencode')) allowList.push('opencode')
-      // Remove 'vaelorx' — it doesn't exist when using Zen
-      const idx = allowList.indexOf('vaelorx')
-      if (idx >= 0) allowList.splice(idx, 1)
-    } else {
-      if (!allowList.includes('vaelorx')) allowList.push('vaelorx')
-    }
+    if (!allowList.includes('vaelorx')) allowList.push('vaelorx')
+    // Note: we intentionally do NOT remove 'opencode' here. If the user has
+    // an OpenCode Zen subscription via auth.json (configured through OpenCode's
+    // /connect command), gatewayEnabledProviders() will include 'opencode' —
+    // that's the user's own subscription and should keep working. We just make
+    // sure 'vaelorx' (our gateway provider) is also enabled.
     out.enabled_providers = allowList
   }
 
@@ -253,14 +248,50 @@ async function fetchGatewayModels(
   logger.info(`[opencode] fetching gateway models from ${url}`)
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
-      const res = await fetch(url, { headers: { authorization: `Bearer ${apiKey}` } })
+      // Some upstreams (e.g. opencode.ai/zen) sit behind Cloudflare which
+      // blocks requests with no/Node-style User-Agent (HTTP 1010). Send a
+      // realistic browser UA to avoid being filtered.
+      const res = await fetch(url, {
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          'user-agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          accept: 'application/json',
+        },
+      })
       if (!res.ok) {
         const detail = (await res.text().catch(() => '')).slice(0, 200)
         throw new Error(`HTTP ${res.status}${detail ? ` ${detail}` : ''}`)
       }
-      const body = (await res.json()) as { models?: Record<string, VaelorXGatewayModel> }
-      const models = body.models ?? {}
-      if (Object.keys(models).length === 0) throw new Error('gateway returned an empty catalog')
+      const body = (await res.json()) as {
+        // Kortix gateway format (rare): { models: { "id": {...} } }
+        models?: Record<string, VaelorXGatewayModel>
+        // OpenAI / OpenRouter / Zen format: { data: [{ id: "...", ... }] }
+        data?: Array<{ id?: string; [k: string]: unknown }>
+      }
+      // Normalize BOTH response shapes to a Record<modelId, modelMeta>.
+      // OpenCode's catalog expects the latter; the OpenAI-style array
+      // (which is what BOTH the Kortix gateway and OpenCode Zen actually
+      // return — see apps/api/src/llm-gateway/routes/models.ts) needs
+      // converting.
+      let models: Record<string, VaelorXGatewayModel> | undefined = body.models
+      if (!models && Array.isArray(body.data)) {
+        models = {}
+        for (const entry of body.data) {
+          const id = typeof entry?.id === 'string' ? entry.id : undefined
+          if (!id) continue
+          models[id] = {
+            name: typeof entry.name === 'string' ? entry.name : id,
+            reasoning: typeof entry.reasoning === 'boolean' ? entry.reasoning : undefined,
+            tool_call: typeof entry.tool_call === 'boolean' ? entry.tool_call : true,
+            attachment: typeof entry.attachment === 'boolean' ? entry.attachment : true,
+            temperature: typeof entry.temperature === 'boolean' ? entry.temperature : true,
+          }
+        }
+      }
+      if (!models || Object.keys(models).length === 0) {
+        throw new Error('gateway returned an empty catalog')
+      }
       logger.info(`[opencode] fetched ${Object.keys(models).length} gateway models from ${url}`)
       return models
     } catch (err) {
@@ -338,6 +369,17 @@ const MINIMAL_FALLBACK_MODELS: Record<string, VaelorXGatewayModel> = {
   },
   'deepseek/deepseek-v4-flash': {
     name: 'DeepSeek V4 Flash',
+    reasoning: true,
+    tool_call: true,
+    attachment: true,
+    temperature: true,
+    limit: { context: 1_048_576, output: 64_000 },
+  },
+  // OpenCode Zen exposes this free tier — make sure it's always in the
+  // fallback catalog too, so OpenCode never marks it disabled even if the
+  // /models fetch fails entirely.
+  'deepseek-v4-flash-free': {
+    name: 'DeepSeek V4 Flash (Free)',
     reasoning: true,
     tool_call: true,
     attachment: true,
