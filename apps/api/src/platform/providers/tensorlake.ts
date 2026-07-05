@@ -65,9 +65,9 @@ const runningStatusCache = new Map<string, number>(); // externalId → cachedAt
 
 // ─── Default Resources ────────────────────────────────────────────────────────
 
-// Upgraded plan: 2 CPU cores, 4GB RAM (was 1 core / 1GB on trial plan)
-const DEFAULT_CPUS = 2;
-const DEFAULT_MEMORY_MB = 4096;
+// Upgraded plan: 4 vCPU cores, 16 GB RAM (per Tensorlake plan limits)
+const DEFAULT_CPUS = 4;
+const DEFAULT_MEMORY_MB = 16384;
 // IMPORTANT: ephemeral sandboxes (no name) TERMINATE permanently on idle timeout.
 // The cold-boot install takes 3-25 min, so 10 min default would kill the sandbox
 // mid-install. Use a generous idle threshold that survives the install.
