@@ -1031,10 +1031,11 @@ function providerListHasModels(providers: ProviderListResponse | undefined): boo
 // the single `kortix` provider (Codex included, as `codex/<id>` models). Any
 // OTHER provider opencode reports is a NATIVE one (a leaked `anthropic`/`openai`
 // key) that talks to the provider directly and bypasses the gateway. Drop them
-// HERE, at the source, so they never reach the cache or any consumer. `opencode`
-// (Zen) is the deliberate exception: its free models route natively too, but
-// that's the point — they're free and never touch gateway billing.
-export const GATEWAY_PROVIDER_IDS = new Set(['kortix', 'opencode']);
+// HERE, at the source, so they never reach the cache or any consumer.
+// `opencode` (Zen) and `vaelorx` (our custom OpenAI-compatible provider for
+// Zen/OpenRouter/NVIDIA etc.) are the deliberate exceptions: their models route
+// through the configured LLM gateway, not OpenCode's native provider paths.
+export const GATEWAY_PROVIDER_IDS = new Set(['kortix', 'opencode', 'vaelorx']);
 
 function filterToGatewayProviders(providers: ProviderListResponse): ProviderListResponse {
   const all = Array.isArray(providers.all) ? providers.all : [];

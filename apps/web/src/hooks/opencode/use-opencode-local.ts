@@ -199,8 +199,8 @@ export function useOpenCodeLocal({
     // Source 2: OpenCode provider list — BYOK providers connected via sandbox auth
     if (providers?.connected && providers?.all) {
       for (const providerId of providers.connected) {
-        // Skip gateway and opencode providers (they're always "connected")
-        if (providerId === 'kortix' || providerId === 'opencode') continue;
+        // Skip gateway/opencode/vaelorx providers (they're always "connected")
+        if (providerId === 'kortix' || providerId === 'opencode' || providerId === 'vaelorx') continue;
         // This is a BYOK provider connected via sandbox auth — show its models
         ids.add(providerId);
       }
