@@ -784,7 +784,7 @@ export class TensorlakeProvider implements SandboxProvider {
         // Upload tar.gz to sandbox and extract
         await sandbox.writeFile('/tmp/scaffold.tar.gz', tarBuffer);
         const extractResult = await sandbox.run('bash', {
-          args: ['-c', 'cd /workspace && tar xzf /tmp/scaffold.tar.gz --no-same-owner --no-same-permissions 2>&1; rm -f /tmp/scaffold.tar.gz; echo OK'],
+          args: ['-c', 'cd /workspace && mkdir -p .vaelorx/opencode/agents .vaelorx/opencode/skills .vaelorx/opencode/tools .vaelorx/memory && tar xzf /tmp/scaffold.tar.gz 2>&1; rm -f /tmp/scaffold.tar.gz; echo OK'],
           timeout: 30,
         });
         const extractStdout = String((extractResult as any).stdout ?? '').trim();
