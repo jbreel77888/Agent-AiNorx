@@ -517,8 +517,12 @@ export async function provisionSessionSandbox(opts: {
       // The admin connects providers (NVIDIA, OpenCode Zen, etc.) via the
       // admin dashboard and sets a default model. The daemon connects
       // directly to the provider — NOT through the OpenRouter gateway.
-      ...(async () => {
-        const modelConfig = await getDefaultModelConfig();
+      //
+      // IMPORTANT: getDefaultModelConfig() is async — we must await it BEFORE
+      // building the envVars object. The previous code used a spread on an
+      // async IIFE which silently produced an empty object (Promise can't be
+      // spread). This was THE bug — KORTIX_DEFAULT_MODEL was never injected.
+      ...(await getDefaultModelConfig().then((modelConfig) => {
         const envVars: Record<string, string> = {
           KORTIX_DEFAULT_MODEL: modelConfig.modelKey,
         };
@@ -531,7 +535,7 @@ export async function provisionSessionSandbox(opts: {
           envVars.KORTIX_YOLO_URL = modelConfig.baseUrl;
         }
         return envVars;
-      })(),
+      })),
     },
     // Idle lifecycle is owned by the provider-agnostic reaper (projects/
     // sandbox-reaper.ts), keyed off MEANINGFUL activity (real turns), with each

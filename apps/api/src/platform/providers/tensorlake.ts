@@ -65,8 +65,9 @@ const runningStatusCache = new Map<string, number>(); // externalId → cachedAt
 
 // ─── Default Resources ────────────────────────────────────────────────────────
 
-const DEFAULT_CPUS = 1;
-const DEFAULT_MEMORY_MB = 1024; // Tensorlake requires 1000-8192 MB per CPU core; 1024 MB for trial plan
+// Upgraded plan: 2 CPU cores, 4GB RAM (was 1 core / 1GB on trial plan)
+const DEFAULT_CPUS = 2;
+const DEFAULT_MEMORY_MB = 4096;
 // IMPORTANT: ephemeral sandboxes (no name) TERMINATE permanently on idle timeout.
 // The cold-boot install takes 3-25 min, so 10 min default would kill the sandbox
 // mid-install. Use a generous idle threshold that survives the install.
