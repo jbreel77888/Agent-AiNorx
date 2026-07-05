@@ -157,6 +157,25 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
     // that's the user's own subscription and should keep working. We just make
     // sure 'vaelorx' (our gateway provider) is also enabled.
     out.enabled_providers = allowList
+
+    // Set default_agent to 'vaelorx' and add a vaelorx agent definition with
+    // the explicit model. Without this, OpenCode falls back to its built-in
+    // 'build' agent (with model 'big-pickle' from the 'opencode' provider),
+    // which causes "Model not found: opencode/big-pickle" because 'opencode'
+    // isn't in enabled_providers.
+    out.default_agent = 'vaelorx'
+    const agents = (out.agent && typeof out.agent === 'object' && !Array.isArray(out.agent))
+      ? (out.agent as Record<string, unknown>)
+      : {}
+    const DEFAULT_VAELORX_MODEL_FOR_AGENT = getDefaultVaelorxModel(env)
+    agents.vaelorx = {
+      ...(agents.vaelorx as Record<string, unknown> | undefined),
+      description: 'VaelorX AI agent — handles coding, research, content, and data tasks.',
+      mode: 'primary',
+      model: `vaelorx/${DEFAULT_VAELORX_MODEL_FOR_AGENT}`,
+      permission: { '*': 'allow' },
+    }
+    out.agent = agents
   }
 
   // (3) Slack sessions: DENY opencode's blocking `question` tool. A Slack thread

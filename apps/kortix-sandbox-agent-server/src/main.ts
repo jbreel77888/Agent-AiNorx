@@ -191,10 +191,16 @@ async function main() {
           }, null, 2))
 
           // Write minimal agent definition
+          // IMPORTANT: Include `model: vaelorx/<default>` in the frontmatter.
+          // OpenCode's agent model field OVERRIDES the global config model —
+          // if it's empty, OpenCode falls back to its built-in default which
+          // is 'big-pickle' from the 'opencode' provider (NOT in enabled_providers).
+          // This was the root cause of "Model not found: opencode/big-pickle".
           writeFileSync(join(ws, '.vaelorx', 'opencode', 'agents', 'vaelorx.md'), [
             '---',
             'description: VaelorX AI agent by Digital Planetx. Handles coding, research, content, and data tasks.',
             'mode: primary',
+            `model: vaelorx/${defaultModel}`,
             'permission:',
             '  "*": allow',
             '---',
