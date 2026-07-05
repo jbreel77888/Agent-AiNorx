@@ -104,6 +104,7 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
     // that provider's internal catalog (from Models.dev) may not include every
     // model Zen actually serves (e.g. deepseek-v4-flash-free). OpenCode would
     // then say "Model is disabled" even though Zen's /models lists it.
+    const DEFAULT_VAELORX_MODEL = getDefaultVaelorxModel(env)
     const gatewayModels = await fetchGatewayModels(llmBaseUrl!, llmApiKey!)
     // Make absolutely sure the default model is in the catalog (the gateway
     // should already return it, but if the fetch fell back to MINIMAL_FALLBACK
@@ -196,45 +197,6 @@ function gatewayEnabledProviders(env: NodeJS.ProcessEnv): string[] {
   return [...allow]
 }
 
-async function buildVaelorxProvider(llmBaseUrl: string, llmApiKey: string): Promise<Record<string, unknown>> {
-  const gatewayModels = await fetchGatewayModels(llmBaseUrl, llmApiKey)
-
-  // The gateway /models endpoint proxies OpenRouter's /models verbatim.
-  // Model ids are in OpenRouter format: "provider/model" (e.g.
-  // "anthropic/claude-sonnet-4.6", "deepseek/deepseek-v4-flash").
-  //
-  // The default model (DEFAULT_VAELORX_MODEL) is set from KORTIX_DEFAULT_MODEL
-  // env var and should be in the same OpenRouter format.
-  //
-  // Ensure the default model exists in the catalog. If not, add it.
-  if (gatewayModels[DEFAULT_VAELORX_MODEL] === undefined) {
-    logger.warn(`[opencode] default model "${DEFAULT_VAELORX_MODEL}" not in gateway catalog — adding it`)
-    gatewayModels[DEFAULT_VAELORX_MODEL] = {
-      name: DEFAULT_VAELORX_MODEL,
-      tool_call: true,
-      attachment: true,
-      temperature: true,
-    }
-  }
-
-  // Reorder: put the default model FIRST so OpenCode picks it as default
-  const orderedModels: Record<string, VaelorXGatewayModel> = {}
-  orderedModels[DEFAULT_VAELORX_MODEL] = gatewayModels[DEFAULT_VAELORX_MODEL]
-  for (const [key, val] of Object.entries(gatewayModels)) {
-    if (key !== DEFAULT_VAELORX_MODEL) orderedModels[key] = val
-  }
-
-  return {
-    npm: '@ai-sdk/openai-compatible',
-    name: 'VaelorX',
-    options: {
-      baseURL: llmBaseUrl,
-      apiKey: llmApiKey,
-    },
-    models: withModelLimits(orderedModels),
-  }
-}
-
 export const buildExecutorMcpConfigContent = buildOpencodeConfigContent
 
 const GATEWAY_MODELS_RETRY_DELAYS_MS = [500, 1000, 2000, 4000, 8000]
@@ -307,15 +269,20 @@ async function fetchGatewayModels(
 }
 
 // Default model — read from env var (set by API from platform_settings/platform_models).
-// The value should be a model id that exists in the gateway's /models response
-// (which is proxied from OpenRouter). Examples: "anthropic/claude-sonnet-4.6",
-// "deepseek/deepseek-v4-flash", "google/gemini-3.5-flash".
+// The value should be a model id that exists in the gateway's /models response.
 // Falls back to "anthropic/claude-sonnet-4.6" if not set.
 // Note: NO "vaelorx/" prefix — the gateway proxies to OpenRouter which expects
 // provider/model format. The "vaelorx" prefix is only the opencode provider name,
 // not part of the model id sent to the upstream.
-const DEFAULT_VAELORX_MODEL = process.env.KORTIX_DEFAULT_MODEL?.trim()
-  || 'anthropic/claude-sonnet-4.6'
+//
+// IMPORTANT: This is computed INSIDE buildOpencodeConfigContent() from the `env`
+// parameter, NOT at module load time. The previous module-level constant read
+// process.env at import time, which was fragile (if the env var wasn't set yet
+// when the module loaded, it fell back to the wrong default). The function below
+// reads from the `env` parameter which is the actual session env.
+function getDefaultVaelorxModel(env: NodeJS.ProcessEnv): string {
+  return env.KORTIX_DEFAULT_MODEL?.trim() || 'anthropic/claude-sonnet-4.6'
+}
 
 type VaelorXGatewayModel = {
   name: string
@@ -646,6 +613,23 @@ export function createOpencodeSupervisor(
       env.OPENCODE_CONFIG = configPath
       delete env.OPENCODE_CONFIG_CONTENT
       logger.info(`[opencode] wrote config (${opencodeConfig.length} bytes) to ${configPath}`)
+
+      // ALSO write the config to the project's opencode.jsonc. Per OpenCode's
+      // config precedence (https://opencode.ai/docs/config/), the project config
+      // (priority 4) OVERRIDES the custom config from OPENCODE_CONFIG (priority 3).
+      // By writing to BOTH locations, we guarantee our model + provider settings
+      // are seen by OpenCode regardless of which source it reads first.
+      // This fixes "Model not found: opencode/big-pickle" — which happened because
+      // OpenCode fell back to its built-in default model when our OPENCODE_CONFIG
+      // wasn't being read correctly.
+      const projectConfigPath = join(currentOpencodeConfigDir, 'opencode.jsonc')
+      try {
+        mkdirSync(currentOpencodeConfigDir, { recursive: true })
+        writeFileSync(projectConfigPath, opencodeConfig, { mode: 0o600 })
+        logger.info(`[opencode] also wrote config to project dir ${projectConfigPath}`)
+      } catch (err) {
+        logger.warn(`[opencode] failed to write project config to ${projectConfigPath}`, { err: (err as Error).message })
+      }
     }
 
     const args = [

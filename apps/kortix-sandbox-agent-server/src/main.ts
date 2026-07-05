@@ -175,10 +175,19 @@ async function main() {
           ].join('\n'))
 
           // Write minimal opencode.jsonc
+          // IMPORTANT: Include the model field here as a belt-and-suspenders fix.
+          // The daemon's spawnChild() will later overwrite this with the full
+          // generated config (including provider + models catalog). But if for
+          // any reason OPENCODE_CONFIG isn't read by OpenCode, the project
+          // config (which has HIGHER precedence per https://opencode.ai/docs/config/)
+          // will still have the correct model — preventing "Model not found" errors.
+          const defaultModel = process.env.KORTIX_DEFAULT_MODEL || 'claude-sonnet-4.6'
           writeFileSync(join(ws, '.vaelorx', 'opencode', 'opencode.jsonc'), JSON.stringify({
             '$schema': 'https://opencode.ai/config.json',
             'default_agent': 'vaelorx',
             'permission': 'allow',
+            'model': `vaelorx/${defaultModel}`,
+            'small_model': `vaelorx/${defaultModel}`,
           }, null, 2))
 
           // Write minimal agent definition
