@@ -95,41 +95,51 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
         ? (out.provider as Record<string, unknown>)
         : {}
 
-    // When the base URL is OpenCode Zen (opencode.ai/zen), OpenCode auto-detects
-    // it as the built-in "opencode" provider. We must configure THAT provider
-    // (not a custom "vaelorx" one) so OpenCode uses it correctly.
-    // For other base URLs (OpenRouter, NVIDIA, etc.), we create a "vaelorx" provider.
+    // When the base URL is OpenCode Zen (opencode.ai/zen), OpenCode has a
+    // built-in "opencode" provider. We just need to set the API key and
+    // enable it — NO need to fetch models or create a custom provider.
+    // OpenCode Zen discovers its own models internally.
     const isOpencodeZen = llmBaseUrl?.includes('opencode.ai/zen')
-    const providerKey = isOpencodeZen ? 'opencode' : 'vaelorx'
 
-    // Set the API key for the provider
-    const providerConfig: Record<string, unknown> = {
-      ...(provider[providerKey] as Record<string, unknown> | undefined),
-      options: {
-        baseURL: llmBaseUrl,
-        apiKey: llmApiKey,
-      },
-      models: withModelLimits(await fetchGatewayModels(llmBaseUrl!, llmApiKey!)),
-    }
-
-    // For non-Zen providers, add npm package config
-    if (!isOpencodeZen) {
-      providerConfig.npm = '@ai-sdk/openai-compatible'
-      providerConfig.name = 'VaelorX'
-    }
-
-    out.provider = {
-      ...provider,
-      [providerKey]: providerConfig,
-    }
-
-    // Set the default model — use the provider key as prefix
-    const modelWithPrefix = `${providerKey}/${DEFAULT_VAELORX_MODEL}`
-    if (!('model' in out) || typeof out.model !== 'string') {
+    if (isOpencodeZen) {
+      // OpenCode Zen: just set the API key on the built-in "opencode" provider
+      // and enable it. Do NOT fetch models (Zen's /models returns empty).
+      const existingOpencode = provider.opencode as Record<string, unknown> | undefined
+      out.provider = {
+        ...provider,
+        opencode: {
+          ...(existingOpencode || {}),
+          options: {
+            baseURL: llmBaseUrl,
+            apiKey: llmApiKey,
+          },
+        },
+      }
+      // Set model with "opencode/" prefix
+      const modelWithPrefix = `opencode/${DEFAULT_VAELORX_MODEL}`
       out.model = modelWithPrefix
-    }
-    if (!('small_model' in out) || typeof out.small_model !== 'string') {
       out.small_model = modelWithPrefix
+    } else {
+      // Non-Zen provider (OpenRouter, NVIDIA, etc.): create custom "vaelorx" provider
+      out.provider = {
+        ...provider,
+        vaelorx: {
+          npm: '@ai-sdk/openai-compatible',
+          name: 'VaelorX',
+          options: {
+            baseURL: llmBaseUrl,
+            apiKey: llmApiKey,
+          },
+          models: withModelLimits(await fetchGatewayModels(llmBaseUrl!, llmApiKey!)),
+        },
+      }
+      const modelWithPrefix = `vaelorx/${DEFAULT_VAELORX_MODEL}`
+      if (!('model' in out) || typeof out.model !== 'string') {
+        out.model = modelWithPrefix
+      }
+      if (!('small_model' in out) || typeof out.small_model !== 'string') {
+        out.small_model = modelWithPrefix
+      }
     }
     // Lock opencode to the gateway as the ONLY LLM path. enabled_providers is an
     // allowlist — opencode loads ONLY these and ignores every provider it would
@@ -142,16 +152,13 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
     // user's own subscription (consumed into auth.json, intentionally not gated).
     // Use the correct provider key in the allowlist
     const allowList = gatewayEnabledProviders(env)
-    if (isOpencodeZen && !allowList.includes('opencode')) {
-      allowList.push('opencode')
-    }
-    if (!isOpencodeZen && !allowList.includes('vaelorx')) {
-      allowList.push('vaelorx')
-    }
-    // Remove 'vaelorx' from allowlist when using OpenCode Zen (it doesn't exist)
     if (isOpencodeZen) {
+      if (!allowList.includes('opencode')) allowList.push('opencode')
+      // Remove 'vaelorx' — it doesn't exist when using Zen
       const idx = allowList.indexOf('vaelorx')
       if (idx >= 0) allowList.splice(idx, 1)
+    } else {
+      if (!allowList.includes('vaelorx')) allowList.push('vaelorx')
     }
     out.enabled_providers = allowList
   }
