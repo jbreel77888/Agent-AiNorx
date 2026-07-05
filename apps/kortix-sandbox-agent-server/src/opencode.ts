@@ -88,21 +88,48 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
     }
   }
 
-  // (2) Kortix LLM gateway provider.
+  // (2) LLM gateway provider.
   if (hasLlmGateway) {
     const provider =
       out.provider && typeof out.provider === 'object' && !Array.isArray(out.provider)
         ? (out.provider as Record<string, unknown>)
         : {}
+
+    // When the base URL is OpenCode Zen (opencode.ai/zen), OpenCode auto-detects
+    // it as the built-in "opencode" provider. We must configure THAT provider
+    // (not a custom "vaelorx" one) so OpenCode uses it correctly.
+    // For other base URLs (OpenRouter, NVIDIA, etc.), we create a "vaelorx" provider.
+    const isOpencodeZen = llmBaseUrl?.includes('opencode.ai/zen')
+    const providerKey = isOpencodeZen ? 'opencode' : 'vaelorx'
+
+    // Set the API key for the provider
+    const providerConfig: Record<string, unknown> = {
+      ...(provider[providerKey] as Record<string, unknown> | undefined),
+      options: {
+        baseURL: llmBaseUrl,
+        apiKey: llmApiKey,
+      },
+      models: withModelLimits(await fetchGatewayModels(llmBaseUrl!, llmApiKey!)),
+    }
+
+    // For non-Zen providers, add npm package config
+    if (!isOpencodeZen) {
+      providerConfig.npm = '@ai-sdk/openai-compatible'
+      providerConfig.name = 'VaelorX'
+    }
+
     out.provider = {
       ...provider,
-      vaelorx: await buildVaelorxProvider(llmBaseUrl!, llmApiKey!),
+      [providerKey]: providerConfig,
     }
+
+    // Set the default model — use the provider key as prefix
+    const modelWithPrefix = `${providerKey}/${DEFAULT_VAELORX_MODEL}`
     if (!('model' in out) || typeof out.model !== 'string') {
-      out.model = DEFAULT_VAELORX_MODEL
+      out.model = modelWithPrefix
     }
     if (!('small_model' in out) || typeof out.small_model !== 'string') {
-      out.small_model = DEFAULT_VAELORX_MODEL
+      out.small_model = modelWithPrefix
     }
     // Lock opencode to the gateway as the ONLY LLM path. enabled_providers is an
     // allowlist — opencode loads ONLY these and ignores every provider it would
@@ -113,7 +140,20 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
     // by some path the deny-list didn't enumerate). We keep `kortix` plus any
     // providers the Codex/OpenCode subscription auth.json enables — those are the
     // user's own subscription (consumed into auth.json, intentionally not gated).
-    out.enabled_providers = gatewayEnabledProviders(env)
+    // Use the correct provider key in the allowlist
+    const allowList = gatewayEnabledProviders(env)
+    if (isOpencodeZen && !allowList.includes('opencode')) {
+      allowList.push('opencode')
+    }
+    if (!isOpencodeZen && !allowList.includes('vaelorx')) {
+      allowList.push('vaelorx')
+    }
+    // Remove 'vaelorx' from allowlist when using OpenCode Zen (it doesn't exist)
+    if (isOpencodeZen) {
+      const idx = allowList.indexOf('vaelorx')
+      if (idx >= 0) allowList.splice(idx, 1)
+    }
+    out.enabled_providers = allowList
   }
 
   // (3) Slack sessions: DENY opencode's blocking `question` tool. A Slack thread

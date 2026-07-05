@@ -159,7 +159,7 @@ async function main() {
             '',
             '[[agents]]',
             'name = "vaelorx"',
-            'model = "vaelorx/claude-sonnet-4.6"',
+            `model = "${process.env.KORTIX_DEFAULT_MODEL || 'claude-sonnet-4.6'}"`,
           ].join('\n'))
 
           // Write minimal README.md
