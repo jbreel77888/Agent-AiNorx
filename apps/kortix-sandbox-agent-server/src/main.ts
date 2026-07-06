@@ -15,6 +15,7 @@ import {
 import { logger } from './logger'
 import { createOpencodeSupervisor, OPENCODE_HOME, waitForOpencodeReady, type Opencode } from './opencode'
 import { ensureOpencodeConfigDeps } from './opencode-config-deps'
+import { EMBEDDED_TOOL_FILES } from './embedded-tools'
 import { startOpencodeEventLoop, flattenOpencodeError, type QuestionRequest, type OpencodeTurnError } from './opencode-events'
 import { createProjectEnvStore } from './project-env'
 import { startProxy } from './proxy'
@@ -247,6 +248,19 @@ async function main() {
             '.vaelorx/opencode/log/',
             '.vaelorx/opencode/cache/',
           ].join('\n'))
+
+          // Write embedded tool files + package.json so the agent has working
+          // web_search, scrape_webpage, image_search, memory, and show tools.
+          // Without these, the agent can't use @tavily/core, @mendable/firecrawl-js, etc.
+          // ensureOpencodeConfigDeps() will run bun install to fetch the npm packages.
+          const ocDir = join(ws, '.vaelorx', 'opencode')
+          for (const [relPath, content] of Object.entries(EMBEDDED_TOOL_FILES)) {
+            const filePath = join(ocDir, relPath)
+            const dir = filePath.substring(0, filePath.lastIndexOf('/'))
+            try { mkdirSync(dir, { recursive: true }) } catch {}
+            writeFileSync(filePath, content)
+          }
+          console.log(`[boot] simple mode — wrote ${Object.keys(EMBEDDED_TOOL_FILES).length} tool files + package.json`)
 
           console.log('[boot] simple mode — minimal workspace files created')
         }
