@@ -213,10 +213,16 @@ export class TensorlakeProvider implements SandboxProvider {
       name: sandboxName,
       cpus: DEFAULT_CPUS,
       memoryMb: DEFAULT_MEMORY_MB,
-      diskMb: DEFAULT_DISK_MB,
       timeoutSecs: effectiveTimeout,
       allowInternetAccess: true,
     };
+
+    // Only set diskMb for cold-boot (base image). When booting from a snapshot,
+    // the disk size is fixed by the snapshot — setting a different disk_mb
+    // causes "StartupFailedInternalError" (422).
+    if (isColdBoot) {
+      createOpts.diskMb = DEFAULT_DISK_MB;
+    }
 
     // snapshotId takes priority (pre-built image), otherwise use base image
     if (effectiveSnapshot) {
@@ -327,7 +333,8 @@ export class TensorlakeProvider implements SandboxProvider {
           snapshotId: warmBaseSnapshot,
           cpus: DEFAULT_CPUS,
           memoryMb: DEFAULT_MEMORY_MB,
-          diskMb: DEFAULT_DISK_MB,
+          // Don't set diskMb when booting from snapshot — the snapshot's disk
+          // size is fixed and setting a different size causes StartupFailedInternalError.
           timeoutSecs: timeoutSecs || DEFAULT_TIMEOUT_SECS,
           allowInternetAccess: true,
         });
