@@ -18,6 +18,7 @@ import {
 } from '@kortix/db';
 import { db } from '../shared/db';
 import { validateAccountToken } from '../repositories/account-tokens';
+import { validateSecretKey } from '../repositories/api-keys';
 import { authorize } from '../iam';
 import { loadProjectForUser } from '../projects/lib/access';
 import {
@@ -266,16 +267,39 @@ async function resolvePrincipal(c: Context): Promise<ExecutorPrincipal | null> {
   const header = c.req.header('Authorization');
   const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return null;
+
+  // Try PAT (kortix_pat_) first — project-scoped session tokens
   const result = await validateAccountToken(token);
-  if (!result.isValid || !result.userId || !result.accountId || !result.projectId) return null;
-  return {
-    userId: result.userId,
-    accountId: result.accountId,
-    projectId: result.projectId,
-    sessionId: c.req.header('X-Kortix-Session-Id') ?? null,
-    subject: await resolveShareSubject(result.userId),
-    agentGrant: result.agentGrant ?? null,
-  };
+  if (result.isValid && result.userId && result.accountId && result.projectId) {
+    return {
+      userId: result.userId,
+      accountId: result.accountId,
+      projectId: result.projectId,
+      sessionId: c.req.header('X-Kortix-Session-Id') ?? null,
+      subject: await resolveShareSubject(result.userId),
+      agentGrant: result.agentGrant ?? null,
+    };
+  }
+
+  // Fallback: try sandbox token (kortix_sb_) — simple mode (no project)
+  // The sandbox token carries accountId but no projectId/userId.
+  // In simple mode, we resolve the user from the account and use null projectId.
+  const sbResult = await validateSecretKey(token);
+  if (sbResult.isValid && sbResult.accountId) {
+    // In simple mode, accountId == userId (1:1 mapping for personal accounts)
+    // The sandbox token's accountId IS the user's identity.
+    const userId = sbResult.accountId;
+    return {
+      userId,
+      accountId: sbResult.accountId,
+      projectId: null, // simple mode — no project
+      sessionId: c.req.header('X-Kortix-Session-Id') ?? null,
+      subject: await resolveShareSubject(userId),
+      agentGrant: null,
+    };
+  }
+
+  return null;
 }
 
 /**
