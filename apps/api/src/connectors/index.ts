@@ -303,6 +303,107 @@ connectorsApp.get('/pipedream/status', async (c) => {
   });
 });
 
+// ─── POST /v1/connectors/pipedream/finalize — save connected account to DB ─
+// Called by the frontend after the Pipedream OAuth popup closes successfully.
+// It checks Pipedream for newly connected accounts and creates connector
+// records in our DB so the agent can use them.
+connectorsApp.post('/pipedream/finalize', async (c) => {
+  if (!pipedreamConfigured()) {
+    return c.json({ error: 'Pipedream is not configured' }, 503);
+  }
+  const userId = c.get('userId') as string;
+  let accountId = c.get('accountId') as string;
+  if (!accountId && userId) {
+    accountId = await resolveAccountId(userId);
+  }
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+
+  const body = await c.req.json().catch(() => ({}));
+  const appSlug = body.appSlug as string | undefined;
+
+  const extUserId = `acct:${accountId}`;
+
+  try {
+    // Fetch ALL connected accounts for this user from Pipedream
+    const data = await pdApi<{
+      data: Array<{
+        id: string;
+        app: { name_slug: string; name: string };
+      }>;
+    }>('GET', `/connect/${config.PIPEDREAM_PROJECT_ID}/accounts?external_user_id=${encodeURIComponent(extUserId)}&include_credentials=0`);
+
+    const pdAccounts = data.data || [];
+    // Filter by appSlug if provided
+    const filtered = appSlug
+      ? pdAccounts.filter((a) => a.app.name_slug === appSlug)
+      : pdAccounts;
+
+    const created: string[] = [];
+    const existing: string[] = [];
+
+    for (const acct of filtered) {
+      const slug = acct.app.name_slug;
+      const name = acct.app.name;
+      const pdAccountId = acct.id;
+
+      // Check if a connector for this app + account already exists
+      const [existingConn] = await db
+        .select()
+        .from(executorConnectors)
+        .where(
+          and(
+            eq(executorConnectors.accountId, accountId),
+            isNull(executorConnectors.projectId),
+            eq(executorConnectors.slug, slug),
+          ),
+        )
+        .limit(1);
+
+      if (existingConn) {
+        existing.push(slug);
+        continue;
+      }
+
+      // Create a connector record in our DB
+      try {
+        await db.insert(executorConnectors).values({
+          accountId,
+          projectId: null,
+          slug,
+          name,
+          providerType: 'pipedream',
+          config: {
+            pipedreamAppSlug: slug,
+            pipedreamAccountId: pdAccountId,
+            pipedreamExtUserId: extUserId,
+          },
+          enabled: true,
+          shareScope: 'project',
+          credentialMode: 'shared',
+          status: 'active',
+        }).returning();
+        created.push(slug);
+      } catch (err: any) {
+        if (err?.code === '23505') {
+          // Already exists (race condition) — skip
+          existing.push(slug);
+        } else {
+          console.warn(`[connectors/finalize] failed to create connector for ${slug}:`, err);
+        }
+      }
+    }
+
+    return c.json({
+      ok: true,
+      created,
+      existing,
+      total: filtered.length,
+    });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 502);
+  }
+});
+
 // ─── List user's connectors (account-scoped, project_id = NULL) ──────────────
 
 connectorsApp.get('/', async (c) => {

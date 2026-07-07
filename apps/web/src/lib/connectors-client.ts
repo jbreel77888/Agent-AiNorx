@@ -140,3 +140,11 @@ export async function getPipedreamStatus(): Promise<{ configured: boolean }> {
   const res = await backendApi.get('/connectors/pipedream/status', { headers });
   return res.data;
 }
+
+export async function finalizePipedreamConnect(
+  appSlug?: string,
+): Promise<{ ok: boolean; created: string[]; existing: string[]; total: number }> {
+  const headers = await authHeaders();
+  const res = await backendApi.post('/connectors/pipedream/finalize', { appSlug }, { headers });
+  return res.data;
+}

@@ -5,7 +5,7 @@ import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
   listUserConnectors, createUserConnector, updateUserConnector, deleteUserConnector,
-  listCatalogApps, startPipedreamConnect, getPipedreamStatus,
+  listCatalogApps, startPipedreamConnect, getPipedreamStatus, finalizePipedreamConnect,
   type UserConnector, type CatalogApp,
 } from '@/lib/connectors-client';
 import { Button } from '@/components/ui/button';
@@ -239,6 +239,7 @@ function ConnectorsContent() {
 // ─── App Catalog Browser (Pipedream-powered) ──────────────────────────────
 
 function AppCatalog({ pipedreamConfigured }: { pipedreamConfigured: boolean }) {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [apps, setApps] = useState<CatalogApp[]>([]);
@@ -350,7 +351,10 @@ function AppCatalog({ pipedreamConfigured }: { pipedreamConfigured: boolean }) {
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {apps.map((app) => (
-              <AppCard key={app.slug} app={app} />
+              <AppCard key={app.slug} app={app} onConnected={() => {
+                // Refresh the connected connectors list
+                queryClient.invalidateQueries({ queryKey: ['user-connectors'] });
+              }} />
             ))}
             {loadingMore && Array.from({ length: 8 }).map((_, i) => (
               <Skeleton key={`loading-${i}`} className="h-[104px] rounded-2xl" />
@@ -380,21 +384,57 @@ function AppCatalog({ pipedreamConfigured }: { pipedreamConfigured: boolean }) {
 
 // ─── App Card (single service in the grid) ────────────────────────────────
 
-function AppCard({ app }: { app: CatalogApp }) {
+function AppCard({ app, onConnected }: { app: CatalogApp; onConnected?: () => void }) {
   const [connecting, setConnecting] = useState(false);
+  const queryClient = useQueryClient();
 
   const handleConnect = async () => {
     setConnecting(true);
     try {
+      // 1. Start the OAuth flow — get the connect URL
       const result = await startPipedreamConnect(app.slug);
-      if (result.connectUrl) {
-        window.open(result.connectUrl, '_blank', 'width=600,height=700');
-      } else {
+      if (!result.connectUrl) {
         toast.info('Opening Pipedream connect flow...');
+        return;
       }
+
+      // 2. Open the Pipedream connect page in a popup
+      const popup = window.open(result.connectUrl, '_blank', 'width=600,height=700');
+      if (!popup) {
+        toast.error('Popup blocked. Please allow popups and try again.');
+        return;
+      }
+
+      // 3. Poll to detect when the popup closes (OAuth completed or cancelled)
+      const pollInterval = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(pollInterval);
+          // 4. Popup closed — call finalize to save the connector to DB
+          finalizePipedreamConnect(app.slug)
+            .then((res) => {
+              if (res.created.length > 0) {
+                toast.success(`${app.name} connected successfully!`);
+                queryClient.invalidateQueries({ queryKey: ['user-connectors'] });
+                onConnected?.();
+              } else if (res.existing.length > 0) {
+                toast.info(`${app.name} is already connected`);
+                queryClient.invalidateQueries({ queryKey: ['user-connectors'] });
+              } else if (res.total === 0) {
+                toast.warning(
+                  `${app.name} connection was not completed. Please try again and complete the authorization in the popup.`
+                );
+              }
+            })
+            .catch((err) => {
+              toast.error(err?.message || 'Failed to finalize connection');
+            })
+            .finally(() => {
+              setConnecting(false);
+            });
+        }
+      }, 500);
     } catch (err: any) {
       toast.error(err?.message || 'Failed to start connection');
-    } finally {
       setConnecting(false);
     }
   };
