@@ -507,13 +507,6 @@ export async function provisionSessionSandbox(opts: {
       // the agent gets "not authenticated" errors and can't use connectors.
       // Fix: in simple mode, use the sandbox token as KORTIX_EXECUTOR_TOKEN.
       // The executor gateway accepts sandbox tokens for account-scoped routes.
-<<<<<<< HEAD
-      const effectiveExecutorToken = executorToken ?? (isSimpleMode ? sandboxKey.secretKey : null);
-      KORTIX_SANDBOX_TOKEN: sandboxKey.secretKey,
-      KORTIX_TOKEN: sandboxKey.secretKey,
-      ...(effectiveExecutorToken
-        ? { KORTIX_CLI_TOKEN: effectiveExecutorToken, KORTIX_EXECUTOR_TOKEN: effectiveExecutorToken }
-=======
       KORTIX_SANDBOX_TOKEN: sandboxKey.secretKey,
       KORTIX_TOKEN: sandboxKey.secretKey,
       ...((executorToken ?? (isSimpleMode ? sandboxKey.secretKey : null))
@@ -521,7 +514,6 @@ export async function provisionSessionSandbox(opts: {
             KORTIX_CLI_TOKEN: (executorToken ?? (isSimpleMode ? sandboxKey.secretKey : null))!,
             KORTIX_EXECUTOR_TOKEN: (executorToken ?? (isSimpleMode ? sandboxKey.secretKey : null))!,
           }
->>>>>>> 072934785 (fix: syntax error in session-sandbox.ts — inline the executor token logic)
         : {}),
       ...(gatewayLlmKey
         ? {
