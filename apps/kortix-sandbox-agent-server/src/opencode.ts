@@ -74,7 +74,10 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
         type: 'local',
         // The Executor MCP server is a face of the unified `kortix` CLI
         // (`kortix executor mcp`), baked onto PATH in every sandbox image.
-        command: ['vaelorx', 'executor', 'mcp'],
+        // NOTE: the binary is named `kortix` (not `vaelorx`) — the rebrand
+        // renamed the MCP server key to `vaelorx-executor` for the agent's
+        // view, but the actual binary on PATH is still `kortix`.
+        command: ['kortix', 'executor', 'mcp'],
         enabled: true,
         environment: {
           KORTIX_EXECUTOR_TOKEN: executorToken,

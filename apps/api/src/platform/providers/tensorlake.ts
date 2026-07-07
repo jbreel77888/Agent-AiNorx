@@ -722,6 +722,40 @@ export class TensorlakeProvider implements SandboxProvider {
       new TextEncoder().encode(entrypointData),
     );
 
+    // ── 2b. Upload the kortix CLI binary (gzipped) ──────────────────────────
+    // The CLI is needed by the agent (kortix secrets, kortix cr open, etc.)
+    // and by the vaelorx-executor MCP server (kortix executor mcp).
+    // Without it, the agent can't use connectors or manage secrets.
+    const cliBinPath = process.env.KORTIX_SNAPSHOT_CLI_BIN_PATH
+      || resolve(REPO_ROOT, 'apps/cli/dist/kortix');
+    if (existsSync(cliBinPath)) {
+      const cliRaw = readFileSync(cliBinPath);
+      const cliGz = gzipSync(cliRaw);
+      console.log(`[tensorlake] Uploading kortix CLI binary (${(cliGz.length / 1048576).toFixed(1)} MB gzipped, ${cliRaw.length} bytes raw)...`);
+      try {
+        await sandbox.writeFile('/tmp/kortix.gz', cliGz);
+        console.log(`[tensorlake] CLI binary uploaded in single call.`);
+      } catch (singleErr) {
+        // Fallback: chunked upload (same as agent binary)
+        console.warn(`[tensorlake] Single-shot CLI upload failed, falling back to chunked upload.`);
+        const chunkSize = 2 * 1024 * 1024; // 2 MB
+        const chunks: Buffer[] = [];
+        for (let i = 0; i < cliGz.length; i += chunkSize) {
+          chunks.push(cliGz.subarray(i, i + chunkSize));
+        }
+        for (let i = 0; i < chunks.length; i++) {
+          const partName = String(i).padStart(3, '0');
+          await sandbox.writeFile(`/tmp/kortix.gz.${partName}`, chunks[i]);
+        }
+        await sandbox.run('bash', {
+          args: ['-c', 'cat /tmp/kortix.gz.* > /tmp/kortix.gz && rm -f /tmp/kortix.gz.*'],
+          timeout: 30,
+        });
+      }
+    } else {
+      console.warn(`[tensorlake] CLI binary not found at ${cliBinPath} — agent won't have kortix CLI commands.`);
+    }
+
     // ── 3. Run the setup script ──────────────────────────────────────────────
     const setupScript = buildColdSetupScript(envVars);
     console.log(`[tensorlake] Running cold-boot setup script in sandbox ${sandbox.sandboxId}...`);
@@ -952,7 +986,7 @@ sudo mkdir -p ${RUNTIME_HOME} ${RUNTIME_HOME}/.local/share ${RUNTIME_HOME}/.conf
 sudo mkdir -p /workspace /ephemeral/kortix-master/opencode /opt/kortix/apps/sandbox /opt/kortix/packages
 
 # ─── 4. Install kortix binaries ───────────────────────────────────────────
-echo "$LOG_PREFIX Installing kortix-agent + entrypoint..."
+echo "$LOG_PREFIX Installing kortix-agent + entrypoint + CLI..."
 # IMPORTANT: 'sudo gunzip -c X > /usr/local/bin/Y' does NOT work — the shell
 # redirect '>' is performed by the calling user (tl-user), not sudo. Use
 # 'gunzip | sudo tee' so the write happens as root (same pattern as warm-bake.ts).
@@ -967,6 +1001,24 @@ if [ ! -x /usr/local/bin/kortix-agent ]; then
   ls -la /usr/local/bin/kortix-agent
   exit 1
 fi
+
+# Install the kortix CLI binary (used by agent + vaelorx-executor MCP server)
+if [ -f /tmp/kortix.gz ]; then
+  echo "$LOG_PREFIX Installing kortix CLI..."
+  gunzip -c /tmp/kortix.gz | sudo tee /usr/local/bin/kortix >/dev/null
+  sudo chmod 755 /usr/local/bin/kortix
+  sudo chown root:root /usr/local/bin/kortix
+  rm -f /tmp/kortix.gz
+  # Verify CLI works
+  if kortix --version >/dev/null 2>&1; then
+    echo "$LOG_PREFIX kortix CLI installed: $(kortix --version 2>&1 | head -1)"
+  else
+    echo "$LOG_PREFIX WARN: kortix CLI installed but --version failed (may still work for subcommands)"
+  fi
+else
+  echo "$LOG_PREFIX WARN: /tmp/kortix.gz not found — kortix CLI will not be available"
+fi
+
 echo "$LOG_PREFIX kortix binaries installed and verified executable."
 
 # ─── 5. Write session env file ────────────────────────────────────────────
