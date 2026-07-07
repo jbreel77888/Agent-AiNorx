@@ -500,10 +500,18 @@ export async function provisionSessionSandbox(opts: {
       // Phase 2 (after baked images cycle): drop the `KORTIX_TOKEN` /
       // `KORTIX_EXECUTOR_TOKEN` aliases and let `KORTIX_TOKEN` MEAN the session
       // token, so the agent world has exactly one obvious var.
+      //
+      // IMPORTANT (simple mode fix): In simple mode, executorToken is null
+      // (no project-scoped PAT). But the agent STILL needs KORTIX_EXECUTOR_TOKEN
+      // to use the vaelorx-executor MCP server and the kortix CLI. Without it,
+      // the agent gets "not authenticated" errors and can't use connectors.
+      // Fix: in simple mode, use the sandbox token as KORTIX_EXECUTOR_TOKEN.
+      // The executor gateway accepts sandbox tokens for account-scoped routes.
+      const effectiveExecutorToken = executorToken ?? (isSimpleMode ? sandboxKey.secretKey : null);
       KORTIX_SANDBOX_TOKEN: sandboxKey.secretKey,
       KORTIX_TOKEN: sandboxKey.secretKey,
-      ...(executorToken
-        ? { KORTIX_CLI_TOKEN: executorToken, KORTIX_EXECUTOR_TOKEN: executorToken }
+      ...(effectiveExecutorToken
+        ? { KORTIX_CLI_TOKEN: effectiveExecutorToken, KORTIX_EXECUTOR_TOKEN: effectiveExecutorToken }
         : {}),
       ...(gatewayLlmKey
         ? {
