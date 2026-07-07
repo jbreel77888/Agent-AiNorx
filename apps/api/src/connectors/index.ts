@@ -16,10 +16,292 @@ import { supabaseAuth } from '../middleware/auth';
 import { db } from '../shared/db';
 import { executorConnectors } from '@kortix/db';
 import { resolveAccountId } from '../shared/resolve-account';
+import { config } from '../config';
 
 export const connectorsApp = new Hono();
 
 connectorsApp.use('*', supabaseAuth);
+
+// ─── Pipedream Connect: catalog + OAuth flow (account-scoped) ─────────────
+// Uses Pipedream's Connect API to browse 3,235+ apps and 1-click connect.
+// Requires PIPEDREAM_CLIENT_ID, PIPEDREAM_CLIENT_SECRET, PIPEDREAM_PROJECT_ID.
+
+const PD_BASE = 'https://api.pipedream.com/v1';
+
+interface PipedreamTokenCache {
+  token: string;
+  expiresAt: number;
+}
+let pdTokenCache: PipedreamTokenCache | null = null;
+
+function pipedreamConfigured(): boolean {
+  return !!(config.PIPEDREAM_CLIENT_ID && config.PIPEDREAM_CLIENT_SECRET && config.PIPEDREAM_PROJECT_ID);
+}
+
+async function getPdApiToken(): Promise<string> {
+  if (pdTokenCache && Date.now() < pdTokenCache.expiresAt - 60_000) {
+    return pdTokenCache.token;
+  }
+  if (!pipedreamConfigured()) {
+    throw new Error('Pipedream is not configured (set PIPEDREAM_CLIENT_ID/SECRET/PROJECT_ID)');
+  }
+  const res = await fetch(`${PD_BASE}/oauth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'client_credentials',
+      client_id: config.PIPEDREAM_CLIENT_ID,
+      client_secret: config.PIPEDREAM_CLIENT_SECRET,
+    }),
+  });
+  if (!res.ok) throw new Error(`Pipedream auth failed (${res.status}): ${await res.text()}`);
+  const data = await res.json() as { access_token: string; expires_in: number };
+  pdTokenCache = {
+    token: data.access_token,
+    expiresAt: Date.now() + data.expires_in * 1000,
+  };
+  return data.access_token;
+}
+
+async function pdApi<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const token = await getPdApiToken();
+  const res = await fetch(`${PD_BASE}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'x-pd-environment': config.PIPEDREAM_ENVIRONMENT || 'production',
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  if (!res.ok) throw new Error(`Pipedream ${method} ${path} (${res.status}): ${await res.text()}`);
+  return res.json() as Promise<T>;
+}
+
+// Apps that are utilities (not real connectors) — filtered from catalog
+const UTILITY_APP_SLUGS = new Set([
+  'pipedream_utils', 'schedule', 'http', 'formatting', 'code',
+  'filter', 'delay', 'batch', 'dedupe', 'pipedream_data_stores',
+]);
+// Apps that have native Kortix equivalents — filtered to avoid duplicates
+const NATIVE_APP_SLUGS = new Set(['slack', 'slack_bot']);
+
+function isConnectableApp(a: { authType?: string | null; slug: string }): boolean {
+  if (UTILITY_APP_SLUGS.has(a.slug)) return false;
+  if (NATIVE_APP_SLUGS.has(a.slug)) return false;
+  return !!a.authType && a.authType !== 'none';
+}
+
+// ─── GET /v1/connectors/catalog — browse Pipedream app catalog ────────────
+connectorsApp.get('/catalog', async (c) => {
+  if (!pipedreamConfigured()) {
+    return c.json({ error: 'Pipedream is not configured', apps: [], hasMore: false }, 503);
+  }
+  const q = c.req.query('q') || '';
+  const cursor = c.req.query('cursor') || '';
+  const limit = parseInt(c.req.query('limit') || '48', 10);
+
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  params.set('limit', String(limit));
+  if (cursor) params.set('after', cursor);
+  if (!q) {
+    params.set('sort_key', 'featured_weight');
+    params.set('sort_direction', 'desc');
+  }
+
+  try {
+    const data = await pdApi<{
+      page_info: { total_count: number; count: number; end_cursor?: string };
+      data: Array<{
+        name_slug: string;
+        name: string;
+        description?: string;
+        img_src?: string;
+        auth_type?: string;
+        categories: string[];
+      }>;
+    }>('GET', `/connect/${config.PIPEDREAM_PROJECT_ID}/apps?${params.toString()}`);
+
+    const apps = (data.data || [])
+      .map((a) => ({
+        slug: a.name_slug,
+        name: a.name,
+        description: a.description ?? null,
+        imgSrc: a.img_src ?? null,
+        authType: a.auth_type ?? null,
+        categories: a.categories || [],
+      }))
+      .filter(isConnectableApp);
+
+    return c.json({
+      apps,
+      nextCursor: data.page_info?.end_cursor,
+      hasMore: !!data.page_info?.end_cursor,
+      totalCount: data.page_info?.total_count ?? 0,
+    });
+  } catch (err: any) {
+    return c.json({ error: err.message, apps: [], hasMore: false }, 502);
+  }
+});
+
+// ─── GET /v1/connectors/catalog/:slug — get app details + actions ─────────
+connectorsApp.get('/catalog/:slug', async (c) => {
+  if (!pipedreamConfigured()) {
+    return c.json({ error: 'Pipedream is not configured' }, 503);
+  }
+  const slug = c.req.param('slug');
+
+  try {
+    const data = await pdApi<{
+      data: {
+        name_slug: string;
+        name: string;
+        description?: string;
+        img_src?: string;
+        auth_type?: string;
+        categories: string[];
+      };
+    }>('GET', `/connect/${config.PIPEDREAM_PROJECT_ID}/apps/${slug}`);
+
+    return c.json({ app: data.data });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 502);
+  }
+});
+
+// ─── GET /v1/connectors/catalog/:slug/actions — list app actions/tools ────
+connectorsApp.get('/catalog/:slug/actions', async (c) => {
+  if (!pipedreamConfigured()) {
+    return c.json({ error: 'Pipedream is not configured', actions: [] }, 503);
+  }
+  const slug = c.req.param('slug');
+  const limit = parseInt(c.req.query('limit') || '100', 10);
+
+  try {
+    const data = await pdApi<{
+      data: Array<{
+        key: string;
+        name: string;
+        description?: string;
+        configurable_props?: Array<{
+          name: string;
+          type: string;
+          optional?: boolean;
+          description?: string;
+        }>;
+      }>;
+    }>('GET', `/connect/${config.PIPEDREAM_PROJECT_ID}/actions?app=${slug}&limit=${limit}`);
+
+    const actions = (data.data || []).map((a) => ({
+      key: a.key,
+      name: a.name,
+      description: a.description,
+      params: (a.configurable_props || [])
+        .filter((p) => p.type !== 'app')
+        .map((p) => ({
+          name: p.name,
+          type: p.type,
+          required: !p.optional,
+          description: p.description,
+        })),
+    }));
+
+    return c.json({ actions });
+  } catch (err: any) {
+    return c.json({ error: err.message, actions: [] }, 502);
+  }
+});
+
+// ─── POST /v1/connectors/pipedream/connect — start OAuth flow ─────────────
+connectorsApp.post('/pipedream/connect', async (c) => {
+  if (!pipedreamConfigured()) {
+    return c.json({ error: 'Pipedream is not configured' }, 503);
+  }
+  const userId = c.get('userId') as string;
+  let accountId = c.get('accountId') as string;
+  if (!accountId && userId) {
+    accountId = await resolveAccountId(userId);
+  }
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+
+  const body = await c.req.json().catch(() => ({}));
+  const appSlug = body.appSlug;
+
+  // external_user_id ties the Pipedream connection to this user's account
+  const extUserId = `acct:${accountId}`;
+
+  const baseUrl = config.FRONTEND_URL || config.KORTIX_URL || 'http://localhost:3000';
+  let origin = baseUrl;
+  try { origin = new URL(baseUrl).origin; } catch { /* keep */ }
+
+  const tokenBody: Record<string, unknown> = {
+    external_user_id: extUserId,
+    allowed_origins: [origin],
+    success_redirect_uri: `${origin}/connectors?connected=true`,
+    error_redirect_uri: `${origin}/connectors?error=true`,
+  };
+  if (appSlug) tokenBody.app_slug = appSlug;
+
+  try {
+    const data = await pdApi<{ token: string; expires_at: string; connect_link_url?: string }>(
+      'POST',
+      `/connect/${config.PIPEDREAM_PROJECT_ID}/tokens`,
+      tokenBody,
+    );
+
+    let connectUrl = data.connect_link_url;
+    if (connectUrl && appSlug && !/[?&]app=/.test(connectUrl)) {
+      connectUrl += `${connectUrl.includes('?') ? '&' : '?'}app=${encodeURIComponent(appSlug)}`;
+    }
+
+    return c.json({
+      token: data.token,
+      connectUrl,
+      expiresAt: data.expires_at,
+    });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 502);
+  }
+});
+
+// ─── GET /v1/connectors/pipedream/accounts — list connected accounts ──────
+connectorsApp.get('/pipedream/accounts', async (c) => {
+  if (!pipedreamConfigured()) {
+    return c.json({ error: 'Pipedream is not configured', accounts: [] }, 503);
+  }
+  const userId = c.get('userId') as string;
+  let accountId = c.get('accountId') as string;
+  if (!accountId && userId) {
+    accountId = await resolveAccountId(userId);
+  }
+  if (!accountId) return c.json({ accounts: [] });
+
+  const extUserId = `acct:${accountId}`;
+
+  try {
+    const data = await pdApi<{
+      data: Array<{ id: string; app: { name_slug: string; name: string } }>;
+    }>('GET', `/connect/${config.PIPEDREAM_PROJECT_ID}/accounts?external_user_id=${encodeURIComponent(extUserId)}&include_credentials=0`);
+
+    const accounts = (data.data || []).map((a) => ({
+      id: a.id,
+      app: a.app.name_slug,
+      appName: a.app.name,
+    }));
+
+    return c.json({ accounts });
+  } catch (err: any) {
+    return c.json({ error: err.message, accounts: [] }, 502);
+  }
+});
+
+// ─── GET /v1/connectors/pipedream/status — check if Pipedream is configured ─
+connectorsApp.get('/pipedream/status', async (c) => {
+  return c.json({
+    configured: pipedreamConfigured(),
+  });
+});
 
 // ─── List user's connectors (account-scoped, project_id = NULL) ──────────────
 
