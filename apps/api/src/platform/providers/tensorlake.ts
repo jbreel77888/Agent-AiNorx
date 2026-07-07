@@ -65,9 +65,10 @@ const runningStatusCache = new Map<string, number>(); // externalId → cachedAt
 
 // ─── Default Resources ────────────────────────────────────────────────────────
 
-// Upgraded plan: 4 vCPU cores, 16 GB RAM (per Tensorlake plan limits)
+// Upgraded plan: 4 vCPU cores, 16 GB RAM, 50 GB disk (per Tensorlake plan limits)
 const DEFAULT_CPUS = 4;
 const DEFAULT_MEMORY_MB = 16384;
+const DEFAULT_DISK_MB = 51200; // 50 GB — was 10 GB default, increased for agent workspace
 // IMPORTANT: ephemeral sandboxes (no name) TERMINATE permanently on idle timeout.
 // The cold-boot install takes 3-25 min, so 10 min default would kill the sandbox
 // mid-install. Use a generous idle threshold that survives the install.
@@ -212,6 +213,7 @@ export class TensorlakeProvider implements SandboxProvider {
       name: sandboxName,
       cpus: DEFAULT_CPUS,
       memoryMb: DEFAULT_MEMORY_MB,
+      diskMb: DEFAULT_DISK_MB,
       timeoutSecs: effectiveTimeout,
       allowInternetAccess: true,
     };
@@ -325,6 +327,7 @@ export class TensorlakeProvider implements SandboxProvider {
           snapshotId: warmBaseSnapshot,
           cpus: DEFAULT_CPUS,
           memoryMb: DEFAULT_MEMORY_MB,
+          diskMb: DEFAULT_DISK_MB,
           timeoutSecs: timeoutSecs || DEFAULT_TIMEOUT_SECS,
           allowInternetAccess: true,
         });
