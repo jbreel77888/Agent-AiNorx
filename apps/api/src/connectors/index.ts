@@ -14,9 +14,11 @@ import { Hono } from 'hono';
 import { eq, and, isNull } from 'drizzle-orm';
 import { supabaseAuth } from '../middleware/auth';
 import { db } from '../shared/db';
-import { executorConnectors } from '@kortix/db';
+import { executorConnectors, executorConnectorActions } from '@kortix/db';
 import { resolveAccountId } from '../shared/resolve-account';
 import { config } from '../config';
+import { pipedreamCatalog } from '../executor/pipedream';
+import { normalizePipedream } from '../executor/normalize';
 
 export const connectorsApp = new Hono();
 
@@ -393,6 +395,47 @@ connectorsApp.post('/pipedream/finalize', async (c) => {
       }
     }
 
+    // Auto-sync actions for newly created connectors
+    for (const slug of created) {
+      try {
+        const [conn] = await db
+          .select()
+          .from(executorConnectors)
+          .where(
+            and(
+              eq(executorConnectors.accountId, accountId),
+              isNull(executorConnectors.projectId),
+              eq(executorConnectors.slug, slug),
+            ),
+          )
+          .limit(1);
+
+        if (conn) {
+          const cfg = (conn.config ?? {}) as Record<string, any>;
+          const appSlug = cfg.pipedreamAppSlug as string;
+          if (appSlug) {
+            const rawActions = await pipedreamCatalog(appSlug);
+            const normalized = normalizePipedream(rawActions, appSlug);
+            if (normalized.length > 0) {
+              await db.insert(executorConnectorActions).values(
+                normalized.map((a) => ({
+                  connectorId: conn.connectorId,
+                  path: a.path,
+                  name: a.name,
+                  description: a.description ?? null,
+                  inputSchema: a.inputSchema ?? null,
+                  risk: a.risk ?? 'low',
+                })),
+              );
+              console.log(`[connectors/finalize] auto-synced ${normalized.length} actions for ${slug}`);
+            }
+          }
+        }
+      } catch (syncErr: any) {
+        console.warn(`[connectors/finalize] auto-sync failed for ${slug}:`, syncErr.message);
+      }
+    }
+
     return c.json({
       ok: true,
       created,
@@ -539,4 +582,75 @@ connectorsApp.delete('/:connectorId', async (c) => {
     .where(eq(executorConnectors.connectorId, connectorId));
 
   return c.json({ ok: true });
+});
+
+// ─── POST /v1/connectors/sync-actions — sync Pipedream actions for all connectors ─
+// Fetches the action catalog from Pipedream for each connected Pipedream connector
+// and stores them in executor_connector_actions. This makes the actions available
+// to the vaelorx-executor MCP (discover/describe/call tools).
+// Works for ALL Pipedream connectors (Gmail, GitHub, Slack, etc.)
+connectorsApp.post('/sync-actions', async (c) => {
+  const userId = c.get('userId') as string;
+  let accountId = c.get('accountId') as string;
+  if (!accountId && userId) {
+    accountId = await resolveAccountId(userId);
+  }
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+
+  // Get all account-scoped Pipedream connectors
+  const connectors = await db
+    .select()
+    .from(executorConnectors)
+    .where(
+      and(
+        eq(executorConnectors.accountId, accountId),
+        isNull(executorConnectors.projectId),
+        eq(executorConnectors.providerType, 'pipedream'),
+        eq(executorConnectors.enabled, true),
+      ),
+    );
+
+  const results: Array<{ slug: string; synced: number; error?: string }> = [];
+
+  for (const conn of connectors) {
+    try {
+      const cfg = (conn.config ?? {}) as Record<string, any>;
+      const appSlug = cfg.pipedreamAppSlug as string;
+      if (!appSlug) {
+        results.push({ slug: conn.slug, synced: 0, error: 'no pipedreamAppSlug in config' });
+        continue;
+      }
+
+      // Fetch actions from Pipedream
+      const rawActions = await pipedreamCatalog(appSlug);
+      const normalized = normalizePipedream(rawActions, appSlug);
+
+      // Delete old actions
+      await db
+        .delete(executorConnectorActions)
+        .where(eq(executorConnectorActions.connectorId, conn.connectorId));
+
+      // Insert new actions
+      if (normalized.length > 0) {
+        await db.insert(executorConnectorActions).values(
+          normalized.map((a) => ({
+            connectorId: conn.connectorId,
+            path: a.path,
+            name: a.name,
+            description: a.description ?? null,
+            inputSchema: a.inputSchema ?? null,
+            risk: a.risk ?? 'low',
+          })),
+        );
+      }
+
+      results.push({ slug: conn.slug, synced: normalized.length });
+      console.log(`[connectors/sync-actions] synced ${normalized.length} actions for ${conn.slug}`);
+    } catch (err: any) {
+      results.push({ slug: conn.slug, synced: 0, error: err.message });
+      console.warn(`[connectors/sync-actions] failed for ${conn.slug}:`, err.message);
+    }
+  }
+
+  return c.json({ ok: true, results });
 });
