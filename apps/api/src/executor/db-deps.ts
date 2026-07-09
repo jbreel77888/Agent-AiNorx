@@ -128,9 +128,17 @@ async function channelInstalled(projectId: string, platform: string | null): Pro
  * place so the catalog + admin listings don't each re-branch on provider.
  */
 async function connectorConnected(row: ConnectorRow, userId: string | null): Promise<boolean> {
-  return row.providerType === 'channel'
-    ? channelInstalled(row.projectId, channelPlatform(row.config))
-    : credentialExists(row.connectorId, userId);
+  if (row.providerType === 'channel') {
+    return channelInstalled(row.projectId, channelPlatform(row.config));
+  }
+  // Pipedream connectors authenticate via Pipedream's external account system,
+  // not via executor_credentials. If the connector has a pipedreamAccountId
+  // in its config, it's "connected" — the OAuth flow was completed.
+  if (row.providerType === 'pipedream') {
+    const cfg = (row.config ?? {}) as Record<string, any>;
+    return !!cfg.pipedreamAccountId;
+  }
+  return credentialExists(row.connectorId, userId);
 }
 
 function toGatewayConnector(row: ConnectorRow, grants: Awaited<ReturnType<typeof loadConnectorGrants>>): GatewayConnector {
