@@ -6,7 +6,7 @@
  */
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import {
   executorConnectorActions,
   executorConnectorPolicies,
@@ -157,10 +157,13 @@ const nodeFetch: FetchImpl = async (url, init) => {
 function makeDbGatewayDeps(): GatewayDeps {
   return {
     loadConnectorBySlug: async (projectId, slug) => {
+      const projectIdFilter = projectId
+        ? eq(executorConnectors.projectId, projectId)
+        : isNull(executorConnectors.projectId);
       const [row] = await db
         .select()
         .from(executorConnectors)
-        .where(and(eq(executorConnectors.projectId, projectId), eq(executorConnectors.slug, slug)))
+        .where(and(projectIdFilter, eq(executorConnectors.slug, slug)))
         .limit(1);
       if (!row) return null;
       return toGatewayConnector(row, await loadConnectorGrants(row.connectorId));
@@ -233,7 +236,8 @@ async function loadConnectorPoliciesFor(connectorId: string): Promise<Policy[]> 
   return rows.map((r) => ({ match: r.match, action: r.action, position: r.position }));
 }
 
-async function loadProjectPoliciesFor(projectId: string): Promise<Policy[]> {
+async function loadProjectPoliciesFor(projectId: string | null): Promise<Policy[]> {
+  if (!projectId) return []; // simple mode — no project-level policies
   const rows = await db
     .select()
     .from(executorProjectPolicies)
@@ -241,7 +245,8 @@ async function loadProjectPoliciesFor(projectId: string): Promise<Policy[]> {
   return rows.map((r) => ({ match: r.match, action: r.action, position: r.position }));
 }
 
-async function loadDefaultModeFor(projectId: string): Promise<DefaultMode> {
+async function loadDefaultModeFor(projectId: string | null): Promise<DefaultMode> {
+  if (!projectId) return 'allow_all'; // simple mode — default allow
   const [row] = await db
     .select({ defaultMode: executorProjectSettings.defaultMode })
     .from(executorProjectSettings)
@@ -346,11 +351,17 @@ async function resolveProjectPrincipal(c: Context, projectId: string): Promise<E
 
 /** The catalog a principal can actually use (access + credential present + not blocked). */
 async function listCatalog(p: ExecutorPrincipal): Promise<CatalogConnector[]> {
+  // In simple mode (no project), projectId is null. SQL "WHERE project_id = NULL"
+  // returns nothing — must use "IS NULL" instead. Drizzle's `eq(field, null)`
+  // generates "= NULL" which fails, so we branch on null explicitly.
+  const projectIdFilter = p.projectId
+    ? eq(executorConnectors.projectId, p.projectId)
+    : isNull(executorConnectors.projectId);
   const conns = hideSupersededSlack(
     await db
       .select()
       .from(executorConnectors)
-      .where(and(eq(executorConnectors.projectId, p.projectId), eq(executorConnectors.enabled, true))),
+      .where(and(projectIdFilter, eq(executorConnectors.enabled, true))),
   );
   const grantsByConnector = await loadGrantsForMany(conns.map((c) => c.connectorId));
 
