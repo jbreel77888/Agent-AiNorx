@@ -1,6 +1,6 @@
 ---
 name: vaelorx-executor
-description: How to reach third-party systems from a VaelorX session via the Executor — one interface to every configured integration (Pipedream, MCP, OpenAPI, GraphQL, HTTP, chat `channel`s like Slack, and connected machines via `computer`), exposed as the `vaelorx-executor` MCP server's tools (connectors, discover, describe, call). Load whenever the user asks the agent to DO something in an external app/API (send an email, create a Stripe charge, post to Slack, query an internal API, call any SaaS), asks "what integrations/connectors/tools do I have", asks to add/configure a connector, or asks about `[[connectors]]` in vaelorx.toml. The agent must use the Executor's MCP tools rather than hand-rolling API calls with raw tokens.
+description: How to reach third-party systems from a VaelorX session via the Executor — one interface to every configured integration (Pipedream, MCP, OpenAPI, GraphQL, HTTP), exposed as the `vaelorx-executor` MCP server's tools (connectors, discover, describe, call). Load whenever the user asks the agent to DO something in an external app/API (send an email, create a Stripe charge, post to Slack, query an internal API, call any SaaS), asks "what integrations/connectors/tools do I have", asks to add/configure a connector. The agent must use the Executor's MCP tools rather than hand-rolling API calls with raw tokens.
 ---
 
 <skill name="vaelorx-executor">
@@ -20,22 +20,18 @@ catalog:
 - **`discover`** — intent search across every usable tool
 - **`describe`** — one tool's full input schema + risk
 - **`call`** — run a tool
-- **`add_connector` / `remove_connector`** — declare or remove project
-  connectors through the platform (committed to `vaelorx.toml` + synced)
+- **`add_connector` / `remove_connector`** — declare or remove connectors
 - **`connect` / `request_secret`** — mint a short-lived human setup link for
   OAuth/API-key credentials without exposing secrets to the sandbox
 
-**You never see a third-party secret.** The gateway resolves it server-side from
-the project's secrets and attaches it. The sandbox only carries
-`$KORTIX_EXECUTOR_TOKEN`, which makes every call act **as the user who launched
-the session** — so you can only use connectors that user has been granted.
+**You never see a third-party secret.** The gateway resolves it server-side.
+The sandbox only carries `$KORTIX_EXECUTOR_TOKEN`, which makes every call act
+**as the user who launched the session** — so you can only use connectors
+that user has been granted.
 
-A **connector** is one named integration. They're declared in `vaelorx.toml` as
-`[[connectors]]` (provider = pipedream | mcp | openapi | graphql | http | channel | computer). The
-Executor can add/remove declarations and mint setup links for credentials; the
-secret value / Pipedream 1-click connection is entered by the human in VaelorX and
-never exposed to the sandbox. Each connector exposes **tools** (actions) with a
-connector-namespaced path like `stripe.charges.create`.
+**IMPORTANT: Do NOT use `kortix` CLI commands.** All connector operations
+go through the `vaelorx-executor` MCP tools. The `kortix` CLI is a legacy
+tool that does not work in session mode.
 </overview>
 
 <when-to-load>
@@ -43,15 +39,13 @@ Load this skill when the user wants to:
 - Act in an external app/API — "send an email", "create a charge", "post to
   Slack", "create a GitHub issue", "query our internal API".
 - See what's available — "what integrations / connectors / tools do I have?"
-- Add or configure a connector, or asks about `[[connectors]]` in `vaelorx.toml`.
+- Add or configure a connector.
 
 If the task is purely local (editing files, running tests) you don't need this.
 </when-to-load>
 
 <usage>
-Use the `vaelorx-executor` MCP tools. They appear in your tool list once the
-session has the Executor wired (it always does in a VaelorX sandbox). All return
-JSON.
+Use the `vaelorx-executor` MCP tools. All return JSON.
 
 **Loop: `discover` → `describe` → `call`.** Always `describe` an unfamiliar tool
 to learn its input schema before you `call` it.
@@ -62,102 +56,43 @@ to learn its input schema before you `call` it.
    `{ "query": "send a slack message" }` (optionally `"limit"`). Returns the
    best-matching tool paths with their risk + description.
 3. **Inspect a tool before calling it** — call `describe` with
-   `{ "tool": "stripe.charges.create" }`. Returns the full input JSON schema.
+   `{ "tool": "gmail.get_emails" }`. Returns the full input JSON schema.
 4. **Run it** — call `call` with
-   `{ "connector": "stripe", "action": "charges.create", "args": { "amount": 999, "currency": "usd" } }`.
+   `{ "connector": "gmail", "action": "get_emails", "args": { "max": 10 } }`.
    The gateway attaches the credential, enforces sharing + policy, runs it, and
    audits it.
-
-**GraphQL tools:** pass selected fields via `__select` inside `args`, e.g.
-`{ "connector": "internal-graph", "action": "query.user", "args": { "id": "1", "__select": "id name email" } }`.
-
-**The full API of any connector — the `request` tool.** Every connector exposes
-a curated set of named actions, but you are NOT limited to them. Each
-**Pipedream** connector also has a generic **`request`** tool that proxies to
-*any* endpoint of that app's API (the Connect Proxy — the credential is injected
-server-side, you never see it). This is the "complete API access" path: when no
-named action fits, find the endpoint in the app's API docs and call it directly.
-
-```jsonc
-// Post a PR comment on GitHub — no named action needed, just the endpoint:
-{ "connector": "github", "action": "request", "args": {
-    "method": "POST",
-    "url": "https://api.github.com/repos/kortix-ai/suna/issues/1234/comments",
-    "body": { "body": "Thermo review: …" } } }
-```
-
-`request` args: `method` (GET/POST/PUT/PATCH/DELETE), `url` (the absolute app
-API URL), optional `body` (JSON) and `headers`. The upstream status + JSON come
-back verbatim. Reach for a named action when one fits (typed inputs); reach for
-`request` for everything else. (`openapi`/`http`/`graphql` connectors already
-expose the whole spec as named tools, so they don't need `request`.)
 </usage>
 
 <rules>
 - **Use the Executor's MCP tools — do not hand-roll** HTTP calls to third-party
   APIs with raw tokens. There are no raw third-party tokens in the sandbox by
   design.
-- If `connectors` is empty or a tool is missing, the connector isn't configured
-  or isn't **shared with this user**. If configuration is missing, use
-  `add_connector` and then `connect` / `request_secret` to surface a setup link to
-  the human; don't hand-roll around the Executor.
+- **Do NOT use `kortix` CLI commands** — they do not work in session mode.
+  Use only the `vaelorx-executor` MCP tools.
+- If `connectors` is empty or a tool is missing, the connector isn't configured.
+  Use `add_connector` and then `connect` to surface a setup link to the human.
 - A `call` result of `ok: false` with `denied` (`not_shared` / `needs_auth`)
   means exactly that — surface it. For `needs_auth`, mint the appropriate setup
   link (`connect` for Pipedream OAuth, `request_secret` for API keys) instead of
   asking the user to paste credentials into chat.
 - Tools carry a **risk** (read / write / destructive). Be deliberate with
   `write`/`destructive` calls; confirm intent with the user for irreversible ones.
-- To add a connector, prefer the Executor's `add_connector` tool (or
-  `kortix executor add` locally); it commits the `vaelorx.toml` change and syncs
-  the catalog. Then use `connect` / `request_secret` for credentials.
-- A `kortix executor` CLI exists too (same gateway, same auth) — and the same
-  Executor core is also the `@kortix/executor-sdk` TypeScript framework. The MCP
-  tools are the primary path, though — prefer them.
 </rules>
 
 <adding-connectors>
-Connectors are defined in `vaelorx.toml` (committed). Example:
+Connectors are managed through the `vaelorx-executor` MCP tools or the
+VaelorX web dashboard at `/connectors`. 
 
-```toml
-[[connectors]]
-slug     = "stripe"
-name     = "Stripe API"
-provider = "openapi"
-spec     = "https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.json"
-  [connectors.auth]
-  type   = "bearer"
-  secret = "STRIPE_API_KEY"   # the VALUE is entered via setup link, never in git
-```
-
-Providers: `pipedream` (`app` + 1-click OAuth — gives the whole app API via the
-`request` proxy tool), `openapi`/`graphql`/`http` (a `spec`/`endpoint`/`base_url`
-+ `[connectors.auth]`), `mcp` (`url` + `transport`), `channel` (`platform`,
-e.g. `slack` — chat platforms; auto-materializes when you connect Slack, credential
-resolved server-side), and `computer` (connected machines over the Agent Computer
-Tunnel; auto-materializes when you connect a machine, no credential — see the
-`vaelorx-computer` skill). The Executor materializes the catalog after the
-declaration lands. (`channel` and `computer` are SYNTH-ONLY — they appear when you
-connect Slack / a machine, you don't declare them in vaelorx.toml. For Slack you'll
-usually use the dedicated `slack` CLI — see the `vaelorx-slack` skill — but it's the
-same connector under the hood.)
-
-**One-click setup (no dashboard hunting).** In a session, prefer the MCP tools:
+**One-click setup (no dashboard hunting).** In a session, use the MCP tools:
 
 ```jsonc
-// Add the connector and sync it immediately.
+// Add the connector via add_connector tool
 { "slug": "github", "provider": "pipedream", "app": "github" }
 // Then call `connect` with { "slug": "github" } and surface the returned URL.
 ```
 
-From a terminal, the same flow is available through the unified CLI:
-
-```sh
-kortix executor add github --provider pipedream --app github
-kortix executor connect github   # prints a one-click OAuth URL — open it, authorize
-```
-
 That's the whole setup for a new integration: add → connect (click the link). The
-connected app's full API is then reachable via the `request` tool.
+connected app's tools are then reachable via the `call` tool.
 </adding-connectors>
 
 </skill>

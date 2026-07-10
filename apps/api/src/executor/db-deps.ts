@@ -143,6 +143,7 @@ async function connectorConnected(row: ConnectorRow, userId: string | null): Pro
 
 function toGatewayConnector(row: ConnectorRow, grants: Awaited<ReturnType<typeof loadConnectorGrants>>): GatewayConnector {
   const { auth, hasAuth } = authOf(row);
+  const cfg = (row.config ?? {}) as Record<string, any>;
   return {
     connectorId: row.connectorId,
     slug: row.slug,
@@ -154,6 +155,7 @@ function toGatewayConnector(row: ConnectorRow, grants: Awaited<ReturnType<typeof
     grants,
     credentialMode: row.credentialMode as 'shared' | 'per_user',
     enabled: row.enabled,
+    pipedreamAccountId: cfg.pipedreamAccountId ?? null,
   };
 }
 

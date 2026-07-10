@@ -42,6 +42,9 @@ export interface GatewayConnector {
   /** shared = one project credential; per_user = each member's own. */
   credentialMode: 'shared' | 'per_user';
   enabled: boolean;
+  /** Pipedream account ID (from connector config) — used as the credential
+   *  for Pipedream connectors instead of executor_credentials. */
+  pipedreamAccountId?: string | null;
 }
 
 export interface GatewayAction {
@@ -182,7 +185,12 @@ async function connectorUsable(
   if (!isSecretUsableBy(connector.shareScope, connector.grants, subject)) {
     return { ok: false, reason: 'not_shared' };
   }
-  // 2. Credential — none needed (public), shared, or this member's own (per_user).
+  // 2. Credential — Pipedream connectors use pipedreamAccountId from config,
+  //    not executor_credentials. If the account ID exists, the connector is usable.
+  if (connector.provider === 'pipedream' && connector.pipedreamAccountId) {
+    return { ok: true, secret: connector.pipedreamAccountId };
+  }
+  // 3. Credential — none needed (public), shared, or this member's own (per_user).
   if (!connector.hasAuth) return { ok: true, secret: null };
   const userId = connector.credentialMode === 'per_user' ? subject.userId : null;
   const secret = await deps.resolveCredential(connector, userId);
