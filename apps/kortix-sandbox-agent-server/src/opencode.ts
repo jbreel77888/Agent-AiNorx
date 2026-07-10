@@ -161,24 +161,22 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
     // sure 'vaelorx' (our gateway provider) is also enabled.
     out.enabled_providers = allowList
 
-    // Set default_agent to 'vaelorx' and add a vaelorx agent definition with
-    // the explicit model. Without this, OpenCode falls back to its built-in
-    // 'build' agent (with model 'big-pickle' from the 'opencode' provider),
-    // which causes "Model not found: opencode/big-pickle" because 'opencode'
-    // isn't in enabled_providers.
+    // Set default_agent to 'vaelorx' and set the global model to the VaelorX
+    // gateway model. The agent definition (system prompt, mode, permission) comes
+    // from the .vaelorx/opencode/agents/vaelorx.md file — do NOT override it here.
+    //
+    // Previously, this code created an inline `agent.vaelorx` in the JSON config
+    // with only description/mode/model/permission. That inline definition made
+    // OpenCode IGNORE the vaelorx.md file entirely, so the agent lost its system
+    // prompt and responded as "I'm opencode" instead of "I'm VaelorX".
+    //
+    // The vaelorx.md file already has `model: vaelorx/deepseek-v4-flash-free` in
+    // its frontmatter, so OpenCode will use the correct model. The global `model`
+    // and `small_model` fields below are belt-and-suspenders.
     out.default_agent = 'vaelorx'
-    const agents = (out.agent && typeof out.agent === 'object' && !Array.isArray(out.agent))
-      ? (out.agent as Record<string, unknown>)
-      : {}
     const DEFAULT_VAELORX_MODEL_FOR_AGENT = getDefaultVaelorxModel(env)
-    agents.vaelorx = {
-      ...(agents.vaelorx as Record<string, unknown> | undefined),
-      description: 'VaelorX AI agent — handles coding, research, content, and data tasks.',
-      mode: 'primary',
-      model: `vaelorx/${DEFAULT_VAELORX_MODEL_FOR_AGENT}`,
-      permission: { '*': 'allow' },
-    }
-    out.agent = agents
+    out.model = `vaelorx/${DEFAULT_VAELORX_MODEL_FOR_AGENT}`
+    out.small_model = `vaelorx/${DEFAULT_VAELORX_MODEL_FOR_AGENT}`
   }
 
   // (3) Slack sessions: DENY opencode's blocking `question` tool. A Slack thread
