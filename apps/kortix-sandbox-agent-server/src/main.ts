@@ -986,7 +986,7 @@ async function waitForInitialSessionCreate(baseUrl: string, workspace: string): 
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ agent: 'vaelorx' }),
         signal: AbortSignal.timeout(1_000),
       })
       if (res.ok) return res
