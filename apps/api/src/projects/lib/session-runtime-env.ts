@@ -18,6 +18,11 @@ export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<st
 
   if (mode === 'simple') {
     // Simple mode: no git, no repo URL, no branch — standalone session
+    // NOTE: KORTIX_BOOTSTRAP_OPENCODE_SESSION is intentionally NOT set here.
+    // When enabled, the daemon creates a session at boot with body={} which
+    // OpenCode defaults to agent='general' (the 'I'm opencode' prompt) and
+    // model='north-mini-code-free'. Instead, the API proxy intercepts
+    // POST /session and forces agent='vaelorx' + model='deepseek-v4-flash-free'.
     return {
       KORTIX_SESSION_ID: input.sessionId,
       KORTIX_WORKSPACE: '/workspace',
@@ -26,7 +31,6 @@ export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<st
       KORTIX_SERVICE_PORT: '8000',
       KORTIX_AGENT_NAME: input.agentName,
       KORTIX_API_URL: input.apiUrl,
-      KORTIX_BOOTSTRAP_OPENCODE_SESSION: '1',
       ...(input.projectId ? { KORTIX_PROJECT_ID: input.projectId } : {}),
       ...(input.frontendUrl ? { KORTIX_FRONTEND_URL: input.frontendUrl } : {}),
       ...(input.initialPrompt ? { KORTIX_INITIAL_PROMPT: input.initialPrompt } : {}),
