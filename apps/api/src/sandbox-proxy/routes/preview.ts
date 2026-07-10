@@ -461,10 +461,41 @@ export async function forwardToSandbox(
         );
       }
 
+      // ── Intercept session creation and prompt requests ─────────────────
+      // Force agent=vaelorx and model=deepseek-v4-flash-free on all sessions.
+      // The sandbox daemon binary (baked into the Tensorlake snapshot) is OLD
+      // and creates sessions with agent="general" + model="north-mini-code-free".
+      // This proxy-level interception fixes both issues permanently regardless
+      // of which daemon version runs inside the sandbox.
+      let finalBody: ArrayBuffer | undefined = body;
+      if (method.toUpperCase() === 'POST' && body && body.byteLength > 0) {
+        try {
+          const bodyStr = new TextDecoder().decode(body);
+          const parsed = JSON.parse(bodyStr);
+
+          // Session creation: POST /session
+          if (remainingPath === '/session' || remainingPath === '/session/') {
+            if (!parsed.agent || parsed.agent === 'general' || parsed.agent === 'default') {
+              parsed.agent = 'vaelorx';
+            }
+            finalBody = new TextEncoder().encode(JSON.stringify(parsed)).buffer;
+          }
+
+          // Prompt request: POST /session/:id/prompt or /prompt_async
+          if (/\/session\/[^/]+\/prompt(\/async)?$/.test(remainingPath)) {
+            const defaultModel = process.env.KORTIX_DEFAULT_MODEL?.trim() || 'deepseek-v4-flash-free';
+            parsed.model = { providerID: 'vaelorx', modelID: defaultModel };
+            finalBody = new TextEncoder().encode(JSON.stringify(parsed)).buffer;
+          }
+        } catch {
+          // Not JSON or parse error — forward as-is
+        }
+      }
+
       const upstream = await fetch(targetUrl, {
         method,
         headers,
-        body,
+        body: finalBody,
         redirect: 'manual',
         // Bound a wedged first connection to a freshly-restored microVM (residual
         // CH RX stall) so the attempt fails fast → retry on a fresh connection,
