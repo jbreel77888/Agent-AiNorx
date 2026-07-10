@@ -166,7 +166,35 @@ export async function listSandboxOpencodeSessions(
     // The health endpoint returns opencode_session_id — this is our pin.
     const pinSessionId = health.opencode_session_id ?? null;
     if (!pinSessionId) {
-      return { ok: false, reason: 'not_ready' };
+      // No session exists (bootstrap disabled in simple mode). Create one
+      // with agent=vaelorx + model=deepseek-v4-flash-free via the daemon API.
+      const { encodeKortixUserContext } = await import('../shared/kortix-user-context');
+      const ctx = {
+        userId: userId ?? 'system',
+        sandboxId: externalId,
+        sandboxRole: 'owner' as const,
+        scopes: ['*'],
+      };
+      const userContextHeader = encodeKortixUserContext(ctx as any, serviceKey);
+      const defaultModel = process.env.KORTIX_DEFAULT_MODEL?.trim() || 'deepseek-v4-flash-free';
+
+      const createResult = await sb.run('bash', {
+        args: ['-c', `curl -s -X POST -H "X-Kortix-User-Context: ${userContextHeader}" -H "Content-Type: application/json" -d '{"agent":"vaelorx","model":{"providerID":"vaelorx","modelID":"${defaultModel}"}}' "http://localhost:8000/session?directory=/workspace"`],
+        timeout: 15,
+      });
+      const createJson = String((createResult as any).stdout ?? '').trim();
+      let createdSession: { id?: string } = {};
+      try { createdSession = JSON.parse(createJson); } catch {}
+      if (!createdSession.id) {
+        return { ok: false, reason: 'not_ready' };
+      }
+      const sessions: OpencodeSessionLite[] = [{
+        id: createdSession.id,
+        title: 'Session',
+        time: { created: 0, updated: 0 },
+        share: { share: 'private' },
+      } as OpencodeSessionLite];
+      return { ok: true, sessions };
     }
 
     // Return a minimal session list containing just the pinned session.
