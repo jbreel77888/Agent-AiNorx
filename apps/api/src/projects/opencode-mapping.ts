@@ -176,10 +176,9 @@ export async function listSandboxOpencodeSessions(
         scopes: ['*'],
       };
       const userContextHeader = encodeKortixUserContext(ctx as any, serviceKey);
-      const defaultModel = process.env.KORTIX_DEFAULT_MODEL?.trim() || 'deepseek-v4-flash-free';
 
       const createResult = await sb.run('bash', {
-        args: ['-c', `curl -s -X POST -H "X-Kortix-User-Context: ${userContextHeader}" -H "Content-Type: application/json" -d '{"agent":"vaelorx","model":{"providerID":"vaelorx","modelID":"${defaultModel}"}}' "http://localhost:8000/session?directory=/workspace"`],
+        args: ['-c', `curl -s -X POST -H "X-Kortix-User-Context: ${userContextHeader}" -H "Content-Type: application/json" -d '{"agent":"vaelorx"}' "http://localhost:8000/session?directory=/workspace"`],
         timeout: 15,
       });
       const createJson = String((createResult as any).stdout ?? '').trim();
