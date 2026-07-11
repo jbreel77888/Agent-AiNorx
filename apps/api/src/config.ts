@@ -321,7 +321,7 @@ const envSchema = z.object({
   // Default idle timeout in seconds before auto-suspend (named sandboxes) or
   // auto-terminate (ephemeral). Translated from KORTIX_SANDBOX_AUTOSTOP_MINUTES
   // when not explicitly set.
-  TENSORLAKE_SANDBOX_TIMEOUT_SECS:   optInt(600),
+  TENSORLAKE_SANDBOX_TIMEOUT_SECS:   optInt(7200),
   // Warm base snapshot ID for MEMORY checkpoint restore (~0.6-1.3s boot).
   // When set AND warm snapshots are enabled (DB toggle), sessions attempt warm
   // path first and fall back to cold if it fails.

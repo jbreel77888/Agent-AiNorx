@@ -39,7 +39,7 @@ import { config } from '../config';
 
 export const REAP_BATCH_SIZE = 100;
 const REAP_CONCURRENCY = 6;
-const DEFAULT_AUTOSTOP_MINUTES = 15;
+const DEFAULT_AUTOSTOP_MINUTES = 120;
 
 /** The single knob for "how long with no real turn before we stop a box". */
 export function autoStopTtlMs(): number {

@@ -42,9 +42,9 @@ import { HTTPException } from 'hono/http-exception';
 
 const DEADLINE_MS = (() => {
   const raw = process.env.REQUEST_DEADLINE_MS;
-  if (raw === undefined) return 25_000; // default ON — see note above
+  if (raw === undefined) return 60_000; // 60s default — sandbox proxy calls can take 15-30s
   const n = Number(raw);
-  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 25_000;
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 60_000;
 })();
 
 const ENABLED = DEADLINE_MS > 0;
