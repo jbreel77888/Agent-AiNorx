@@ -157,42 +157,38 @@ export class TensorlakeProvider implements SandboxProvider {
     const snapshot = opts.snapshot;
     const baseImage = config.TENSORLAKE_DEFAULT_IMAGE || 'tensorlake/ubuntu-systemd';
 
-    // When TENSORLAKE_DEFAULT_SNAPSHOT_ID is set, ALWAYS use it. This is a REAL
-    // snapshot ID (e.g. "snapshot_sandbox_template_build_xxx") that Sandbox.create()
-    // accepts as `snapshotId`. The `snapshot` arg from ensureSandboxImage is an
-    // IMAGE NAME (e.g. "kortix-default-7e11785ed6de"), NOT a snapshot ID — passing
-    // it as `snapshotId` to Sandbox.create() fails with a "not found" error,
-    // triggering the healing → quota-fallback chain that wastes 4+ minutes and
-    // often hits the 1-concurrent-sandbox quota. The env var short-circuits all
-    // of that: it's the operator's guarantee that this snapshot ID is valid and
-    // active, so we trust it unconditionally.
+    // ── Image-first boot strategy ────────────────────────────────────────────
+    // Priority:
+    //   1. VAELORX_AGENT_IMAGE env var (e.g. "vaelorx-agent") — pre-built image
+    //      with ALL deps installed. Boot is ~1s, no cold-boot install needed.
+    //   2. TENSORLAKE_DEFAULT_SNAPSHOT_ID — operator-set snapshot (legacy).
+    //   3. snapshot arg from ensureSandboxImage — image name or snapshot ID.
+    //   4. baseImage (tensorlake/ubuntu-systemd) — cold boot fallback.
     //
-    // TEMPORARY: set TENSORLAKE_DISABLE_SNAPSHOT=1 to force cold boot from the
-    // base image. Use this when the snapshot contains a stale daemon that needs
-    // updating — the cold-boot path uploads the current daemon binary from
-    // the API Docker image (installRuntimeInSandbox).
+    // The vaelorx-agent image eliminates the 3-5 min cold-boot install entirely.
+    // The image contains: nodejs, npm, opencode, kortix-agent, kortix CLI,
+    // git, curl, swap file — everything the daemon needs to start immediately.
+    const vaelorxAgentImage = process.env.VAELORX_AGENT_IMAGE || '';
     const disableSnapshot = process.env.TENSORLAKE_DISABLE_SNAPSHOT === '1' ||
       process.env.TENSORLAKE_DISABLE_SNAPSHOT === 'true';
     const defaultSnapshotId = disableSnapshot ? undefined : config.TENSORLAKE_DEFAULT_SNAPSHOT_ID;
     let effectiveSnapshot: string | undefined;
     let effectiveImage: string | undefined;
 
-    if (defaultSnapshotId) {
-      // Operator set a default snapshot ID — use it directly.
+    if (vaelorxAgentImage) {
+      // Use the pre-built vaelorx-agent image — NO cold boot needed.
+      effectiveImage = vaelorxAgentImage;
+      console.log(`[tensorlake] Booting from VAELORX_AGENT_IMAGE: ${effectiveImage} (pre-built, no cold boot)`);
+    } else if (defaultSnapshotId) {
       effectiveSnapshot = defaultSnapshotId;
       console.log(`[tensorlake] Booting from TENSORLAKE_DEFAULT_SNAPSHOT_ID: ${effectiveSnapshot}`);
     } else if (disableSnapshot) {
       console.log(`[tensorlake] TENSORLAKE_DISABLE_SNAPSHOT=1 — forcing cold boot from base image: ${baseImage}`);
     } else if (snapshot) {
-      // No env var, but ensureSandboxImage resolved a snapshot name.
-      // Distinguish image names (kortix-default-xxx) from raw snapshot IDs
-      // (snapshot_xxx, suspend-xxx). Image names must be passed as `image`,
-      // raw snapshot IDs as `snapshotId`.
       if (snapshot.startsWith('snapshot_') || snapshot.startsWith('suspend-')) {
         effectiveSnapshot = snapshot;
         console.log(`[tensorlake] Booting from snapshot: ${effectiveSnapshot}`);
       } else {
-        // It's an image name (e.g. kortix-default-xxx) — pass as `image`.
         effectiveImage = snapshot;
         console.log(`[tensorlake] Booting from registered image: ${effectiveImage}`);
       }
@@ -202,9 +198,9 @@ export class TensorlakeProvider implements SandboxProvider {
     const autoStopMinutes = opts.autoStopInterval ?? config.KORTIX_SANDBOX_AUTOSTOP_MINUTES;
     const timeoutSecs = autoStopMinutes === 0 ? 0 : Math.max(60, autoStopMinutes * 60);
 
-    // Create sandbox from snapshot (if built) or base image (fallback)
-    // On cold boot (no snapshot), use a LONGER timeout so the install completes
-    // before the sandbox's idle-timer terminates it.
+    // When using the pre-built vaelorx-agent image, no cold boot is needed —
+    // the daemon binary + all deps are already in the image. Only the
+    // base-image fallback requires the long cold-boot timeout.
     const isColdBoot = !effectiveSnapshot && !effectiveImage;
     const effectiveTimeout = isColdBoot
       ? Math.max(timeoutSecs || 0, COLD_BOOT_TIMEOUT_SECS)
@@ -217,14 +213,10 @@ export class TensorlakeProvider implements SandboxProvider {
       allowInternetAccess: true,
     };
 
-    // Only set diskMb for cold-boot (base image). When booting from a snapshot,
-    // the disk size is fixed by the snapshot — setting a different disk_mb
-    // causes "StartupFailedInternalError" (422).
     if (isColdBoot) {
       createOpts.diskMb = DEFAULT_DISK_MB;
     }
 
-    // snapshotId takes priority (pre-built image), otherwise use base image
     if (effectiveSnapshot) {
       createOpts.snapshotId = effectiveSnapshot;
     } else if (effectiveImage) {
@@ -254,7 +246,10 @@ export class TensorlakeProvider implements SandboxProvider {
     // 403 because nothing is listening. If the agent is missing, fall back to
     // installing the runtime imperatively (cold boot pattern).
     let agentPresent = false;
-    if (effectiveSnapshot) {
+    // Check if the agent binary is present (works for both snapshots and images).
+    // The vaelorx-agent image has the binary pre-installed, so this check
+    // succeeds immediately — no cold-boot install needed.
+    if (effectiveSnapshot || effectiveImage) {
       try {
         const checkResult = await sandbox.run('bash', {
           args: ['-c', 'test -x /usr/local/bin/kortix-agent && echo KORTIX_AGENT_PRESENT || echo KORTIX_AGENT_MISSING'],
@@ -264,28 +259,29 @@ export class TensorlakeProvider implements SandboxProvider {
         agentPresent = checkOut.includes('KORTIX_AGENT_PRESENT');
         if (!agentPresent) {
           console.warn(
-            `[tensorlake] Snapshot ${effectiveSnapshot} booted but /usr/local/bin/kortix-agent is missing — ` +
-            `installing runtime imperatively (snapshot lacks Kortix runtime).`,
+            `[tensorlake] Booted from ${effectiveSnapshot ? 'snapshot' : 'image'} but /usr/local/bin/kortix-agent is missing — ` +
+            `installing runtime imperatively.`,
           );
         }
       } catch (checkErr) {
         console.warn(
-          `[tensorlake] Failed to verify kortix-agent in snapshot ${effectiveSnapshot}: ` +
+          `[tensorlake] Failed to verify kortix-agent: ` +
           `${checkErr instanceof Error ? checkErr.message : checkErr} — assuming missing, will install runtime.`,
         );
         agentPresent = false;
       }
     }
 
-    if (!effectiveSnapshot || !agentPresent) {
+    if ((!effectiveSnapshot && !effectiveImage) || !agentPresent) {
+      // Cold boot fallback: install the full runtime from scratch (3-5 min).
       await this.installRuntimeInSandbox(sandbox, envVars);
     } else if (agentPresent) {
-      // Agent binary IS present (from snapshot), but the daemon process is NOT
-      // running (filesystem snapshots don't preserve processes). We need to:
+      // Agent binary IS present (from image or snapshot), but the daemon process
+      // is NOT running. We need to:
       // 1. Write the new session.env (with correct session ID)
       // 2. Write /etc/pt-env
       // 3. Launch the daemon
-      console.log('[tensorlake] Agent present in snapshot — writing session env + launching daemon');
+      console.log(`[tensorlake] Agent present in ${effectiveSnapshot ? 'snapshot' : 'image'} — writing session env + launching daemon`);
       await this.launchDaemonFromSnapshot(sandbox, envVars);
     }
 

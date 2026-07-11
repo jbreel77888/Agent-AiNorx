@@ -303,6 +303,11 @@ const envSchema = z.object({
   // tensorlake/ubuntu-systemd includes systemd (needed for Docker support).
   // tensorlake/ubuntu-minimal boots fastest but lacks service management.
   TENSORLAKE_DEFAULT_IMAGE:          optStrDefault('tensorlake/ubuntu-systemd'),
+  // Pre-built VaelorX agent image (built by infra/tensorlake/build-vaelorx-image.sh).
+  // When set, sandboxes boot from this image instead of cold-booting from the base
+  // image. The image contains ALL deps (nodejs, opencode, kortix-agent, git, etc.)
+  // so boot takes ~1s instead of 3-5 min. Set to "vaelorx-agent" after building.
+  VAELORX_AGENT_IMAGE:                optStr,
   // Organization and Project IDs required by the Tensorlake SDK for image
   // lookup by name (findSandboxImageByName, listSandboxImages). Without these,
   // the SDK throws "Looking up a sandbox image by name requires organization
@@ -700,6 +705,7 @@ export const config = {
   // ─── Tensorlake (Sandbox provisioning) ────────────────────────────────────
   TENSORLAKE_API_KEY: env.TENSORLAKE_API_KEY,
   TENSORLAKE_DEFAULT_IMAGE: env.TENSORLAKE_DEFAULT_IMAGE,
+  VAELORX_AGENT_IMAGE: env.VAELORX_AGENT_IMAGE,
   TENSORLAKE_ORGANIZATION_ID: env.TENSORLAKE_ORGANIZATION_ID,
   TENSORLAKE_PROJECT_ID: env.TENSORLAKE_PROJECT_ID,
   TENSORLAKE_DEFAULT_SNAPSHOT_ID: env.TENSORLAKE_DEFAULT_SNAPSHOT_ID,
