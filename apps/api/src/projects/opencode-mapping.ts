@@ -169,6 +169,50 @@ export async function listSandboxOpencodeSessions(
       return { ok: false, reason: 'not_ready' };
     }
 
+    // Query the session details to check if it uses agent="vaelorx".
+    // The daemon's boot-time session creation uses body={} which defaults to
+    // agent="general" (the "I'm opencode" prompt) + model="north-mini-code-free".
+    // If the pinned session has agent="general", we create a NEW session with
+    // agent="vaelorx" and return that instead.
+    const { encodeKortixUserContext } = await import('../shared/kortix-user-context');
+    const ctx = {
+      userId: userId ?? 'system',
+      sandboxId: externalId,
+      sandboxRole: 'owner' as const,
+      scopes: ['*'],
+    };
+    const userContextHeader = encodeKortixUserContext(ctx as any, serviceKey);
+
+    // Check the pinned session's agent
+    const sessionDetailResult = await sb.run('bash', {
+      args: ['-c', `curl -s -H "X-Kortix-User-Context: ${userContextHeader}" "http://localhost:8000/session/${pinSessionId}?directory=/workspace"`],
+      timeout: 10,
+    });
+    let sessionDetail: { agent?: string; id?: string } = {};
+    try { sessionDetail = JSON.parse(String((sessionDetailResult as any).stdout ?? '')); } catch {}
+
+    // If the session has agent="general" (wrong agent), create a new one with agent="vaelorx"
+    if (!sessionDetail.agent || sessionDetail.agent === 'general' || sessionDetail.agent === 'default') {
+      console.log(`[opencode-mapping] Pinned session ${pinSessionId} has agent="${sessionDetail.agent}" — creating new session with agent=vaelorx`);
+      const createResult = await sb.run('bash', {
+        args: ['-c', `curl -s -X POST -H "X-Kortix-User-Context: ${userContextHeader}" -H "Content-Type: application/json" -d '{"agent":"vaelorx"}' "http://localhost:8000/session?directory=/workspace"`],
+        timeout: 15,
+      });
+      let createdSession: { id?: string; agent?: string } = {};
+      try { createdSession = JSON.parse(String((createResult as any).stdout ?? '')); } catch {}
+
+      if (createdSession.id) {
+        console.log(`[opencode-mapping] Created new vaelorx session: ${createdSession.id}`);
+        const sessions: OpencodeSessionLite[] = [{
+          id: createdSession.id,
+          title: 'Session',
+          time: { created: Date.now(), updated: Date.now() },
+          share: { share: 'private' },
+        } as OpencodeSessionLite];
+        return { ok: true, sessions };
+      }
+    }
+
     // Return a minimal session list containing just the pinned session.
     // The caller (ensureOpencodeSessionPin) only needs the pin to be resolved.
     const sessions: OpencodeSessionLite[] = [{
