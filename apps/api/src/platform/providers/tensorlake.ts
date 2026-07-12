@@ -936,6 +936,17 @@ sudo apt-get install -y --no-install-recommends \\
   >>/tmp/apt-install.log 2>&1 || true
 echo "$LOG_PREFIX apt deps done."
 
+# ─── 1a. Fix ldconfig.real symlink (missing in some base images) ──────────
+# Some Tensorlake base images don't have /sbin/ldconfig.real, which causes
+# dpkg post-installation scripts to fail with "exec: /sbin/ldconfig.real: not found".
+# This breaks ALL subsequent apt installs (pip3, wireguard, etc.).
+# Fix: create a symlink from the actual ldconfig binary.
+if [ ! -f /sbin/ldconfig.real ]; then
+  echo "$LOG_PREFIX Fixing ldconfig.real symlink..."
+  ln -sf "$(which ldconfig 2>/dev/null || echo /usr/sbin/ldconfig)" /sbin/ldconfig.real 2>/dev/null || true
+  sudo dpkg --configure -a >>/tmp/dpkg-fix.log 2>&1 || true
+fi
+
 # ─── 1b. Create swap space to prevent OOM kills under memory pressure ────
 # Trial plan limits RAM to 1024 MB. Heavy operations (npm install, pip
 # install, compilation) can exhaust RAM and trigger OOM killer, which kills

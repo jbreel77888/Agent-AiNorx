@@ -4,33 +4,44 @@
 # This image is pre-built with ALL runtime dependencies:
 #   - Node.js + npm (for opencode)
 #   - opencode-ai (pinned version)
+#   - Python 3 + pip3 (for cloudscraper, requests, etc.)
 #   - kortix-agent binary (the daemon)
 #   - kortix-entrypoint script
 #   - kortix CLI binary
-#   - git, curl, ca-certificates, tmux, gzip, unzip
+#   - git, curl, tmux, gzip, unzip, sudo
+#   - ldconfig.real symlink fix (prevents dpkg post-install failures)
 #   - 2GB swap file (prevents OOM kills)
 #
 # When a sandbox boots from this image, the daemon is ready to launch
 # immediately — no 3-5 min cold-boot install needed.
-#
-# Build context: the Suna repo root (same as apps/api/Dockerfile).
-# The build needs the kortix-agent binary from the sandbox-agent build stage.
 # ──────────────────────────────────────────────────────────────────────────────
 
 FROM tensorlake/ubuntu-systemd:latest
 
-# ── 1. Install apt dependencies (same set as cold-boot setup) ─────────────────
+# ── 1. Fix ldconfig.real symlink FIRST (prevents dpkg failures) ──────────────
+# Some Tensorlake base images don't have /sbin/ldconfig.real, which causes
+# ALL apt post-installation scripts to fail with:
+#   exec: /sbin/ldconfig.real: not found
+# This breaks pip3, wireguard, and every other package install.
+RUN ln -sf /usr/sbin/ldconfig /sbin/ldconfig.real 2>/dev/null || true
+
+# ── 2. Install apt dependencies ──────────────────────────────────────────────
+# NOTE: ca-certificates is installed separately first to avoid the Tensorlake
+# overlay redirect issue (ca-certificates.conf.dpkg-old symlink).
 RUN apt-get update -o Acquire::Retries=2 && \
+    apt-get install -y --no-install-recommends ca-certificates && \
     apt-get install -y --no-install-recommends \
-      ca-certificates curl git gzip unzip tmux nodejs npm sudo && \
+      curl git gzip unzip tmux nodejs npm sudo \
+      python3 python3-pip python3-venv \
+      netcat-openbsd wget && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# ── 2. Install opencode (pinned version) ─────────────────────────────────────
+# ── 3. Install opencode (pinned version) ─────────────────────────────────────
 ARG OPENCODE_VERSION=1.15.10
 RUN npm install -g --no-audit --no-fund "opencode-ai@${OPENCODE_VERSION}" && \
     opencode --version
 
-# ── 3. Create runtime directories ────────────────────────────────────────────
+# ── 4. Create runtime directories ────────────────────────────────────────────
 RUN mkdir -p /opt/kortix/home/.local/share \
              /opt/kortix/home/.config \
              /opt/kortix/home/.cache \
@@ -40,40 +51,36 @@ RUN mkdir -p /opt/kortix/home/.local/share \
              /ephemeral/kortix-master/opencode \
              /var/run/kortix
 
-# ── 4. Create 2GB swap file (prevents OOM kills during heavy operations) ─────
+# ── 5. Create 2GB swap file (prevents OOM kills during heavy operations) ─────
 RUN dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none && \
     chmod 600 /swapfile && \
     mkswap /swapfile && \
     echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
-# ── 5. Copy the kortix-agent binary ──────────────────────────────────────────
-# This must match the binary built by apps/api/Dockerfile's sandbox-agent stage.
-# In CI, build the sandbox-agent stage first and copy the binary here.
-# For local builds, place the binary at context root as `kortix-agent`.
+# ── 6. Copy the kortix-agent binary ──────────────────────────────────────────
 COPY kortix-agent.gz /tmp/kortix-agent.gz
 RUN gunzip -c /tmp/kortix-agent.gz > /usr/local/bin/kortix-agent && \
     chmod 755 /usr/local/bin/kortix-agent && \
     chown root:root /usr/local/bin/kortix-agent && \
     rm /tmp/kortix-agent.gz
 
-# ── 6. Copy the kortix CLI binary (optional, for MCP executor) ────────────────
+# ── 7. Copy the kortix CLI binary ────────────────────────────────────────────
 COPY kortix.gz /tmp/kortix.gz
 RUN gunzip -c /tmp/kortix.gz > /usr/local/bin/kortix && \
     chmod 755 /usr/local/bin/kortix && \
     chown root:root /usr/local/bin/kortix && \
     rm /tmp/kortix.gz
 
-# ── 7. Copy the entrypoint script ────────────────────────────────────────────
+# ── 8. Copy the entrypoint script ────────────────────────────────────────────
 COPY entrypoint.sh /usr/local/bin/kortix-entrypoint
 RUN chmod 755 /usr/local/bin/kortix-entrypoint
 
-# ── 8. Set ownership ─────────────────────────────────────────────────────────
+# ── 9. Set ownership ─────────────────────────────────────────────────────────
 RUN chown -R tl-user:tl-user /opt/kortix /workspace /ephemeral 2>/dev/null || true
 
-# ── 9. Verify the binary is executable ───────────────────────────────────────
-RUN test -x /usr/local/bin/kortix-agent && echo "OK: kortix-agent executable"
-
-# The image is ready. Sandboxes boot from this image with:
-#   Sandbox.create({ image: "vaelorx-agent" })
-# The daemon is launched at boot time by the API's provisionSessionSandbox()
-# which writes session.env + /etc/pt-env then calls kortix-entrypoint.
+# ── 10. Verify everything is working ─────────────────────────────────────────
+RUN test -x /usr/local/bin/kortix-agent && \
+    opencode --version && \
+    python3 --version && \
+    pip3 --version && \
+    echo "BUILD_OK"
