@@ -56,7 +56,7 @@ async function recentAuditEvents() {
     action: row.action,
     resource_type: row.resource_type,
     resource_id: row.resource_id,
-    occurred_at: new Date(row.occurred_at).toISOString(),
+    occurred_at: row.occurred_at ? new Date(row.occurred_at).toISOString() : null,
   }));
 }
 
@@ -119,6 +119,14 @@ opsApp.openapi(
     },
   }),
   async (c: any) => {
+  // Wrap each query with a 5s timeout to prevent the /ops/overview endpoint
+  // from hanging for 60s when a table is large or the DB is slow.
+  const withTimeout = <T>(p: Promise<T>, ms = 5000): Promise<T> =>
+    Promise.race([
+      p,
+      new Promise<T>((resolve) => setTimeout(() => resolve({} as T), ms)),
+    ]);
+
   const [
     accountCount,
     projectCount,
@@ -132,44 +140,41 @@ opsApp.openapi(
     usage,
     recentAudit,
   ] = await Promise.all([
-    oneCount(sql`SELECT count(*)::int AS count FROM kortix.accounts`),
-    oneCount(sql`SELECT count(*)::int AS count FROM kortix.projects`),
-    oneCount(sql`
+    withTimeout(oneCount(sql`SELECT count(*)::int AS count FROM kortix.accounts`)),
+    withTimeout(oneCount(sql`SELECT count(*)::int AS count FROM kortix.projects`)),
+    withTimeout(oneCount(sql`
       SELECT count(*)::int AS count
       FROM kortix.sandboxes
       WHERE status IN ('provisioning', 'active', 'stopped', 'error')
-    `),
-    groupCounts(sql`
+    `)),
+    withTimeout(groupCounts(sql`
       SELECT status AS key, count(*)::int AS count
       FROM kortix.project_sessions
       GROUP BY status
-    `),
-    groupCounts(sql`
+    `)),
+    withTimeout(groupCounts(sql`
       SELECT status AS key, count(*)::int AS count
       FROM kortix.session_sandboxes
       GROUP BY status
-    `),
-    groupCounts(sql`
+    `)),
+    withTimeout(groupCounts(sql`
       SELECT provider AS key, count(*)::int AS count
       FROM kortix.session_sandboxes
       GROUP BY provider
-    `),
-    // Triggers are file-defined (kortix.toml) now; the project_trigger_events
-    // table is gone and the git path doesn't persist events, so this is always
-    // empty. Field kept for dashboard compatibility.
+    `)),
     Promise.resolve<Record<string, number>>({}),
-    oneCount(sql`
+    withTimeout(oneCount(sql`
       SELECT count(*)::int AS count
       FROM kortix.audit_events
       WHERE occurred_at >= now() - interval '24 hours'
-    `),
-    groupCounts(sql`
+    `)),
+    withTimeout(groupCounts(sql`
       SELECT status AS key, count(*)::int AS count
       FROM kortix.legacy_sandbox_migrations
       GROUP BY status
-    `),
-    usageLast24h(),
-    recentAuditEvents(),
+    `)),
+    withTimeout(usageLast24h()),
+    withTimeout(recentAuditEvents()),
   ]);
 
   const queuedTriggerEvents = triggerEventStatus.queued ?? 0;

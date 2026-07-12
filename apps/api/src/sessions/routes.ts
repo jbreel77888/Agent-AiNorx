@@ -607,16 +607,26 @@ sessionFilesApp.get('/:sessionId/health', async (c) => {
   try {
     const { Sandbox } = await import('../shared/tensorlake');
     const sb = await Sandbox.connect({ sandboxId: sandbox.externalId });
-    const result = await sb.run('bash', {
-      args: ['-c', 'curl -s http://localhost:8000/kortix/health'],
-      timeout: 5,
-    });
+    // Use a short timeout — if the daemon is down, the reconciler watchdog
+    // will restart it. Don't block the request for 60s.
+    const result = await Promise.race([
+      sb.run('bash', {
+        args: ['-c', 'curl -s --max-time 3 http://localhost:8000/kortix/health'],
+        timeout: 5,
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('health check timeout')), 10_000),
+      ),
+    ]);
     const healthJson = String((result as any).stdout ?? '').trim();
+    if (!healthJson) {
+      return c.json({ status: 'starting', runtimeReady: false }, 200);
+    }
     const health = JSON.parse(healthJson);
     return c.json(health, 200);
   } catch (err) {
     return c.json({
-      status: 'error',
+      status: 'starting',
       runtimeReady: false,
       error: err instanceof Error ? err.message : String(err),
     }, 200);

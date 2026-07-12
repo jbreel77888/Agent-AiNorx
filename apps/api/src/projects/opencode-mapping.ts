@@ -192,7 +192,10 @@ export async function listSandboxOpencodeSessions(
     try { sessionDetail = JSON.parse(String((sessionDetailResult as any).stdout ?? '')); } catch {}
 
     // If the session has agent="general" (wrong agent), create a new one with agent="vaelorx"
-    if (!sessionDetail.agent || sessionDetail.agent === 'general' || sessionDetail.agent === 'default') {
+    // NOTE: Don't create new sessions when agent is undefined — older opencode sessions
+    // don't have the agent field in their detail response, but they may have messages.
+    // Creating a new session would lose the conversation history.
+    if (sessionDetail.agent === 'general' || sessionDetail.agent === 'default') {
       console.log(`[opencode-mapping] Pinned session ${pinSessionId} has agent="${sessionDetail.agent}" — creating new session with agent=vaelorx`);
       const createResult = await sb.run('bash', {
         args: ['-c', `curl -s -X POST -H "X-Kortix-User-Context: ${userContextHeader}" -H "Content-Type: application/json" -d '{"agent":"vaelorx"}' "http://localhost:8000/session?directory=/workspace"`],
