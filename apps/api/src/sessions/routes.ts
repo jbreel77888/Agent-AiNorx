@@ -503,13 +503,21 @@ sessionFilesApp.post('/:sessionId/start', async (c) => {
   }
 
   if (providerStatus !== 'running') {
-    // Idle auto-stop: kick the start in the background; the client keeps polling.
+    // Sandbox is suspended or stopped — resume it.
+    // For Tensorlake named sandboxes, suspend preserves full state (RAM + processes),
+    // so resume is near-instant and the daemon is already running.
     if (providerStatus === 'stopped') {
       try {
         const provider = getProvider(sandbox.provider as SandboxProviderName);
-        void provider.start(sandbox.externalId).catch((err) => {
-          console.warn(`[sessions/start] failed to wake sandbox ${sandbox.externalId}:`, err);
-        });
+        // For Tensorlake, use resume() which is faster than start()
+        if (sandbox.provider === 'tensorlake' && typeof (provider as any).resume === 'function') {
+          console.log(`[sessions/start] Resuming suspended sandbox ${sandbox.externalId}...`);
+          await (provider as any).resume(sandbox.externalId);
+        } else {
+          void provider.start(sandbox.externalId).catch((err) => {
+            console.warn(`[sessions/start] failed to wake sandbox ${sandbox.externalId}:`, err);
+          });
+        }
       } catch (err) {
         console.warn(`[sessions/start] failed to start provider:`, err);
       }

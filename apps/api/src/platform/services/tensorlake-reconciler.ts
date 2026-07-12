@@ -96,6 +96,58 @@ async function getActiveTensorlakeSandboxes(): Promise<Array<{
   }
 }
 
+// ─── Daemon Health Check (watchdog) ───────────────────────────────────────────
+// The kortix-agent daemon inside each sandbox can crash due to a memory leak
+// (MaxListenersExceededWarning). This watchdog checks every active sandbox's
+// daemon health and restarts it if it's down.
+
+async function checkAndRestartDaemon(externalId: string): Promise<boolean> {
+  try {
+    const sandbox = await Sandbox.connect({ sandboxId: externalId });
+    
+    // Check if daemon is responding on port 8000
+    const healthResult = await sandbox.run('bash', {
+      args: ['-c', 'curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/kortix/health 2>/dev/null || echo 000'],
+      timeout: 10,
+    });
+    const healthCode = String((healthResult as any).stdout ?? '').trim();
+    
+    if (healthCode === '200') {
+      return false; // Daemon is healthy
+    }
+    
+    // Daemon is down — restart it
+    console.warn(`[daemon-watchdog] Daemon down (health=${healthCode}) for ${externalId} — restarting...`);
+    
+    // Launch the daemon via the entrypoint
+    await sandbox.run('bash', {
+      args: ['-c', `setsid bash -c 'set -a; source /opt/kortix/session.env; set +a; cd /; exec /usr/local/bin/kortix-entrypoint' </dev/null >/tmp/kortix-agent.log 2>&1 & disown; echo STARTED`],
+      timeout: 10,
+    });
+    
+    // Wait for boot
+    await new Promise((r) => setTimeout(r, 15000));
+    
+    // Verify it's back
+    const recheck = await sandbox.run('bash', {
+      args: ['-c', 'curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/kortix/health 2>/dev/null || echo 000'],
+      timeout: 10,
+    });
+    const recheckCode = String((recheck as any).stdout ?? '').trim();
+    
+    if (recheckCode === '200') {
+      console.log(`[daemon-watchdog] Daemon restarted successfully for ${externalId}`);
+      return true;
+    } else {
+      console.warn(`[daemon-watchdog] Daemon restart failed for ${externalId} (health=${recheckCode})`);
+      return false;
+    }
+  } catch (err) {
+    console.warn(`[daemon-watchdog] Error checking ${externalId}:`, err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
 // ─── Core Reconciliation ───────────────────────────────────────────────────────
 
 async function checkSandboxStatus(externalId: string): Promise<SandboxState> {
@@ -136,6 +188,9 @@ async function reconcileOnce(): Promise<ReconcileResult[]> {
         } else if (currentState === 'terminated') {
           await reconcileSandboxRemoved(sb.externalId);
           action = 'removed';
+        } else if (currentState === 'running') {
+          // Daemon health check — restart if down
+          await checkAndRestartDaemon(sb.externalId);
         }
 
         knownStates.set(sb.externalId, currentState);

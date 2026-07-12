@@ -78,7 +78,13 @@ RUN chmod 755 /usr/local/bin/kortix-entrypoint
 # ── 9. Set ownership ─────────────────────────────────────────────────────────
 RUN chown -R tl-user:tl-user /opt/kortix /workspace /ephemeral 2>/dev/null || true
 
-# ── 10. Verify everything is working ─────────────────────────────────────────
+# ── 10. Pre-bake scaffold files into /workspace ──────────────────────────────
+# These files are created by the daemon's simple-mode boot, but pre-baking them
+# saves time and ensures consistency. The daemon will NOT overwrite existing files
+# (its scaffold injection checks for existing files first).
+COPY scaffold/ /workspace/
+
+# ── 11. Verify everything is working ─────────────────────────────────────────
 RUN test -x /usr/local/bin/kortix-agent && \
     opencode --version && \
     python3 --version && \

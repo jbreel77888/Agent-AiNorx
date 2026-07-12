@@ -65,17 +65,15 @@ const runningStatusCache = new Map<string, number>(); // externalId → cachedAt
 
 // ─── Default Resources ────────────────────────────────────────────────────────
 
-// Upgraded plan: 4 vCPU cores, 16 GB RAM, 50 GB disk (per Tensorlake plan limits)
+// Upgraded plan: 4 vCPU cores, 16 GB RAM, 64 GB disk
 const DEFAULT_CPUS = 4;
 const DEFAULT_MEMORY_MB = 16384;
-const DEFAULT_DISK_MB = 51200; // 50 GB — was 10 GB default, increased for agent workspace
-// IMPORTANT: ephemeral sandboxes (no name) TERMINATE permanently on idle timeout.
-// The cold-boot install takes 3-25 min, so 10 min default would kill the sandbox
-// mid-install. Use a generous idle threshold that survives the install.
-const DEFAULT_TIMEOUT_SECS = 1800; // 30 min idle → auto-suspend (was 600)
-// Cold-boot install timeout — the setup script itself has its own `timeout` arg,
-// but the SANDBOX must stay alive long enough for the install to complete.
-const COLD_BOOT_TIMEOUT_SECS = 1800; // 30 min — covers worst-case apt+opencode+bun
+const DEFAULT_DISK_MB = 65536; // 64 GB — increased from 50 GB for large agent workspaces
+// Named sandboxes SUSPEND on idle timeout (not terminate). This preserves the
+// full sandbox state (filesystem + memory + processes) and allows instant resume.
+// Ephemeral sandboxes (no name) terminate permanently — we always use named sandboxes.
+const DEFAULT_TIMEOUT_SECS = 7200; // 2 hours idle → auto-suspend
+const COLD_BOOT_TIMEOUT_SECS = 1800; // 30 min — covers worst-case cold-boot install
 
 // ─── Agent Port ───────────────────────────────────────────────────────────────
 // The Kortix agent daemon listens on port 8000 inside the sandbox.
@@ -411,6 +409,31 @@ export class TensorlakeProvider implements SandboxProvider {
     runningStatusCache.delete(externalId);
     const sandbox = await Sandbox.connect({ sandboxId: externalId });
     await sandbox.suspend();
+  }
+
+  /**
+   * Resume a suspended sandbox. For named sandboxes, this restores the
+   * full state (filesystem + RAM + processes) — the daemon is already
+   * running, so the session is instantly usable.
+   */
+  async resume(externalId: string): Promise<void> {
+    runningStatusCache.set(externalId, Date.now()); // optimistic cache
+    const sandbox = await Sandbox.connect({ sandboxId: externalId });
+    const info = await sandbox.info();
+    const state = String((info as any).status ?? '').toLowerCase();
+    if (state === 'suspended' || state === 'suspending') {
+      console.log(`[tensorlake] Resuming sandbox ${externalId}...`);
+      await sandbox.resume();
+      runningStatusCache.set(externalId, Date.now());
+      console.log(`[tensorlake] Sandbox ${externalId} resumed.`);
+    } else if (state === 'running') {
+      // Already running — nothing to do
+      runningStatusCache.set(externalId, Date.now());
+    } else {
+      // Not suspended — use start() as fallback
+      console.log(`[tensorlake] Sandbox ${externalId} state=${state}, using start()...`);
+      await this.start(externalId);
+    }
   }
 
   async remove(externalId: string): Promise<void> {
