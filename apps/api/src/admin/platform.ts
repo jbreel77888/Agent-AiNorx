@@ -19,8 +19,9 @@ import {
   platformSubscriptionPlans,
   platformProviders,
   platformSettings,
+  sessionSandboxes,
 } from '@kortix/db';
-import { eq, desc, asc } from 'drizzle-orm';
+import { eq, desc, asc, and } from 'drizzle-orm';
 
 export const platformAdminApp = new Hono();
 
@@ -380,32 +381,55 @@ platformAdminApp.patch('/settings', async (c) => {
 });
 
 // ─── Publish (force update) ──────────────────────────────────────────────────
-// Triggers a scaffold rebuild + live update of all active sandboxes.
-// For now, this just bumps the scaffold version — the full publish mechanism
-// (scaffold builder + live update) will be implemented in 4.3.
+// Pushes the latest agents + skills from DB to ALL active sandboxes.
+// Also bumps scaffold_version so new sessions get the latest files.
 
 platformAdminApp.post('/publish', async (c) => {
-  const version = Date.now().toString();
+  try {
+    const { publishScaffoldUpdate } = await import('./live-update');
+    const result = await publishScaffoldUpdate();
 
-  await db.update(platformSettings)
-    .set({ value: JSON.stringify(version), updatedAt: new Date() })
-    .where(eq(platformSettings.key, 'scaffold_version'));
+    return c.json({
+      ok: true,
+      version: result.version,
+      published: {
+        sandboxesTotal: result.totalSandboxes,
+        sandboxesUpdated: result.updated,
+        sandboxesFailed: result.failed,
+        errors: result.errors,
+      },
+    });
+  } catch (err) {
+    console.error('[admin/publish] Error:', err);
+    return c.json({
+      ok: false,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    }, 500);
+  }
+});
 
-  // Log what was published
-  const [agents, skills, models] = await Promise.all([
+// ─── Publish status ──────────────────────────────────────────────────────────
+
+platformAdminApp.get('/publish/status', async (c) => {
+  const { getScaffoldVersion } = await import('./live-update');
+  const version = await getScaffoldVersion();
+
+  const [agents, skills, activeSandboxes] = await Promise.all([
     db.select().from(platformAgents).where(eq(platformAgents.isActive, true)),
     db.select().from(platformSkills).where(eq(platformSkills.isActive, true)),
-    db.select().from(platformModels).where(eq(platformModels.isActive, true)),
+    db.select({ externalId: sessionSandboxes.externalId })
+      .from(sessionSandboxes)
+      .where(and(
+        eq(sessionSandboxes.provider, 'tensorlake'),
+        eq(sessionSandboxes.status, 'active'),
+      )),
   ]);
 
   return c.json({
-    ok: true,
     version,
-    published: {
-      agents: agents.length,
-      skills: skills.length,
-      models: models.length,
-    },
+    activeAgents: agents.length,
+    activeSkills: skills.length,
+    activeSandboxes: activeSandboxes.filter((s: any) => s.externalId).length,
   });
 });
 

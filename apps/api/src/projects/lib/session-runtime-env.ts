@@ -11,6 +11,9 @@ export interface SessionRuntimeEnvInput {
   opencodeModel?: string | null;
   /** 'simple' = no GitHub, 'project' = legacy git-backed */
   sessionMode?: 'simple' | 'project';
+  /** Scaffold version — used by the daemon to check if it needs to fetch
+   *  updated agent/skill files from the API on boot. */
+  scaffoldVersion?: string;
 }
 
 export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<string, string> {
@@ -31,6 +34,7 @@ export function buildSessionRuntimeEnv(input: SessionRuntimeEnvInput): Record<st
       ...(input.frontendUrl ? { KORTIX_FRONTEND_URL: input.frontendUrl } : {}),
       ...(input.initialPrompt ? { KORTIX_INITIAL_PROMPT: input.initialPrompt } : {}),
       ...(input.opencodeModel ? { KORTIX_OPENCODE_MODEL: input.opencodeModel } : {}),
+      ...(input.scaffoldVersion ? { KORTIX_SCAFFOLD_VERSION: input.scaffoldVersion } : {}),
     };
   }
 

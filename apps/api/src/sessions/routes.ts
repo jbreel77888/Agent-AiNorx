@@ -123,8 +123,10 @@ sessionFilesApp.post('/', async (c) => {
       const { provisionSessionSandbox } = await import('../platform/services/session-sandbox');
       const { buildSessionRuntimeEnv } = await import('../projects/lib/session-runtime-env');
       const { sandboxFrontendBaseUrl } = await import('../platform/sandbox-frontend-url');
+      const { getScaffoldVersion } = await import('../admin/live-update');
 
       const kortixOrigin = config.KORTIX_URL?.replace(/\/+$/, '') || 'http://localhost:8008';
+      const scaffoldVersion = await getScaffoldVersion().catch(() => '0');
       const runtimeEnv = buildSessionRuntimeEnv({
         sessionId,
         agentName: 'default',
@@ -133,6 +135,7 @@ sessionFilesApp.post('/', async (c) => {
         initialPrompt: body.initial_prompt || null,
         opencodeModel: body.opencode_model || null,
         sessionMode: 'simple',
+        scaffoldVersion,
       });
 
       await provisionSessionSandbox({

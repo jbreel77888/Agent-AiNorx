@@ -243,9 +243,29 @@ export async function updateSettings(updates: Array<{ key: string; value: unknow
 
 // ─── Publish ─────────────────────────────────────────────────────────────────
 
-export async function publishPlatform(): Promise<{ ok: boolean; version: string; published: { agents: number; skills: number; models: number } }> {
+export async function publishPlatform(): Promise<{
+  ok: boolean;
+  version: string;
+  published: {
+    sandboxesTotal: number;
+    sandboxesUpdated: number;
+    sandboxesFailed: number;
+    errors: string[];
+  };
+}> {
   const headers = await authHeaders();
   const res = await backendApi.post('/admin/platform/publish', {}, { headers });
+  return res.data;
+}
+
+export async function getPublishStatus(): Promise<{
+  version: string;
+  activeAgents: number;
+  activeSkills: number;
+  activeSandboxes: number;
+}> {
+  const headers = await authHeaders();
+  const res = await backendApi.get('/admin/platform/publish/status', { headers });
   return res.data;
 }
 

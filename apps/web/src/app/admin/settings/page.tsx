@@ -27,7 +27,11 @@ export default function AdminSettingsPage() {
   const publishMut = useMutation({
     mutationFn: () => publishPlatform(),
     onSuccess: (data) => {
-      toast.success(`Published — v${data.version} (${data.published.agents} agents, ${data.published.models} models)`);
+      const p = data.published;
+      toast.success(
+        `Published v${data.version} — ${p.sandboxesUpdated}/${p.sandboxesTotal} sandboxes updated` +
+        (p.sandboxesFailed > 0 ? ` (${p.sandboxesFailed} failed)` : '')
+      );
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Publish failed'),
   });
