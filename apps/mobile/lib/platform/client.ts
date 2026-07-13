@@ -164,6 +164,37 @@ function toSandboxInfo(
   };
 }
 
+/**
+ * Build SandboxInfo from a simple-mode session (no project required).
+ * Used by ensureSandbox() when creating sessions via /v1/sessions.
+ */
+function toSandboxInfoFromSession(
+  sessionId: string,
+  startResult: ProjectSessionSummary
+): SandboxInfo {
+  const externalId =
+    startResult.sandbox_url?.match(/\/p\/([^/]+)\//)?.[1] ||
+    startResult.sandbox_id ||
+    sessionId;
+  const status = normalizeSessionStatus(startResult.status);
+  return {
+    sandbox_id: startResult.sandbox_id || sessionId,
+    external_id: externalId,
+    name: startResult.name || 'Mobile Session',
+    provider: startResult.sandbox_provider || 'tensorlake',
+    base_url: startResult.sandbox_url || '',
+    status,
+    version: null,
+    metadata: {
+      ...(startResult.metadata || {}),
+      session_id: sessionId,
+      error: startResult.error,
+    },
+    created_at: startResult.created_at,
+    updated_at: startResult.updated_at,
+  };
+}
+
 async function listProjects(): Promise<ProjectSummary[]> {
   return apiFetch<ProjectSummary[]>('/projects');
 }
@@ -251,7 +282,12 @@ export async function findProjectSessionSandbox(sandboxId?: string): Promise<{
 
 /**
  * Ensure the user has a sandbox provisioned. Creates one if needed.
- * POST /platform/init
+ *
+ * In simple mode (session-only), this creates a top-level session via
+ * POST /v1/sessions — no project required.
+ *
+ * Falls back to project-based session creation for backward compatibility
+ * if the /v1/sessions endpoint is unavailable.
  */
 export async function ensureSandbox(opts?: {
   provider?: SandboxProviderName;
@@ -262,6 +298,31 @@ export async function ensureSandbox(opts?: {
   const existing = await getActiveSandbox();
   if (existing) return { sandbox: existing, created: false };
 
+  // Try simple-mode session creation first (no project required)
+  try {
+    const session = await apiFetch<{ session_id: string; status: string; name: string }>(
+      `/sessions`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Mobile Session' }),
+      }
+    );
+
+    // Start the session to provision the sandbox
+    const startResult = await apiFetch<ProjectSessionSummary>(
+      `/sessions/${encodeURIComponent(session.session_id)}/start`,
+      { method: 'POST', body: JSON.stringify({}) }
+    );
+
+    // Build sandbox info from the session
+    const sandbox = toSandboxInfoFromSession(session.session_id, startResult);
+    log.log('✅ [Platform] Session sandbox ensured:', sandbox.external_id);
+    return { sandbox, created: true };
+  } catch (err) {
+    log.warn('⚠️ [Platform] Simple-mode session creation failed, falling back to project mode:', err);
+  }
+
+  // Fallback: project-based session creation (backward compatibility)
   const projects = await listProjects();
   const project = opts?.projectId
     ? projects.find((item) => item.project_id === opts.projectId)
