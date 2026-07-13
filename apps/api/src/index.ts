@@ -52,9 +52,6 @@ import { startLeaderElection, stopLeaderElection, isLeader, runsSingletonWorkers
 import { marketplaceApp } from './marketplace';
 import { oauthApp } from './oauth';
 import { sessionFilesApp } from './sessions/routes';
-import {
-  
-  
 import { kickStartupPreBuild } from './snapshots/builder';
 import { kickWarmBaseBuild } from './snapshots/warm-bake';
 import { warmSnapshotsEnabled } from './shared/daytona';
@@ -947,8 +944,7 @@ console.log(`
 ║    /v1/router     (search, LLM, proxy)                    ║
 ║    /v1/billing    (subscriptions, credits, webhooks)       ║
 ║    /v1/platform   (api keys, sandbox version)               ║
-║    /v1/projects   (Git-backed projects)                    ║
-${config.KORTIX_APPS_EXPERIMENTAL ? '║    /v1/projects/:id/apps  (experimental [[apps]])         ║\n' : ''}
+║    /v1/sessions   (Session-based AI agent)                     ║
 ║    /v1/setup      (setup & env management)                 ║
 ║    /v1/tunnel     (reverse-tunnel to local machines)         ║
 ║    /v1/p         (sandbox proxy — local + cloud)            ║
