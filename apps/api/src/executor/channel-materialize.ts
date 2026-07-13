@@ -11,8 +11,8 @@ import { loadSlackInstall } from '../channels/install-store';
  * existing install token (resolved server-side at call time) — no copy, no
  * executor_credentials row, no migration. See KORTIX-206.
  */
-import type { ChannelPlatform, ConnectorSpec } from '../projects/connectors';
-import { MANIFEST_FILENAME } from '../projects/triggers';
+import type { ChannelPlatform, ConnectorSpec } from '../shared';
+import { MANIFEST_FILENAME } from '../shared';
 import { channelDefaultSlug, channelLabel } from './channels';
 
 function channelSpec(platform: ChannelPlatform, slug: string): ConnectorSpec {

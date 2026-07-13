@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { getTraceHeaders } from '../../lib/request-context';
-import { syncSandboxEnvForPrompt } from '../../projects/lib/sandbox-env-sync';
+import { syncSandboxEnvForPrompt } from '../../shared';
 import { canAccessPreviewSandbox, canAccessSandboxSession, resolvePreviewUserContext } from '../../shared/preview-ownership';
 import {
   KORTIX_USER_CONTEXT_HEADER,

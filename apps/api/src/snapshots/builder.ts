@@ -16,7 +16,7 @@
 import { and, desc, eq, lt } from 'drizzle-orm';
 import { projectSnapshotBuilds } from '@kortix/db';
 import { db } from '../shared/db';
-import { resolveCommitSha, type GitBackedProject } from '../projects/git';
+import { resolveCommitSha, type GitBackedProject } from '../shared';
 import { getSandboxProvider, type ProviderState, type SandboxProviderAdapter } from './providers';
 import { config } from '../config';
 import {

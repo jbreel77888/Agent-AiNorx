@@ -13,7 +13,7 @@ import {
   executorCredentials,
 } from '@kortix/db';
 import { db } from '../shared/db';
-import { decryptProjectSecret, encryptProjectSecret } from '../projects/secrets';
+import { decryptProjectSecret, encryptProjectSecret } from '../shared';
 import { intentToScope, type SecretGrant, type ShareScope, type SharingIntent } from './share';
 
 /* ─── access (connector sharing) ──────────────────────────────────────────── */

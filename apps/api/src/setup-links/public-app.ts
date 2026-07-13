@@ -12,8 +12,8 @@ import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
 import { projects } from '@kortix/db';
 import { db } from '../shared/db';
-import { isValidSecretName, writeSharedProjectSecret } from '../projects/secrets';
-import { propagateProjectSecretsToActiveSandboxes } from '../projects/lib/sandbox-env-sync';
+import { isValidSecretName, writeSharedProjectSecret } from '../shared';
+import { propagateProjectSecretsToActiveSandboxes } from '../shared';
 import { pipedreamConfigured, pipedreamConnectUrl } from '../executor/pipedream';
 import { resolveSetupLink } from './token';
 

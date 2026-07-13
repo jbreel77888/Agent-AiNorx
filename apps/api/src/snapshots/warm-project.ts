@@ -44,7 +44,7 @@ import {
   warmBaseUsable,
   XDG_EXPORTS,
 } from './warm-bake';
-import type { GitBackedProject } from '../projects/git';
+import type { GitBackedProject } from '../shared';
 
 const WPROJ_PREFIX = 'kortix-wproj-';       // daytona warm-project snapshots
 const WPROJ_PREFIX_PT = 'kortix-wprojpt-';  // platinum warm-project templates
@@ -177,8 +177,8 @@ export async function bakeProjectWarmSnapshot(
   }
 
   // Tip of the default branch (what the snapshot will contain).
-  const { resolveCommitSha } = await import('../projects/git');
-  const { resolveProjectGitAuth } = await import('../projects/lib/git');
+  const { resolveCommitSha } = await import('../shared');
+  const { resolveProjectGitAuth } = await import('../shared');
   const gitAuth = await resolveProjectGitAuth(project as never).catch(() => null);
   const gitProject: GitBackedProject = {
     projectId: project.projectId,
@@ -203,13 +203,13 @@ export async function bakeProjectWarmSnapshot(
   // file that is deleted in the same invocation — nothing credential-shaped
   // survives into the snapshot. The baked origin is the Kortix git proxy; the
   // daemon's credential helper auths it per-session.
-  const { resolveProjectUpstream } = await import('../projects/lib/git');
+  const { resolveProjectUpstream } = await import('../shared');
   const upstream = await resolveProjectUpstream(project as never, 'read');
   if (!upstream?.url) throw new WarmBakeError('no git upstream configured for project');
   const headerFlags = Object.entries(upstream.headers ?? {})
     .map(([k, v]) => `-c http.extraHeader=${sh(`${k}: ${v}`)}`)
     .join(' ');
-  const { proxyGitUrl } = await import('../projects/lib/sessions');
+  const { proxyGitUrl } = await import('../shared');
   const originUrl = proxyGitUrl(project.projectId);
 
   log(`[warm-project] baking ${name} (project ${project.projectId.slice(0, 8)}, tip ${tip.slice(0, 8)}) from ${baseName}`);
@@ -283,9 +283,9 @@ async function bakeProjectWarmSnapshotPlatinum(
   if (!project.repoUrl) throw new WarmBakeError('project has no repo url');
   const log = opts.onLog ?? ((l: string) => console.log(l));
   const { platinumProvider } = await import('./providers/platinum');
-  const { proxyGitUrl } = await import('../projects/lib/sessions');
-  const { resolveCommitSha } = await import('../projects/git');
-  const { resolveProjectGitAuth } = await import('../projects/lib/git');
+  const { proxyGitUrl } = await import('../shared');
+  const { resolveCommitSha } = await import('../shared');
+  const { resolveProjectGitAuth } = await import('../shared');
   const { resolveTemplateBySlug, computeTemplateIdentity } = await import('./templates');
   const { createApiKey } = await import('../repositories/api-keys');
 
@@ -446,7 +446,7 @@ export function kickProjectWarmBake(project: WarmableProject, onLog?: (l: string
  * is still coming up right after a restore. Fire-and-forget by callers.
  */
 export async function refreshRestoredWorkspace(externalId: string, userId: string | undefined): Promise<void> {
-  const { sandboxOpencodeEndpoint } = await import('../projects/opencode-mapping');
+  const { sandboxOpencodeEndpoint } = await import('../shared');
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {
       const ep = await sandboxOpencodeEndpoint(externalId, userId);

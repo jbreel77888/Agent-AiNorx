@@ -45,11 +45,11 @@ import { providerFallbackSetting } from './runtime-settings';
 import { selectProvider } from './provider-balancer';
 import { ProvisionTimeline } from './provision-timeline';
 import { recordProviderEvent } from './provider-events';
-import type { GitBackedProject } from '../../projects/git';
+import type { GitBackedProject } from '../../shared';
 import { startComputeSession } from '../../billing/services/compute-metering';
 import { accountEntitledToLlmGateway } from '../../shared/account-limits';
-import { readManifest } from '../../projects/triggers';
-import { resolveAgentGrant } from '../../projects/agents';
+import { readManifest } from '../../shared';
+import { resolveAgentGrant } from '../../shared';
 
 // Fallback spec for sandboxes that don't declare [sandbox] in kortix.toml.
 // Mirrors the platform default sandbox size (2 vCPU / 6 GB / 20 GB).

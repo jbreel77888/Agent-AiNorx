@@ -5,7 +5,7 @@ import {
   decryptProjectSecret,
   encryptProjectSecret,
   listProjectSecrets,
-} from '../projects/secrets';
+} from '../shared';
 
 export const SLACK_BOT_TOKEN = 'SLACK_BOT_TOKEN';
 export const SLACK_SIGNING_SECRET = 'SLACK_SIGNING_SECRET';

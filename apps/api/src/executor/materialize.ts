@@ -7,8 +7,8 @@
  * normalize → executor_connector_actions) is the integration layer that calls
  * these. See docs/specs/executor.md §3, §7, §8.
  */
-import type { ConnectorSpec } from '../projects/connectors';
-import type { ProjectPolicySpec } from '../projects/policies';
+import type { ConnectorSpec } from '../shared';
+import type { ProjectPolicySpec } from '../shared';
 import { channelApiBase } from './channels';
 
 export interface DesiredPolicy {

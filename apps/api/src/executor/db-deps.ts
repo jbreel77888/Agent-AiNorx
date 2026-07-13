@@ -20,7 +20,7 @@ import { db } from '../shared/db';
 import { validateAccountToken } from '../repositories/account-tokens';
 import { validateSecretKey } from '../repositories/api-keys';
 import { authorize } from '../iam';
-import { loadProjectForUser } from '../projects/lib/access';
+import { loadProjectForUser } from '../shared';
 import {
   isSecretUsableBy,
   resolveShareSubject,

@@ -1,7 +1,7 @@
 import { and, eq, isNull, or } from 'drizzle-orm';
 import { projectSecrets } from '@kortix/db';
 import { db } from '../../shared/db';
-import { decryptProjectSecret, encryptProjectSecret } from '../../projects/secrets';
+import { decryptProjectSecret, encryptProjectSecret } from '../../shared';
 import {
   CodexRefreshError,
   OPENAI_AUTH_BASE,

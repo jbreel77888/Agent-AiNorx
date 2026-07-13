@@ -24,7 +24,7 @@ import { recordWebhookEvent } from '../../billing/services/webhook-concurrency';
 import {
   reconcileSandboxStoppedByExternalId,
   reconcileSandboxRemovedByExternalId,
-} from '../../projects/sandbox-reaper';
+} from '../../shared';
 
 export type SandboxLifecycleOutcome = 'stopped' | 'removed' | 'noop';
 

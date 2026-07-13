@@ -6,7 +6,7 @@ import { db } from '../shared/db';
 import {
   createSession,
   resolveProjectAutomationActor,
-} from '../projects/session-lifecycle';
+} from '../shared';
 import { loadTelegramWebhookSecretForProject } from './install-store';
 import { makeOpenApiApp, json, errors } from '../openapi';
 

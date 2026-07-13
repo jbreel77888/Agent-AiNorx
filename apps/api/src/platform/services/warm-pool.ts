@@ -38,7 +38,7 @@ import { accountEntitledToLlmGateway } from '../../shared/account-limits';
 import { checkBillingActive } from '../../billing/services/billing-gate';
 import { ensureSandboxImage, DEFAULT_SANDBOX_SLUG } from '../../snapshots/builder';
 import { warmPoolSetting } from './runtime-settings';
-import { buildSpareSandboxEnvVars } from '../../projects/lib/sessions';
+import { buildSpareSandboxEnvVars } from '../../shared';
 import { resolvePreviewLink } from '../../sandbox-proxy/backend';
 import { resolvePreviewUserContext } from '../../shared/preview-ownership';
 import { encodeKortixUserContext, KORTIX_USER_CONTEXT_HEADER } from '../../shared/kortix-user-context';
@@ -646,7 +646,7 @@ export async function refillProjectPool(projectId: string, _forUserId?: string |
     // Resolve a git auth token once so spares can build the snapshot if needed.
     let gitAuthToken: string | null = null;
     try {
-      const { resolveProjectGitAuth } = await import('../../projects/lib/git');
+      const { resolveProjectGitAuth } = await import('../../shared');
       gitAuthToken = (await resolveProjectGitAuth(project as any)).auth?.token ?? null;
     } catch { /* cache-hit boots don't need it */ }
 

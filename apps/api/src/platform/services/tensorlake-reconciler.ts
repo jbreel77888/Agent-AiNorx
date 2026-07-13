@@ -48,7 +48,7 @@ let isRunning = false;
 
 async function reconcileSandboxStopped(externalId: string): Promise<void> {
   try {
-    const { reconcileSandboxStoppedByExternalId } = await import('../../projects/sandbox-reaper');
+    const { reconcileSandboxStoppedByExternalId } = await import('../../shared');
     await reconcileSandboxStoppedByExternalId(externalId);
   } catch {
     // Module might not exist or function might fail — the reaper is the backstop
@@ -58,7 +58,7 @@ async function reconcileSandboxStopped(externalId: string): Promise<void> {
 
 async function reconcileSandboxRemoved(externalId: string): Promise<void> {
   try {
-    const { reconcileSandboxRemovedByExternalId } = await import('../../projects/sandbox-reaper');
+    const { reconcileSandboxRemovedByExternalId } = await import('../../shared');
     await reconcileSandboxRemovedByExternalId(externalId);
   } catch {
     console.warn(`[tensorlake-reconciler] Failed to reconcile billing removal for ${externalId}`);

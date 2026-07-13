@@ -2,7 +2,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
 import type { AppContext } from '../../types';
 import { verifySessionLlmToken } from '../../shared/session-llm-token';
-import { getProjectSecretValue } from '../../projects/secrets';
+import { getProjectSecretValue } from '../../shared';
 import { proxyToOpenRouter, extractUsage, calculateCost, getModel, getAllModels } from '../services/llm';
 import { checkCredits, deductLLMCredits } from '../services/billing';
 import { recordUsageEvent } from '../../shared/usage-events';

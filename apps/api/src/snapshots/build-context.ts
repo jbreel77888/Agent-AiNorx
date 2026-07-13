@@ -20,7 +20,7 @@ import { pipeline } from 'node:stream/promises';
 import { createGzip } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { buildLayeredDockerfile } from './dockerfile-layer';
-import { buildStarterFiles, DEFAULT_STARTER_TEMPLATE_ID } from '../projects/starter';
+import { buildStarterFiles, DEFAULT_STARTER_TEMPLATE_ID } from '../shared';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 const execFileAsyncBC = promisify(execFile);

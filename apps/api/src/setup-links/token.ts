@@ -21,7 +21,7 @@
  * and `payload.pid` is cross-checked against it on resolve.
  */
 import { randomBytes } from 'node:crypto';
-import { decryptProjectSecret, encryptProjectSecret } from '../projects/secrets';
+import { decryptProjectSecret, encryptProjectSecret } from '../shared';
 
 const TOKEN_PREFIX = 'ksl_';
 const DEFAULT_TTL_MINUTES = 30;

@@ -5,7 +5,7 @@ import {
   continueSession as continueLifecycleSession,
   createSession as createLifecycleSession,
   resolveProjectAutomationActor as resolveLifecycleAutomationActor,
-} from '../../projects/session-lifecycle';
+} from '../../shared';
 import { EVENT_DEDUPE_TTL_MS } from './app';
 import { currentChannelSelection } from './selection';
 import { buildSlackTurnEnv, finalizeTurn, saveTurn, startTurn } from './turn';

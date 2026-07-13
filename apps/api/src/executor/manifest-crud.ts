@@ -8,8 +8,8 @@
 import { and, eq } from 'drizzle-orm';
 import { executorConnectors, projects } from '@kortix/db';
 import { db } from '../shared/db';
-import { commitManifest, loadManifestForEdit } from '../projects/index';
-import { extractConnectors, RESERVED_CONNECTOR_SLUGS, type ConnectorPolicySpec, type ConnectorPolicyAction, type ConnectorSpec } from '../projects/connectors';
+import { commitManifest, loadManifestForEdit } from '../shared';
+import { extractConnectors, RESERVED_CONNECTOR_SLUGS, type ConnectorPolicySpec, type ConnectorPolicyAction, type ConnectorSpec } from '../shared';
 import { isValidMatcher } from './policy';
 import {
   extractProjectPolicies,
@@ -17,7 +17,7 @@ import {
   projectPolicySettingsToToml,
   type ProjectPolicySpec,
   type DefaultMode,
-} from '../projects/policies';
+} from '../shared';
 import { syncProjectConnectors, type SyncResult } from './sync';
 import { setConnectorSharingDb, upsertCredential } from './credentials';
 import type { SharingIntent } from './share';

@@ -17,8 +17,8 @@ import { projects, tunnelConnections } from '@kortix/db';
 import { db } from '../shared/db';
 import { resolveExperimentalFeature } from '../experimental/features';
 import { COMPUTER_SLUG, computerLabel } from './computers';
-import type { ConnectorSpec } from '../projects/connectors';
-import { MANIFEST_FILENAME } from '../projects/triggers';
+import type { ConnectorSpec } from '../shared';
+import { MANIFEST_FILENAME } from '../shared';
 
 function computerSpec(): ConnectorSpec {
   return {

@@ -5,7 +5,7 @@ import {
 } from '@kortix/llm-gateway';
 import { getManagedModel } from '@kortix/shared/llm-catalog';
 import { config } from '../../config';
-import { getProjectSecretValue } from '../../projects/secrets';
+import { getProjectSecretValue } from '../../shared';
 import { resolveCodexCredential } from '../credentials/codex';
 import { codexDescriptor, livePricing, managedCandidates } from './descriptors';
 

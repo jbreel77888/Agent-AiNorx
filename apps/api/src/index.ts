@@ -53,22 +53,12 @@ import { marketplaceApp } from './marketplace';
 import { oauthApp } from './oauth';
 import { sessionFilesApp } from './sessions/routes';
 import {
-  projectWebhooksApp,
-  projectsApp,
-  startProjectTriggerScheduler,
-  stopProjectTriggerScheduler,
-  getTriggerSchedulerHealth,
-  schedulerSweepIsStale,
-} from './projects';
-import { startProjectMaintenance, stopProjectMaintenance } from './projects/maintenance';
+  
+  
 import { kickStartupPreBuild } from './snapshots/builder';
 import { kickWarmBaseBuild } from './snapshots/warm-bake';
 import { warmSnapshotsEnabled } from './shared/daytona';
 import { warmPoolEnabled } from './platform/services/warm-pool';
-import { startLegacyMigrationWorker, stopLegacyMigrationWorker } from './projects/legacy-migration-worker';
-import { registerLegacyMigrationRoutes } from './projects/legacy-migration-routes';
-import { registerSunaMigrationRoutes } from './projects/suna-migration/suna-migration-routes';
-import { startSunaMigrationWorker, stopSunaMigrationWorker } from './projects/suna-migration/suna-migration-worker';
 import { accountsRouter } from './accounts';
 import { authRouter } from './auth';
 import { scimRouter } from './scim';
@@ -409,7 +399,6 @@ const healthHandler = (c: any) =>
     // only runs on the leader) — so "all pods null" = no leader = no triggers.
     // `stale` is true when we're the leader but the sweep has frozen (started
     // and not completed within the stale window) — the signal to alert on.
-    trigger_scheduler: { ...getTriggerSchedulerHealth(), stale: schedulerSweepIsStale(isLeader()) },
   });
 
 app.openapi(
@@ -769,9 +758,6 @@ app.route('/v1/router', router);        // /v1/router/chat/completions, /v1/rout
 app.route('/v1/billing', billingApp);   // /v1/billing/account-state, /v1/billing/webhooks/*
 app.route('/v1/account', accountDeletionApp); // account deletion status/request/cancel/immediate
 app.route('/v1/platform', platformApp); // /v1/platform, /v1/platform/sandbox/version
-registerLegacyMigrationRoutes(projectsApp); // /v1/projects/legacy-migration/* (lazy migration)
-registerSunaMigrationRoutes(projectsApp); // /v1/projects/suna-migration/* (OG Suna → opencode, user-triggered)
-app.route('/v1/projects', projectsApp); // /v1/projects — Git-backed Kortix projects
 app.route('/v1/sessions', sessionFilesApp); // /v1/sessions/:id/files — simple-mode file API
 app.route('/v1/marketplace', marketplaceApp); // /v1/marketplace — browse the registry catalog
 
@@ -793,7 +779,6 @@ app.route('/v1/marketplace', marketplaceApp); // /v1/marketplace — browse the 
   app.route('/v1/executor', executorApp); // /v1/executor/connectors, /call, /projects/:id/connectors[/sync|/:slug/sharing]
 }
 
-app.route('/v1/webhooks', projectWebhooksApp); // /v1/webhooks/:triggerId — signed project trigger fires
 
 const { slackWebhookApp, telegramWebhookApp, slackOauthApp } = await import('./channels');
 app.route('/v1/webhooks/slack/oauth', slackOauthApp); // /v1/webhooks/slack/oauth/callback — OAuth dance
@@ -1011,8 +996,6 @@ let singletonWorkersRunning = false;
 async function startSingletonWorkers() {
   if (singletonWorkersRunning) return;
   singletonWorkersRunning = true;
-  startProjectMaintenance();
-  startProjectTriggerScheduler();
   // Mint the global platform-default sandbox image once per leadership term so
   // the first session anywhere lands on a cache hit. Idempotent + best-effort;
   // the session-boot graceful path is the lazy fallback if this is skipped.
@@ -1021,8 +1004,6 @@ async function startSingletonWorkers() {
   // session can boot from it (~1.3s). No-op unless the warm_snapshot admin toggle
   // is on + DAYTONA_WARM_TARGET is set; best-effort.
   kickWarmBaseBuild();
-  startLegacyMigrationWorker();
-  startSunaMigrationWorker();
   // IAM V2 time-bounded grants: tick every 60s, emit one audit event per row
   // that just transitioned to expired. Engine already filters expired rows out
   // of authorize() so correctness doesn't depend on this — it's the audit trail.
@@ -1032,10 +1013,6 @@ async function startSingletonWorkers() {
 async function stopSingletonWorkers() {
   if (!singletonWorkersRunning) return;
   singletonWorkersRunning = false;
-  stopProjectTriggerScheduler();
-  stopProjectMaintenance();
-  stopLegacyMigrationWorker();
-  stopSunaMigrationWorker();
   const { stopGrantExpirySweeper } = await import('./iam/expiry-sweeper');
   stopGrantExpirySweeper();
 }

@@ -18,11 +18,11 @@ import {
   projects,
 } from '@kortix/db';
 import { db } from '../shared/db';
-import { withProjectGitAuth } from '../projects/index';
-import { readManifest } from '../projects/triggers';
-import { readRepoFile, type GitBackedProject } from '../projects/git';
-import { extractConnectors, manifestHashForConnector, type ConnectorSpec } from '../projects/connectors';
-import { extractProjectPolicies } from '../projects/policies';
+import { withProjectGitAuth } from '../shared';
+import { readManifest } from '../shared';
+import { readRepoFile, type GitBackedProject } from '../shared';
+import { extractConnectors, manifestHashForConnector, type ConnectorSpec } from '../shared';
+import { extractProjectPolicies } from '../shared';
 import {
   normalizeGraphql,
   normalizeHttp,

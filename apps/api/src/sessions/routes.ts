@@ -30,7 +30,7 @@ import { resolveAccountId } from '../shared/resolve-account';
 import * as workspaceStore from './workspace-store';
 import { getProvider } from '../platform/providers';
 import type { SandboxProviderName } from '../config';
-import { ensureOpencodeSessionPin } from '../projects/opencode-mapping';
+import { ensureOpencodeSessionPin } from '../shared';
 import { createPublicShare, listPublicSharesForSession } from '../shared/session-public-shares';
 
 export const sessionFilesApp = new Hono();
@@ -121,7 +121,7 @@ sessionFilesApp.post('/', async (c) => {
   void (async () => {
     try {
       const { provisionSessionSandbox } = await import('../platform/services/session-sandbox');
-      const { buildSessionRuntimeEnv } = await import('../projects/lib/session-runtime-env');
+      const { buildSessionRuntimeEnv } = await import('../shared/session-runtime-env');
       const { sandboxFrontendBaseUrl } = await import('../platform/sandbox-frontend-url');
       const { getScaffoldVersion } = await import('../admin/live-update');
 

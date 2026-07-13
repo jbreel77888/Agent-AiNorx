@@ -15,8 +15,8 @@ import { and, eq, isNull, ne, or } from 'drizzle-orm';
 import { sandboxTemplates, projects } from '@kortix/db';
 type DbSandboxTemplate = typeof sandboxTemplates.$inferSelect;
 import { db } from '../shared/db';
-import { readManifest } from '../projects/triggers';
-import { resolveCommitSha, readRepoFile, type GitBackedProject } from '../projects/git';
+import { readManifest } from '../shared';
+import { resolveCommitSha, readRepoFile, type GitBackedProject } from '../shared';
 import { SANDBOX_VERSION, config } from '../config';
 import {
   buildDefaultSandboxTemplate,
