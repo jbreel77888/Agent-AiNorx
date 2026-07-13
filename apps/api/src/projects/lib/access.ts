@@ -3,7 +3,7 @@ import { authorize } from '../../iam';
 import { deriveRequestContext } from '../../iam/cache';
 import { auth } from '../../openapi';
 import { notePoolPresence } from '../../platform/services/warm-pool';
-import { preResumeRecentStoppedSessions } from '../routes/shared';
+// Pre-resume is disabled in simple mode (no project routes)
 import { db } from '../../shared/db';
 import { resolveAccountId } from '../../shared/resolve-account';
 import { getSupabase } from '../../shared/supabase';
@@ -353,7 +353,7 @@ export async function loadProjectForUser(c: Context, projectId: string, action: 
     // Same presence signal drives pre-resume: proactively wake the user's most
     // recently-stopped session(s) so the resume overlaps their navigation.
     // No-op unless KORTIX_PRERESUME_ENABLED; throttled + idempotent internally.
-    preResumeRecentStoppedSessions(projectId, userId);
+    // preResumeRecentStoppedSessions(projectId, userId); // disabled in simple mode
   }
 
   return {
