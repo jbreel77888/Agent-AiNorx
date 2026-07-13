@@ -55,7 +55,11 @@ export {
   readRepoFile,
   listRepoFiles,
   loadProjectConfig,
+} from '../projects/git';
+export {
   withProjectGitAuth,
+  resolveProjectGitAuth,
+  resolveProjectUpstream,
 } from '../projects/lib/git';
 
 // Agents
