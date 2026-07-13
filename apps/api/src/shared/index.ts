@@ -129,11 +129,9 @@ export type {
 } from '../projects/session-lifecycle';
 
 // Opencode mapping
-export { ensureOpencodeSessionPin } from '../projects/opencode-mapping';
+export { ensureOpencodeSessionPin, sandboxOpencodeEndpoint } from '../projects/opencode-mapping';
 export { buildSessionRuntimeEnv } from '../projects/lib/session-runtime-env';
 export type { SessionRuntimeEnvInput } from '../projects/lib/session-runtime-env';
 
 // Additional exports used by dynamic imports
-export { resolveProjectGitAuth, resolveProjectUpstream } from '../projects/lib/git';
 export { proxyGitUrl } from '../projects/lib/sessions';
-export { sandboxOpencodeEndpoint } from '../projects/opencode-mapping';
