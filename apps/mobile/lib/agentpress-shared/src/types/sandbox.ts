@@ -13,7 +13,8 @@ export interface ServicesHealth {
 export interface SandboxState {
   status: SandboxStatus;
   sandbox_id: string;
-  project_id: string;
+  /** Nullable in simple mode — sessions don't require a project. */
+  project_id: string | null;
   daytona_state: DaytonaState;
   services_health?: ServicesHealth;
   last_checked: string;
