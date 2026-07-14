@@ -1791,7 +1791,7 @@ export default function ProjectSessionScreen() {
   const goToProjects = useCallback(() => {
     haptics.tap();
     setDrawerOpen(false);
-    router.push('/projects');
+    router.push('/sessions');
   }, [router]);
 
   const handleBack = useCallback(() => navigateToSession(null), [navigateToSession]);
