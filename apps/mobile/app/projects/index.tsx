@@ -26,7 +26,7 @@ import { useAccounts, useArchiveProject, useProjects } from '@/lib/projects/hook
 import { useCurrentAccountStore } from '@/stores/current-account-store';
 import { useThemeColors } from '@/lib/theme-colors';
 import { haptics } from '@/lib/haptics';
-import { chalkColors } from '@kortix/shared';
+import { chalkColors } from '@/lib/utils/chalk-colors';
 import type { KortixProject } from '@/lib/projects/projects-client';
 
 function relativeTime(input?: string) {

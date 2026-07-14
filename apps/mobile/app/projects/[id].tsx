@@ -158,7 +158,7 @@ import {
 } from 'lucide-react-native';
 import type { BottomBarMenuItem } from '@/components/session/BottomBar';
 import { log } from '@/lib/logger';
-import { chalkColors } from '@kortix/shared';
+import { chalkColors } from '@/lib/utils/chalk-colors';
 import Svg, { Circle } from 'react-native-svg';
 import { KortixLogo } from '@/components/ui/KortixLogo';
 import { PageHeader } from '@/components/ui/page-header';
