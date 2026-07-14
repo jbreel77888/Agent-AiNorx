@@ -85,7 +85,7 @@ async function resolveSandboxId(
   let session: ProjectSession;
   try {
     session = await ctx.client.get<ProjectSession>(
-      `/projects/${ctx.projectId}/sessions/${sessionId}`,
+      `/sessions/${sessionId}`,
     );
   } catch (err) {
     surfaceApiError(err);

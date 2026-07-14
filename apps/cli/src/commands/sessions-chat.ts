@@ -52,7 +52,7 @@ export async function loadSessionForChat(
   let session: ProjectSession;
   try {
     session = await ctx.client.get<ProjectSession>(
-      `/projects/${ctx.projectId}/sessions/${sessionId}`,
+      `/sessions/${sessionId}`,
     );
   } catch (err) {
     surfaceApiError(err);
@@ -150,7 +150,7 @@ async function persistOpencodeSessionId(
 ): Promise<void> {
   try {
     await r.ctx.client.patch<ProjectSession>(
-      `/projects/${r.ctx.projectId}/sessions/${r.session.session_id}`,
+      `/sessions/${r.session.session_id}`,
       { opencode_session_id: opencodeSessionId },
     );
   } catch {
@@ -356,7 +356,7 @@ async function resolveChatSessionId(
     if (initialPrompt) body.initial_prompt = initialPrompt;
     try {
       const created = await ctx.client.post<ProjectSession>(
-        `/projects/${ctx.projectId}/sessions`,
+        `/sessions`,
         body,
       );
       process.stdout.write(
@@ -405,7 +405,7 @@ async function chooseRunningSession(
 ): Promise<ProjectSession | null | 'error'> {
   let sessions: ProjectSession[];
   try {
-    sessions = await ctx.client.get<ProjectSession[]>(`/projects/${ctx.projectId}/sessions`);
+    sessions = await ctx.client.get<ProjectSession[]>(`/sessions`);
   } catch (err) {
     surfaceApiError(err);
     return 'error';
@@ -438,7 +438,7 @@ async function waitForRunning(
   for (let i = 0; i < 75; i += 1) {
     let s: ProjectSession;
     try {
-      s = await ctx.client.get<ProjectSession>(`/projects/${ctx.projectId}/sessions/${sessionId}`);
+      s = await ctx.client.get<ProjectSession>(`/sessions/${sessionId}`);
     } catch (err) {
       surfaceApiError(err);
       return false;
@@ -696,7 +696,7 @@ export async function runSessionsStatus(argv: string[]): Promise<number> {
   let sessions: ProjectSession[];
   try {
     sessions = await ctx.client.get<ProjectSession[]>(
-      `/projects/${ctx.projectId}/sessions`,
+      `/sessions`,
     );
   } catch (err) {
     return surfaceApiError(err);

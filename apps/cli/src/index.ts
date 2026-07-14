@@ -1,10 +1,8 @@
 #!/usr/bin/env bun
 import { runAccess } from './commands/access.ts';
 import { runAdd } from './commands/add.ts';
-import { runApps } from './commands/apps.ts';
 import { runChannels } from './commands/channels.ts';
 import { runConnectors } from './commands/connectors.ts';
-import { runCr } from './commands/cr.ts';
 import { runCreate } from './commands/create.ts';
 import { runDev } from './commands/dev.ts';
 import { runEnv } from './commands/env.ts';
@@ -14,15 +12,12 @@ import { runHosts } from './commands/hosts.ts';
 import { runInit } from './commands/init.ts';
 import { runLogin } from './commands/login.ts';
 import { runLogout } from './commands/logout.ts';
-import { runProjects } from './commands/projects.ts';
 import { runRegistry } from './commands/registry.ts';
 import { runSandboxes } from './commands/sandboxes.ts';
 import { runSecrets } from './commands/secrets.ts';
 import { runSelfHost } from './commands/self-host.ts';
 import { runSessions } from './commands/sessions.ts';
 import { runSessionsChat } from './commands/sessions-chat.ts';
-import { runShip } from './commands/ship.ts';
-import { runTriggers } from './commands/triggers.ts';
 import { runTunnel } from './commands/tunnel.ts';
 import { runUninstall } from './commands/uninstall.ts';
 import { runUpdate } from './commands/update.ts';
@@ -47,7 +42,6 @@ interface Command {
 const COMMANDS: readonly Command[] = [
   { name: 'init', blurb: 'Start a new Kortix project (a fresh standalone directory)' },
   { name: '<project-name>', blurb: 'Create a new directory and scaffold it' },
-  { name: 'ship', blurb: 'Create the cloud project (first run) + push your code' },
   { name: 'validate', blurb: 'Statically validate this project\'s kortix.toml' },
   { name: 'dev', args: '[opencode args…]', blurb: 'Run OpenCode locally against this config (test agents/skills/tools)' },
   { name: 'self-host', args: '<subcommand>', blurb: 'Run your own Kortix Cloud from Docker images' },
@@ -55,21 +49,17 @@ const COMMANDS: readonly Command[] = [
   { name: 'logout', blurb: 'Remove the stored auth token' },
   { name: 'whoami', blurb: 'Show the currently authenticated user' },
   { name: 'hosts', args: '<subcommand>', blurb: 'Manage + switch Kortix API hosts' },
-  { name: 'projects', args: '<subcommand>', blurb: 'List, link, open Kortix cloud projects' },
   { name: 'secrets', args: '<subcommand>', blurb: 'Manage project secrets (project-scoped)' },
   { name: 'env', args: '<subcommand>', blurb: 'Pull/push project secrets as a dotenv file' },
   { name: 'sessions', args: '<subcommand>', blurb: 'List, create, restart project sessions' },
   { name: 'chat', args: '[session-id]', blurb: 'Talk to a session\'s agent (REPL or --prompt)' },
   { name: 'files', args: '<subcommand>', blurb: 'Browse repo files, commits, branches, diffs' },
-  { name: 'triggers', args: '<subcommand>', blurb: 'List, fire, enable/disable triggers' },
   { name: 'channels', args: '<subcommand>', blurb: 'Connect Slack to this project (status/connect/disconnect/manifest)' },
   { name: 'connectors', args: '<subcommand>', blurb: 'Manage integrations agents call as tools (Pipedream/MCP/HTTP)' },
   { name: 'executor', args: '<subcommand>', blurb: 'Call connectors as tools (discover/describe/call) + run the MCP server' },
   { name: 'add', args: '<item>', blurb: 'Install a skill/agent/command/file/bundle from a registry' },
   { name: 'registry', args: '<subcommand>', blurb: 'Author + browse registries (build/validate/list/view/search)' },
   { name: 'sandboxes', args: '<subcommand>', blurb: 'Manage sandbox images: templates, builds, health' },
-  { name: 'apps', args: '<subcommand>', blurb: 'Manage deployable apps (experimental)' },
-  { name: 'cr', args: '<subcommand>', blurb: 'Open, review, merge change requests' },
   { name: 'access', args: '<subcommand>', blurb: 'Manage who can use this project (invite/grant/revoke)' },
   { name: 'tunnel', args: '<subcommand>', blurb: 'See & drive your fleet of registered computers (Agent Tunnel)' },
   { name: 'update', blurb: 'Pull the latest CLI from kortix.com/install' },
@@ -140,10 +130,6 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'init') {
     return runInit(argv.slice(1));
   }
-  // `deploy` is kept as a familiar alias for `ship`.
-  if (argv[0] === 'ship' || argv[0] === 'deploy') {
-    return runShip(argv.slice(1));
-  }
   if (argv[0] === 'validate') {
     return runValidate(argv.slice(1));
   }
@@ -158,9 +144,6 @@ async function main(argv: string[]): Promise<number> {
   }
   if (argv[0] === 'whoami') {
     return runWhoami(argv.slice(1));
-  }
-  if (argv[0] === 'projects') {
-    return runProjects(argv.slice(1));
   }
   if (argv[0] === 'hosts') {
     return runHosts(argv.slice(1));
@@ -183,9 +166,6 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'files') {
     return runFiles(argv.slice(1));
   }
-  if (argv[0] === 'triggers') {
-    return runTriggers(argv.slice(1));
-  }
   if (argv[0] === 'tunnel') {
     return runTunnel(argv.slice(1));
   }
@@ -206,12 +186,6 @@ async function main(argv: string[]): Promise<number> {
   }
   if (argv[0] === 'sandboxes') {
     return runSandboxes(argv.slice(1));
-  }
-  if (argv[0] === 'apps') {
-    return runApps(argv.slice(1));
-  }
-  if (argv[0] === 'cr') {
-    return runCr(argv.slice(1));
   }
   if (argv[0] === 'access') {
     return runAccess(argv.slice(1));

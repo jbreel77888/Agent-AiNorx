@@ -111,7 +111,7 @@ export async function runDoctor(argv: string[]): Promise<number> {
   let session: ProjectSession;
   try {
     session = await ctx.client.post<ProjectSession>(
-      `/projects/${ctx.projectId}/sessions`,
+      `/sessions`,
       { initial_prompt: null },
     );
   } catch (err) {
@@ -126,7 +126,7 @@ export async function runDoctor(argv: string[]): Promise<number> {
   let cleanup = async () => {
     if (flags.keepSession) return;
     try {
-      await ctx.client.delete(`/projects/${ctx.projectId}/sessions/${sessionId}`);
+      await ctx.client.delete(`/sessions/${sessionId}`);
       process.stdout.write(`  ${C.dim}cleaned up session${C.reset}\n`);
     } catch {
       /* best effort */
@@ -142,7 +142,7 @@ export async function runDoctor(argv: string[]): Promise<number> {
       let cur: ProjectSession;
       try {
         cur = await ctx.client.get<ProjectSession>(
-          `/projects/${ctx.projectId}/sessions/${sessionId}`,
+          `/sessions/${sessionId}`,
         );
       } catch (err) {
         process.stdout.write(`${status.err(`status poll failed: ${describe(err)}`)}\n`);

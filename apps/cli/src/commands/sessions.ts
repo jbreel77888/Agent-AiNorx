@@ -134,7 +134,7 @@ async function sessionsLs(opts: CtxOpts, json = false): Promise<number> {
   let sessions: ProjectSession[];
   try {
     sessions = await ctx.client.get<ProjectSession[]>(
-      `/projects/${ctx.projectId}/sessions`,
+      `/sessions`,
     );
   } catch (err) {
     return surfaceApiError(err);
@@ -185,7 +185,7 @@ async function sessionsNew(
   let created: ProjectSession;
   try {
     created = await ctx.client.post<ProjectSession>(
-      `/projects/${ctx.projectId}/sessions`,
+      `/sessions`,
       body,
     );
   } catch (err) {
@@ -205,11 +205,11 @@ async function sessionsNew(
           stage: 'provisioning' | 'starting' | 'ready' | 'stopped' | 'failed';
           reason?: string;
         }>(
-          `/projects/${ctx.projectId}/sessions/${created.session_id}/start`,
+          `/sessions/${created.session_id}/start`,
           {},
         );
         created = await ctx.client.get<ProjectSession>(
-          `/projects/${ctx.projectId}/sessions/${created.session_id}`,
+          `/sessions/${created.session_id}`,
         );
         if (start.stage === 'ready') break;
         if (start.stage === 'failed' || start.stage === 'stopped') {
@@ -311,7 +311,7 @@ async function sessionsInfo(
   let s: ProjectSession;
   try {
     s = await ctx.client.get<ProjectSession>(
-      `/projects/${ctx.projectId}/sessions/${sessionId}`,
+      `/sessions/${sessionId}`,
     );
   } catch (err) {
     return surfaceApiError(err);
@@ -362,7 +362,7 @@ async function sessionsPreview(
   let s: ProjectSession;
   try {
     s = await ctx.client.get<ProjectSession>(
-      `/projects/${ctx.projectId}/sessions/${sessionId}`,
+      `/sessions/${sessionId}`,
     );
   } catch (err) {
     return surfaceApiError(err);
@@ -409,7 +409,7 @@ async function sessionsRestart(sessionId: string | undefined, opts: CtxOpts): Pr
 
   try {
     await ctx.client.post<{ ok: true; status: string }>(
-      `/projects/${ctx.projectId}/sessions/${sessionId}/restart`,
+      `/sessions/${sessionId}/restart`,
     );
   } catch (err) {
     return surfaceApiError(err);
@@ -437,7 +437,7 @@ async function sessionsRename(
   let updated: ProjectSession;
   try {
     updated = await ctx.client.patch<ProjectSession>(
-      `/projects/${ctx.projectId}/sessions/${sessionId}`,
+      `/sessions/${sessionId}`,
       { name },
     );
   } catch (err) {
@@ -461,7 +461,7 @@ async function sessionsRm(sessionId: string | undefined, opts: CtxOpts): Promise
   if (!ctx) return 1;
 
   try {
-    await ctx.client.delete(`/projects/${ctx.projectId}/sessions/${sessionId}`);
+    await ctx.client.delete(`/sessions/${sessionId}`);
   } catch (err) {
     return surfaceApiError(err);
   }

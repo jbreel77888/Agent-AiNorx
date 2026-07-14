@@ -133,7 +133,7 @@ export async function runSessionsDigest(argv: string[]): Promise<number> {
   let sessions: ProjectSession[];
   try {
     sessions = await ctx.client.get<ProjectSession[]>(
-      `/projects/${ctx.projectId}/sessions`,
+      `/sessions`,
     );
   } catch (err) {
     return surfaceApiError(err);
@@ -186,7 +186,7 @@ async function buildDigest(
   }
   try {
     const transcript = await client.get<unknown>(
-      `/projects/${projectId}/sessions/${s.session_id}/transcript?limit=${messageLimit}&chars=${maxChars}`,
+      `/sessions/${s.session_id}/transcript?limit=${messageLimit}&chars=${maxChars}`,
     );
     base.transcript = sanitizeTranscript(transcript, s.opencode_session_id);
     return base;
