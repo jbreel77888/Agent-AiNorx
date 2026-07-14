@@ -87,9 +87,11 @@ export {
 export {
   syncSandboxEnvForPrompt,
   propagateProjectSecretsToActiveSandboxes,
+} from '../projects/lib/sandbox-env-sync';
+export {
   isReservedSandboxEnvName,
   sanitizeSandboxEnv,
-} from '../projects/lib/sandbox-env-sync';
+} from '../projects/lib/sandbox-env-names';
 
 // Access
 export {
