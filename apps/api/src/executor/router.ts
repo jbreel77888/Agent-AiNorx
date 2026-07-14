@@ -83,7 +83,8 @@ const OpaqueSchema = z.record(z.string(), z.any());
 export interface ExecutorPrincipal {
   userId: string;
   accountId: string;
-  projectId: string;
+  /** Null in simple/session-only mode (no project backing the session). */
+  projectId: string | null;
   sessionId: string | null;
   /** The acting identity resolved to its group memberships (for sharing checks). */
   subject: { userId: string; groupIds: string[] };

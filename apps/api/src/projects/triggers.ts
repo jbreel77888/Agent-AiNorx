@@ -34,19 +34,26 @@
  * apps/api/src/projects/index.ts.
  */
 
-import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
-import { readRepoFile, type GitBackedProject } from './git';
+import { type GitBackedProject } from './git';
+// Manifest IO (MANIFEST_FILENAME, KNOWN_SCHEMA_VERSION, ParsedManifest,
+// readManifest, parseManifestString, serializeManifest, loadManifestForEdit,
+// commitManifest) was moved to shared/manifest.ts in Phase 7.0.2.
+// Re-export here so existing internal consumers keep working until they're
+// migrated. Trigger-specific parsing (the [[triggers]] array) stays here
+// because it's only used by the trigger CRUD path.
+export {
+  MANIFEST_FILENAME,
+  KNOWN_SCHEMA_VERSION,
+  readManifest,
+  parseManifestString,
+  serializeManifest,
+  loadManifestForEdit,
+  commitManifest,
+  type ParsedManifest,
+} from '../shared/manifest';
 
-/** Where the manifest lives. Same path the rest of the platform looks for. */
-export const MANIFEST_FILENAME = 'kortix.toml';
-
-/**
- * Schema version of the manifest. Bumped when we make a breaking change to
- * how the file is parsed. Manifests without `kortix_version` are treated as
- * v1 (backward compat). A higher major than KNOWN_SCHEMA_VERSION → loaders
- * refuse to interpret the file so we don't silently misread future fields.
- */
-export const KNOWN_SCHEMA_VERSION = 1;
+// Internal use — pull the symbols we still depend on below.
+import { MANIFEST_FILENAME, readManifest, type ParsedManifest } from '../shared/manifest';
 
 const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 
@@ -109,11 +116,7 @@ export interface GitTriggerParseError {
   error: string;
 }
 
-export interface ParsedManifest {
-  schemaVersion: number;
-  /** The raw decoded TOML object — callers shouldn't usually need this. */
-  raw: Record<string, unknown>;
-}
+// ParsedManifest type now lives in shared/manifest.ts (re-exported above).
 
 /** Result of `loadProjectTriggers` — same shape callers got pre-refactor. */
 export interface LoadedTriggers {
@@ -121,62 +124,9 @@ export interface LoadedTriggers {
   errors: GitTriggerParseError[];
 }
 
-/* ─── Manifest IO ───────────────────────────────────────────────────────── */
-
-/**
- * Read + parse the project's kortix.toml. Returns null if the file is
- * absent (so the caller can treat the repo as "not a Kortix project yet").
- * Throws on parse errors so the caller can surface them up — we don't
- * silently swallow a malformed manifest.
- */
-export async function readManifest(
-  project: GitBackedProject,
-): Promise<ParsedManifest | null> {
-  let raw: string;
-  try {
-    raw = await readRepoFile(project, MANIFEST_FILENAME, project.defaultBranch);
-  } catch {
-    return null;
-  }
-  return parseManifestString(raw);
-}
-
-/**
- * Synchronous parse from a TOML string. Exported so the CRUD path can
- * round-trip (read existing string, parse, mutate, serialize) without
- * touching the network.
- */
-export function parseManifestString(raw: string): ParsedManifest {
-  const parsed = parseToml(raw) as Record<string, unknown>;
-  const version = typeof parsed.kortix_version === 'number'
-    ? parsed.kortix_version
-    : typeof parsed.kortix_version === 'string'
-      ? Number(parsed.kortix_version)
-      : KNOWN_SCHEMA_VERSION;
-
-  if (!Number.isFinite(version) || version < 1) {
-    throw new Error('kortix_version must be a positive integer');
-  }
-  if (Math.floor(version) > KNOWN_SCHEMA_VERSION) {
-    throw new Error(
-      `Unsupported kortix.toml schema version ${version}. This platform understands up to v${KNOWN_SCHEMA_VERSION}; upgrade the platform or pin the manifest.`,
-    );
-  }
-
-  return { schemaVersion: Math.floor(version), raw: parsed };
-}
-
-/** Serialize a parsed manifest back to TOML text for committing. */
-export function serializeManifest(manifest: ParsedManifest): string {
-  // Ensure kortix_version is the FIRST key so the resulting TOML is
-  // self-describing at a glance. smol-toml emits keys in insertion order.
-  const out: Record<string, unknown> = { kortix_version: manifest.schemaVersion };
-  for (const [key, value] of Object.entries(manifest.raw)) {
-    if (key === 'kortix_version') continue;
-    out[key] = value;
-  }
-  return stringifyToml(out);
-}
+// Manifest IO functions (readManifest, parseManifestString, serializeManifest,
+// loadManifestForEdit, commitManifest) now live in shared/manifest.ts and are
+// re-exported above. Trigger-specific extraction stays here.
 
 /* ─── Trigger extraction ────────────────────────────────────────────────── */
 

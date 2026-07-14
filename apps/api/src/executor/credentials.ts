@@ -72,6 +72,7 @@ export async function resolveCredentialValue(connectorId: string, userId: string
     .where(and(eq(executorCredentials.connectorId, connectorId), userClause(userId)))
     .limit(1);
   if (!row) return null;
+  if (!row.projectId) return null;
   try {
     return decryptProjectSecret(row.projectId, row.valueEnc);
   } catch {

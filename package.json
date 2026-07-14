@@ -41,11 +41,11 @@
     "migrate:lint": "pnpm --filter @kortix/db migrate:lint"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@clack/prompts": "^0.7.0",
     "@dotenvx/dotenvx": "^1.69.2",
     "@types/bun": "^1.3.12",
     "agent-tunnel": "workspace:@kortix/agent-tunnel@*",
-    "@biomejs/biome": "^1.9.4",
     "dotenv": "^16",
     "dotenv-expand": "^12",
     "node-pg-migrate": "^8",

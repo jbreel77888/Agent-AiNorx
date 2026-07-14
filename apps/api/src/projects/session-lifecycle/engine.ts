@@ -176,6 +176,8 @@ export async function continueSession(
     return 'pending';
   }
 
+  // In session-only mode, projectId may be null — skip project lookup in that case.
+  if (!session.projectId) return 'no-session';
   const [project] = await db
     .select()
     .from(projects)

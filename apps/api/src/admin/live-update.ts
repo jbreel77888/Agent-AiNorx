@@ -111,7 +111,9 @@ async function getActiveSandboxes(): Promise<Array<{
       ),
     );
 
-  return rows.filter((r: any) => r.externalId);
+  // externalId is nullable in the DB schema — filter out nulls and cast.
+  return rows
+    .filter((r): r is { externalId: string; sessionId: string } => r.externalId !== null);
 }
 
 // ─── Live Update (push to active sandboxes) ───────────────────────────────────
@@ -151,7 +153,7 @@ async function updateSandboxFiles(
     // 3. Trigger opencode rescan via /kortix/refresh
     try {
       const { encodeKortixUserContext } = await import('../shared/kortix-user-context');
-      const { resolveServiceKey } = await import('../shared/service-key');
+      const { resolveServiceKey } = await import('../sandbox-proxy/backend');
       const serviceKey = await resolveServiceKey(externalId);
       if (serviceKey) {
         const ctx = {

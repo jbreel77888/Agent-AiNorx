@@ -42,7 +42,8 @@ export interface SandboxRecord {
   externalId: string;
   /** Owning session — links to project_sessions for the launching identity. */
   sessionId: string;
-  projectId: string;
+  /** Null in simple/session-only mode (no project backing the session). */
+  projectId: string | null;
   accountId: string;
   provider: string;
   status: string;

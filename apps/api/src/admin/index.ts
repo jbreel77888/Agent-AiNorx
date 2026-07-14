@@ -612,6 +612,7 @@ adminApp.openapi(
     if (sb.provider === target) return c.json({ error: 'already on target provider' }, 400);
     const [sess] = await db.select().from(projectSessions).where(eq(projectSessions.sessionId, sessionId)).limit(1);
     if (!sess) return c.json({ error: 'session not found' }, 404);
+    if (!sess.projectId) return c.json({ error: 'session has no project' }, 400);
     const [proj] = await db.select().from(projects).where(eq(projects.projectId, sess.projectId)).limit(1);
     if (!proj) return c.json({ error: 'project not found' }, 404);
     const oldProvider = sb.provider; const oldExternalId = sb.externalId;

@@ -147,6 +147,9 @@ importers:
       stripe:
         specifier: ^14.0.0
         version: 14.25.0
+      tar:
+        specifier: ^7.5.20
+        version: 7.5.20
       tensorlake:
         specifier: ^0.5.47
         version: 0.5.47
@@ -163,6 +166,9 @@ importers:
       '@types/dockerode':
         specifier: ^3.3.35
         version: 3.3.47
+      '@types/tar':
+        specifier: ^7.0.87
+        version: 7.0.87
       bun-types:
         specifier: ^1.3.12
         version: 1.3.14
@@ -3009,7 +3015,7 @@ packages:
       isomorphic-ws: 5.0.0(ws@8.21.0)
       pathe: 2.0.3
       shell-quote: 1.8.4
-      tar: 7.5.16
+      tar: 7.5.20
     transitivePeerDependencies:
       - debug
       - supports-color
@@ -10674,6 +10680,13 @@ packages:
   /@types/stats.js@0.17.4:
     resolution: {integrity: sha512-jIBvWWShCvlBqBNIZt0KAshWpvSjhkwkEu4ZUcASoAvhmrgAUI2t1dXrjSL4xXVLB4FznPrIsX3nKXFl/Dt4vA==}
     dev: false
+
+  /@types/tar@7.0.87:
+    resolution: {integrity: sha512-3IxNBV8LeY5oi2ZFpvAhOtW1+mHswkzM7BuisVrwJgPv67GBO2rkLPQlEKtzfHuLdhDDczhkCZeT+RuizMay4A==}
+    deprecated: This is a stub types definition. tar provides its own type definitions, so you do not need this installed.
+    dependencies:
+      tar: 7.5.11
+    dev: true
 
   /@types/three@0.183.1:
     resolution: {integrity: sha512-f2Pu5Hrepfgavttdye3PsH5RWyY/AvdZQwIVhrc4uNtvF7nOWJacQKcoVJn0S4f0yYbmAE6AR+ve7xDcuYtMGw==}
@@ -24325,8 +24338,8 @@ packages:
       minizlib: 3.1.0
       yallist: 5.0.0
 
-  /tar@7.5.16:
-    resolution: {integrity: sha512-56adEpPMouktRlBLXiaYFFzZ/3+JXa8P9n7WbR+ibIjtviN55mEaOkiysCnPnWm+7kkui1Dn8J9l+g6zV8731w==}
+  /tar@7.5.20:
+    resolution: {integrity: sha512-9FcyK4PA6+WbzlTM9WhQm6vB5W7cP7dUiPsv1g7YDwEQnQ1CGpK3MGlKk/ITVWMk05kHZuBhmVhiv8LZoy/PFQ==}
     engines: {node: '>=18'}
     dependencies:
       '@isaacs/fs-minipass': 4.0.1

@@ -20,7 +20,9 @@ import { config } from '../config';
 import { pipedreamCatalog } from '../executor/pipedream';
 import { normalizePipedream } from '../executor/normalize';
 
-export const connectorsApp = new Hono();
+export const connectorsApp = new Hono<{
+  Variables: { userId: string; accountId?: string; userEmail?: string };
+}>();
 
 connectorsApp.use('*', supabaseAuth);
 

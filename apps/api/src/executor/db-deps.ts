@@ -113,12 +113,14 @@ function channelPlatform(config: ConnectorRow['config'] | null): string | null {
   return (config as Record<string, any> | null)?.platform ?? null;
 }
 
-async function channelToken(projectId: string, platform: string | null): Promise<string | null> {
+async function channelToken(projectId: string | null, platform: string | null): Promise<string | null> {
+  if (!projectId) return null;
   return platform === 'slack' ? loadSlackTokenForProject(projectId) : null;
 }
 
 /** Cheap "is it connected?" — the install exists (no decrypt). */
-async function channelInstalled(projectId: string, platform: string | null): Promise<boolean> {
+async function channelInstalled(projectId: string | null, platform: string | null): Promise<boolean> {
+  if (!projectId) return false;
   return platform === 'slack' ? (await loadSlackInstall(projectId).catch(() => null)) != null : false;
 }
 
@@ -213,7 +215,7 @@ function makeDbGatewayDeps(): GatewayDeps {
     recordExecution: async (rec) => {
       await db.insert(executorExecutions).values({
         accountId: rec.accountId,
-        projectId: rec.projectId,
+        projectId: rec.projectId ?? '',
         connectorId: rec.connectorId,
         actionPath: rec.actionPath,
         actingUserId: rec.actingUserId,
@@ -266,7 +268,8 @@ async function loadDefaultModeFor(projectId: string | null): Promise<DefaultMode
 }
 
 /** Load a pipedream connector's app slug, id, mode (verifies provider). */
-export async function loadPipedreamConnector(projectId: string, slug: string) {
+export async function loadPipedreamConnector(projectId: string | null, slug: string) {
+  if (!projectId) return null;
   const [row] = await db
     .select({ connectorId: executorConnectors.connectorId, providerType: executorConnectors.providerType, config: executorConnectors.config, credentialMode: executorConnectors.credentialMode })
     .from(executorConnectors)

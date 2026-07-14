@@ -44,7 +44,8 @@ const sessionVisibilityCache = new Map<string, { allowed: boolean; expiresAt: nu
  */
 export async function canAccessSandboxSession(input: {
   sessionId: string;
-  projectId: string;
+  /** Null in simple/session-only mode. Kept for API compatibility — not actually used in the lookup. */
+  projectId: string | null;
   accountId: string;
   userId: string;
 }): Promise<boolean> {

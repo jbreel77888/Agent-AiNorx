@@ -24,7 +24,7 @@ export {
   manifestHashForConnector,
 } from '../projects/connectors';
 
-// Manifest / Triggers
+// Manifest / Triggers — moved to shared/manifest.ts in Phase 7.0.2
 export {
   MANIFEST_FILENAME,
   KNOWN_SCHEMA_VERSION,
@@ -32,8 +32,9 @@ export {
   readManifest,
   loadManifestForEdit,
   commitManifest,
+  serializeManifest,
   type ParsedManifest,
-} from '../projects/triggers';
+} from './manifest';
 
 // Secrets
 export {
@@ -42,11 +43,25 @@ export {
   getProjectSecretValue,
   isValidSecretName,
   writeSharedProjectSecret,
+  listProjectSecrets,
+  listProjectSecretsForUser,
+  projectSecretsRevision,
+  listProjectSecretsSnapshot,
+  listProjectSecretsSnapshotForUser,
 } from '../projects/secrets';
 
-// Policies
-export type { ProjectPolicySpec } from '../projects/policies';
-export { extractProjectPolicies } from '../projects/policies';
+// Policies — moved to shared/policies.ts in Phase 7.0.4
+export type {
+  ProjectPolicySpec,
+  ProjectPolicySettings,
+  LoadedProjectPolicies,
+  DefaultMode,
+} from './policies';
+export {
+  extractProjectPolicies,
+  projectPoliciesToTomlEntries,
+  projectPolicySettingsToToml,
+} from './policies';
 
 // Git
 export type { GitBackedProject } from '../projects/git';

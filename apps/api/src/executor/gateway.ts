@@ -59,7 +59,8 @@ export interface GatewayAction {
 
 export interface ExecutionRecord {
   accountId: string;
-  projectId: string;
+  /** Null in simple/session-only mode (no project backing the session). */
+  projectId: string | null;
   connectorId: string | null;
   actionPath: string;
   actingUserId: string;
@@ -70,7 +71,7 @@ export interface ExecutionRecord {
 }
 
 export interface GatewayDeps {
-  loadConnectorBySlug(projectId: string, slug: string): Promise<GatewayConnector | null>;
+  loadConnectorBySlug(projectId: string | null, slug: string): Promise<GatewayConnector | null>;
   loadAction(connectorId: string, relPath: string): Promise<GatewayAction | null>;
   /**
    * Resolve the credential value/binding for a connector. `userId=null` = shared;
@@ -82,14 +83,14 @@ export interface GatewayDeps {
   /** Connector-scoped policies (relative patterns over the connector's tool paths). */
   loadPolicies(connectorId: string): Promise<Policy[]>;
   /** Project-scoped policies (fully-qualified patterns over <slug>.<path>). */
-  loadProjectPolicies?(projectId: string): Promise<Policy[]>;
+  loadProjectPolicies?(projectId: string | null): Promise<Policy[]>;
   /** Project's policy.default_mode setting (risk | allow_all). Defaults to allow_all. */
-  loadDefaultMode?(projectId: string): Promise<DefaultMode>;
+  loadDefaultMode?(projectId: string | null): Promise<DefaultMode>;
   recordExecution(rec: ExecutionRecord): Promise<void>;
   fetchImpl: FetchImpl;
   /** Pipedream execution (Connect actions/run) — required for pipedream connectors. */
   executePipedream?(input: {
-    projectId: string;
+    projectId: string | null;
     connectorSlug: string;
     app: string;
     actionKey: string;
@@ -100,7 +101,7 @@ export interface GatewayDeps {
   }): Promise<ExecResult>;
   /** Pipedream Connect-Proxy execution (the generic `request` tool). */
   executePipedreamProxy?(input: {
-    projectId: string;
+    projectId: string | null;
     connectorSlug: string;
     app: string;
     /** { method, url, body?, headers? }. */
@@ -132,7 +133,8 @@ export type ComputerCallOutcome =
   | { ok: false; kind: 'error'; message: string };
 
 export interface CallInput {
-  projectId: string;
+  /** Null in simple/session-only mode (no project backing the session). */
+  projectId: string | null;
   accountId: string;
   subject: ShareSubject;
   sessionId?: string | null;

@@ -758,13 +758,9 @@ app.route('/v1/platform', platformApp); // /v1/platform, /v1/platform/sandbox/ve
 app.route('/v1/sessions', sessionFilesApp); // /v1/sessions/:id/files — simple-mode file API
 app.route('/v1/marketplace', marketplaceApp); // /v1/marketplace — browse the registry catalog
 
-// Universal git smart-HTTP proxy — every git-backed project's client origin.
-// Auth is handled inside (git sends Basic/Bearer, not combinedAuth's Bearer),
-// so it is intentionally NOT wrapped in combinedAuth.
-{
-  const { gitProxyApp } = await import('./git-proxy');
-  app.route('/v1/git', gitProxyApp); // /v1/git/:projectId(.git)/{info/refs,git-upload-pack,git-receive-pack}
-}
+// Universal git smart-HTTP proxy — REMOVED in Phase 7.1.
+// The git-proxy module was project-only and is no longer used in session-only mode.
+// Sessions manage their own git operations through the platform provider directly.
 
 // Executor — unified connector layer. Gateway routes (/connectors, /call) use
 // KORTIX_EXECUTOR_TOKEN (validated inside the router); admin routes

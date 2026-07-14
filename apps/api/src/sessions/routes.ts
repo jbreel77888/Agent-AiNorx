@@ -33,7 +33,9 @@ import type { SandboxProviderName } from '../config';
 import { ensureOpencodeSessionPin } from '../shared';
 import { createPublicShare, listPublicSharesForSession } from '../shared/session-public-shares';
 
-export const sessionFilesApp = new Hono();
+export const sessionFilesApp = new Hono<{
+  Variables: { userId: string; accountId?: string; userEmail?: string };
+}>();
 
 // Auth middleware — all routes require authentication
 sessionFilesApp.use('*', supabaseAuth);
@@ -121,7 +123,7 @@ sessionFilesApp.post('/', async (c) => {
   void (async () => {
     try {
       const { provisionSessionSandbox } = await import('../platform/services/session-sandbox');
-      const { buildSessionRuntimeEnv } = await import('../shared/session-runtime-env');
+      const { buildSessionRuntimeEnv } = await import('../shared');
       const { sandboxFrontendBaseUrl } = await import('../platform/sandbox-frontend-url');
       const { getScaffoldVersion } = await import('../admin/live-update');
 
@@ -710,15 +712,15 @@ sessionFilesApp.post('/:sessionId/proxy', async (c) => {
       }
     }
 
-    // Add body — write to temp file via stdin (no shell), then pass @file to curl
+    // Add body — write directly to a temp file (no shell). Tensorlake's run()
+    // does not support stdin, so we use writeFile instead of `cat > file`.
     let bodyFile: string | null = null;
     if (reqBody.body && method !== 'GET') {
       bodyFile = `/tmp/proxy_body_${Date.now()}_${Math.random().toString(36).slice(2)}.json`;
-      await sb.run('bash', {
-        args: ['-c', 'cat > "$1"', '_', bodyFile],
-        stdin: reqBody.body,
-        timeout: 5,
-      });
+      const bodyBytes = typeof reqBody.body === 'string'
+        ? Buffer.from(reqBody.body)
+        : reqBody.body;
+      await sb.writeFile(bodyFile, new Uint8Array(bodyBytes));
       curlArgs.push('-d', `@${bodyFile}`);
     }
 
@@ -881,7 +883,7 @@ sessionFilesApp.get('/:sessionId/files/content', async (c) => {
   if (!file) return c.json({ error: 'File not found' }, 404);
 
   if (file.isBinary) {
-    return new Response(file.content as Buffer, {
+    return new Response(new Uint8Array(file.content as Buffer), {
       headers: {
         'Content-Type': file.mimeType ?? 'application/octet-stream',
         'Content-Length': String(file.sizeBytes),

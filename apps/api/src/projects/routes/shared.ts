@@ -209,7 +209,7 @@ export async function allocateRuntimeOnOpen(
     agentName: string | null;
     metadata?: Record<string, unknown> | null;
   },
-  projectId: string,
+  projectId: string | null,
   sessionId: string,
 ): Promise<void> {
   const providerName = session.sandboxProvider as SandboxProviderName;
@@ -241,7 +241,7 @@ export async function allocateRuntimeOnOpen(
   allocateSessionRuntime({
     sessionId,
     accountId: loaded.row.accountId,
-    projectId,
+    projectId: projectId ?? '',
     userId: loaded.userId,
     project: loaded.row,
     providerName,
@@ -252,7 +252,7 @@ export async function allocateRuntimeOnOpen(
     buildEnvVars: () =>
       buildSessionSandboxEnvVars({
         accountId: loaded.row.accountId,
-        projectId,
+        projectId: projectId ?? '',
         sessionId,
         userId: loaded.userId,
         repoUrl: loaded.row.repoUrl,
@@ -381,7 +381,7 @@ async function replaceStaleRuntimeOnOpen(
       metadata?: Record<string, unknown> | null;
     };
   },
-  projectId: string,
+  projectId: string | null,
   sessionId: string,
   row: typeof sessionSandboxes.$inferSelect,
   reason: string,
@@ -421,22 +421,24 @@ export async function openSession(args: {
       metadata?: Record<string, unknown> | null;
     };
   };
-  projectId: string;
+  projectId: string | null;
   sessionId: string;
 }): Promise<SessionStartResult> {
   const { loaded, visible, projectId, sessionId } = args;
   const accountId = visible.row.accountId;
 
+  // Build WHERE clause — projectId is nullable in simple/session-only mode.
+  const whereClauses = [
+    eq(sessionSandboxes.sessionId, sessionId),
+    eq(sessionSandboxes.accountId, accountId),
+  ];
+  if (projectId !== null) {
+    whereClauses.push(eq(sessionSandboxes.projectId, projectId));
+  }
   let [row] = await db
     .select()
     .from(sessionSandboxes)
-    .where(
-      and(
-        eq(sessionSandboxes.sessionId, sessionId),
-        eq(sessionSandboxes.projectId, projectId),
-        eq(sessionSandboxes.accountId, accountId),
-      ),
-    )
+    .where(and(...whereClauses))
     .limit(1);
 
   // Resume a hibernated box in place (keeps its disk/workspace).

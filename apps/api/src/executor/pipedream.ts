@@ -51,8 +51,9 @@ export function pipedreamConfigured(): boolean {
  * user so each member's connection is isolated; for shared it's connector-wide.
  * The webhook parses this back as `projectId:slug[:userId]`.
  */
-function externalUserId(projectId: string, slug: string, userId?: string | null): string {
-  return userId ? `${projectId}:${slug}:${userId}` : `${projectId}:${slug}`;
+function externalUserId(projectId: string | null, slug: string, userId?: string | null): string {
+  const pid = projectId ?? 'session';
+  return userId ? `${pid}:${slug}:${userId}` : `${pid}:${slug}`;
 }
 
 class PipedreamProvider {
@@ -333,7 +334,7 @@ export async function browsePipedreamApps(query?: string, cursor?: string): Prom
 
 /** Execute a Pipedream action via the Connect API. `accountId` is the binding; `userId` scopes the external id. */
 export async function runPipedreamAction(
-  projectId: string,
+  projectId: string | null,
   slug: string,
   app: string,
   actionKey: string,
@@ -356,7 +357,7 @@ export async function runPipedreamAction(
  * 4xx/5xx, not a flattened 200.
  */
 export async function runPipedreamProxy(
-  projectId: string,
+  projectId: string | null,
   slug: string,
   args: Record<string, unknown>,
   accountId: string,

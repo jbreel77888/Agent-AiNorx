@@ -138,7 +138,7 @@ async function r2Request(
   return fetch(fullUrl, {
     method,
     headers: signedHeaders,
-    body: body ?? undefined,
+    body: body ? new Uint8Array(body) : undefined,
   });
 }
 
