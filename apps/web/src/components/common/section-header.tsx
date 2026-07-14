@@ -1,12 +1,13 @@
 'use client';
 
 /**
- * CustomizeSectionHeader — the one header bar every Customize section uses.
+ * SectionHeader — a slim header bar with a leading icon + title, an optional
+ * count badge, and an optional actions slot pinned right.
  *
- * A slim `h-12` row: leading icon + title, an optional count badge, and an
- * optional actions slot (e.g. a "New" button) pinned right. Keeping it in one
- * place is what makes Agents, Connectors, Secrets, Members, … read as the same
- * product instead of eleven slightly-different pages.
+ * Originally lived in `components/projects/customize/customize-section-header.tsx`
+ * as the header for every Customize section. Moved to `components/common/` in
+ * Phase 7.2.8 because it's a generic UI primitive used outside the (now-deleted)
+ * Customize overlay (e.g. the Marketplace view).
  */
 
 import type { LucideIcon } from 'lucide-react';
@@ -14,7 +15,7 @@ import type { LucideIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
-export function CustomizeSectionHeader({
+export function SectionHeader({
   icon: Icon,
   title,
   count,
@@ -49,3 +50,6 @@ export function CustomizeSectionHeader({
     </div>
   );
 }
+
+/** Backward-compat alias for callers that still import `CustomizeSectionHeader`. */
+export const CustomizeSectionHeader = SectionHeader;

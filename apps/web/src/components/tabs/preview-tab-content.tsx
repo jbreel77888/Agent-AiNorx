@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
-import { PublicShareLinkButton } from '@/components/projects/public-share-link-button';
+import { PublicShareLinkButton } from '@/components/common/public-share-link-button';
 import { Button } from '@/components/ui/button';
 import { useAuthenticatedPreviewUrl } from '@/hooks/use-authenticated-preview-url';
 import { useSandboxProxy } from '@/hooks/use-sandbox-proxy';

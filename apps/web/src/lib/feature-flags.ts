@@ -23,39 +23,26 @@ export const featureFlags = {
     false,
   ),
   /**
-   * Multi-project paradigm.
+   * Multi-project paradigm — REMOVED in Phase 7.2.6.
    *
-   * Default: false. The product ships in single-workspace mode — no Projects
-   * section, no project picker, no /projects/[id] view, no project-scoped
-   * channel/trigger UI, no @project mentions, no `Add to board` triggers.
-   *
-   * When NEXT_PUBLIC_ENABLE_PROJECTS=true, the legacy project UI
-   * (board, milestones, members, project agents/credentials/templates) is
-   * surfaced. The sandbox MUST also have KORTIX_PROJECTS_ENABLED=true for the
-   * LLM-side project/ticket tools to register; without that the UI exists but
-   * tool calls 503.
+   * The product now ships in session-only mode. This flag is kept as a
+   * constant `false` so existing call sites keep compiling; the dead
+   * branches will be removed in a follow-up cleanup.
    */
-  enableProjects: parseEnvBoolean(
-    process.env.NEXT_PUBLIC_ENABLE_PROJECTS,
-    false,
-  ),
+  enableProjects: false,
   /**
-   * Simple session mode — users create standalone sessions without GitHub.
+   * Simple session mode — always true in session-only mode (Phase 7.2.6).
    *
-   * Default: false (project mode — GitHub repos + projects + sessions).
-   * When NEXT_PUBLIC_SESSION_MODE=simple, the app:
-   *   - Redirects /projects/* and /dashboard to /sessions
-   *   - Uses /v1/sessions API instead of /v1/projects/:id/sessions
-   *   - Shows SimpleSessionList in the sidebar (instead of SessionList)
-   *   - Hides agent-switcher dropdown (default VaelorX agent only)
-   *   - Hides SessionVersionHeader + change-request UI (no git branches)
+   * The app now exclusively uses /v1/sessions API + /sessions routes.
+   * The flag is kept as a constant `true` so existing call sites keep
+   * compiling; the dead project-mode branches will be removed later.
    */
-  isSimpleMode: process.env.NEXT_PUBLIC_SESSION_MODE === 'simple',
+  isSimpleMode: true,
 } as const;
 
-/** Convenience function — readable in any component. */
+/** Convenience function — always true in session-only mode. */
 export function isSimpleMode(): boolean {
-  return process.env.NEXT_PUBLIC_SESSION_MODE === 'simple';
+  return true;
 }
 
 // Debug: uncomment to inspect feature flags during development

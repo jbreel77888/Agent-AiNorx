@@ -7,6 +7,10 @@
 
 import { backendApi } from '@/lib/api-client';
 import { getSupabaseAccessTokenWithRetry } from '@/lib/auth-token';
+import type { SessionStartResult, SessionStartStage } from '@/lib/session-types';
+
+// Re-export the shared types so consumers can import from this module.
+export type { SessionStartResult, SessionStartStage };
 
 export interface SimpleSession {
   session_id: string;
@@ -23,20 +27,6 @@ export interface SimpleSessionDetail extends SimpleSession {
     status: string;
     provider: string;
   } | null;
-}
-
-export interface SessionStartResult {
-  stage: 'provisioning' | 'starting' | 'ready' | 'failed' | 'stopped';
-  retriable: boolean;
-  sandbox: {
-    sandbox_id: string;
-    session_id: string;
-    external_id: string;
-    status: string;
-    provider: string;
-  } | null;
-  opencode_session_id: string | null;
-  reason?: string | null;
 }
 
 export interface SessionFile {

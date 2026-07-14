@@ -20,7 +20,7 @@ import {
   isSharingComplete,
   selectionToIntent,
   type SharingSelection,
-} from '@/features/co-worker/shared/sharing-picker';
+} from '@/features/session/modals/sharing-picker';
 import { setProjectSessionSharing, type ProjectSession } from '@/lib/projects-client';
 import { LockSolid, UsersSolid } from '@mynaui/icons-react';
 import { useMutation } from '@tanstack/react-query';

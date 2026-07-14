@@ -1,38 +1,62 @@
-'use client';
-
 /**
- * Customize overlay store.
+ * Customize store — STUB (Phase 7.2.8).
  *
- * Customize is a full-screen overlay that floats over whatever project page is
- * active (a session, the project home, …) instead of a route that swaps the
- * content area and spawns a tab. Keeping the open/section state here lets every
- * trigger — the sidebar button, project-home tiles, the command palette, the
- * sandbox alert, deep-link routes — open the same surface without navigating,
- * so you never lose your place. ESC / backdrop closes it and you're exactly
- * where you were.
+ * The original customize store managed the full-screen Customize overlay for
+ * project-scoped sections (agents, skills, connectors, secrets, …). With
+ * session-only mode, there's no Customize overlay anymore.
+ *
+ * This stub keeps the `openCustomize` API surface alive so legacy callers
+ * (command-palette) keep compiling. The function is a no-op.
  */
 
-import { create } from 'zustand';
+import { useSyncExternalStore } from 'react';
 
-import type { CustomizeSection } from '@/lib/customize-sections';
+export type CustomizeSection =
+  | 'changes'
+  | 'files'
+  | 'skills'
+  | 'agents'
+  | 'commands'
+  | 'marketplace'
+  | 'secrets'
+  | 'connectors'
+  | 'computers'
+  | 'members'
+  | 'schedules'
+  | 'webhooks'
+  | 'channels'
+  | 'sandbox'
+  | 'dev'
+  | 'settings';
 
-interface CustomizeState {
-  open: boolean;
-  /** The currently-shown section. Persists between opens so reopening returns
-   *  you to the last section you were on. */
-  section: CustomizeSection;
-  /** Open the overlay. Pass a section to jump straight to it; omit to resume
-   *  wherever you left off. */
+interface CustomizeStoreState {
+  isOpen: boolean;
+  section: CustomizeSection | null;
   openCustomize: (section?: CustomizeSection) => void;
-  setSection: (section: CustomizeSection) => void;
-  close: () => void;
+  closeCustomize: () => void;
 }
 
-export const useCustomizeStore = create<CustomizeState>((set) => ({
-  open: false,
-  section: 'agents',
-  openCustomize: (section) =>
-    set((s) => ({ open: true, section: section ?? s.section })),
-  setSection: (section) => set({ section }),
-  close: () => set({ open: false }),
-}));
+const stubState: CustomizeStoreState = {
+  isOpen: false,
+  section: null,
+  openCustomize: () => {},
+  closeCustomize: () => {},
+};
+
+const subscribe = (_listener: () => void) => () => {};
+
+type UseCustomizeStore = {
+  (): CustomizeStoreState;
+  <T>(selector: (s: CustomizeStoreState) => T): T;
+  getState(): CustomizeStoreState;
+  subscribe: typeof subscribe;
+};
+
+function useCustomizeStoreImpl<T>(selector?: (s: CustomizeStoreState) => T): T | CustomizeStoreState {
+  useSyncExternalStore(subscribe, () => stubState, () => stubState);
+  return selector ? selector(stubState) : stubState;
+}
+
+export const useCustomizeStore = useCustomizeStoreImpl as unknown as UseCustomizeStore;
+useCustomizeStore.getState = () => stubState;
+useCustomizeStore.subscribe = subscribe;

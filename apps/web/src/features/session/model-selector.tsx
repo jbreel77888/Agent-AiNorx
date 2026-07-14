@@ -15,13 +15,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Check, ChevronDown, Eye, EyeOff, Plus, SlidersHorizontal } from 'lucide-react';
-import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { ProjectProviderModal } from '@/components/projects/project-provider-modal';
-import { useQuery } from '@tanstack/react-query';
-import { useGatewayOverlayStore } from '@/stores/gateway-overlay-store';
-import { listProjectSecrets } from '@/lib/projects-client';
 import { LLM_PROVIDERS } from '@/lib/llm-providers';
 import { DEFAULT_MANAGED_MODEL_IDS } from '@kortix/shared/llm-catalog';
 import {
@@ -130,40 +125,16 @@ export function ModelSelector({ models, selectedModel, onSelect, providers }: Mo
   // superseded models in a family). Off by default to keep the picker tidy.
   const [showHidden, setShowHidden] = useState(false);
   const openProviderModal = useProviderModalStore((s) => s.openProviderModal);
-  const openGateway = useGatewayOverlayStore((s) => s.openGateway);
   const baseModels = useMemo(
     () => (SHOW_OPENCODE_ZEN ? models : models.filter((m) => m.providerID !== 'opencode')),
     [models],
   );
 
-  // When mounted under /projects/[id]/..., route the action buttons to the
-  // per-project provider modal so credentials land in `project_secrets`. On
-  // every other route (instance dashboard, /milano, /berlin, etc.) we keep
-  // the legacy GlobalProviderModal that writes to the active sandbox.
-  const params = useParams<{ id?: string }>();
-  const projectId = typeof params?.id === 'string' ? params.id : null;
-  const [projectModalOpen, setProjectModalOpen] = useState(false);
-  const [projectModalTab, setProjectModalTab] = useState<'connected' | 'catalog' | 'models'>(
-    'catalog',
-  );
-  const [projectModalProviderId, setProjectModalProviderId] = useState<string | undefined>(undefined);
-
-  // Track project secrets whenever we're in a project (not only while the picker
-  // is open) so connecting/disconnecting a provider flips model visibility live —
-  // the connect mutation invalidates this exact key, and an always-subscribed
-  // query refetches immediately instead of waiting for the next picker open.
-  const secretsQuery = useQuery({
-    queryKey: ['project-secrets', projectId],
-    queryFn: () => listProjectSecrets(projectId as string),
-    enabled: !!projectId,
-    staleTime: 10_000,
-  });
-  const secretNames = useMemo(() => {
-    const data = secretsQuery.data;
-    const items = Array.isArray(data) ? data : (data?.items ?? []);
-    return new Set(items.map((secret: { name: string }) => secret.name));
-  }, [secretsQuery.data]);
-  const openaiConnected = secretNames.has('OPENAI_API_KEY');
+  // Phase 7.2.8: project-mode support removed. ModelSelector now operates
+  // exclusively in simple mode (no projectId, no project_secrets lookup).
+  // Connected-provider detection relies solely on the OpenCode provider list.
+  const secretNames = useMemo(() => new Set<string>(), []);
+  const openaiConnected = false;
 
   // Providers whose key(s) are present — drives which of the gateway's full
   // baked catalog is shown by default in the picker (connected providers light
@@ -292,34 +263,18 @@ export function ModelSelector({ models, selectedModel, onSelect, providers }: Mo
   const handleOpenProviderModal = useCallback(
     (tab: ProviderModalTab) => {
       setOpen(false);
-      if (projectId) {
-        openGateway({ section: tab === 'models' ? 'models' : 'providers' });
-        return;
-      }
       openProviderModal(tab);
     },
-    [projectId, openProviderModal, openGateway],
+    [openProviderModal],
   );
 
   const openConnectOpenAI = useCallback(() => {
     setOpen(false);
-    if (projectId) {
-      openGateway({ section: 'providers' });
-      return;
-    }
     openProviderModal('providers');
-  }, [projectId, openProviderModal, openGateway]);
+  }, [openProviderModal]);
 
   return (
     <>
-      {projectId && (
-        <ProjectProviderModal
-          projectId={projectId}
-          open={projectModalOpen}
-          onOpenChange={setProjectModalOpen}
-          defaultTab={projectModalTab}
-        />
-      )}
       <CommandPopover open={open} onOpenChange={setOpen}>
         <Tooltip>
           <TooltipTrigger asChild>

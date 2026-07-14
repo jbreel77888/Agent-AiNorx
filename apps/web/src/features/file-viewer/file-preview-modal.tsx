@@ -1,6 +1,6 @@
 'use client';
 
-import { PublicShareLinkButton } from '@/components/projects/public-share-link-button';
+import { PublicShareLinkButton } from '@/components/common/public-share-link-button';
 import { Button } from '@/components/ui/button';
 import { errorToast, successToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';

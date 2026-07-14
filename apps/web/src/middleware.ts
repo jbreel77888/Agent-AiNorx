@@ -59,18 +59,18 @@ const PUBLIC_ROUTES = [
 const BILLING_ROUTES: string[] = [];
 
 // Routes that require authentication and active subscription
-const PROTECTED_ROUTES = ['/projects', '/accounts', '/invites', '/admin'];
+const PROTECTED_ROUTES = ['/sessions', '/accounts', '/invites', '/admin'];
 
 // Desktop app (KortixDesktop UA) is a pure logged-in product surface. ONLY
 // these route prefixes — plus /auth/* for sign-in — are allowed to render
 // inside the desktop window. Every other route (the marketing homepage, blog,
 // pricing, careers, contact, legal, help, docs, share, design-system, … which
-// all live at root-level slugs) is bounced to /projects. Docs and external
+// all live at root-level slugs) is bounced to /sessions. Docs and external
 // links are opened in the user's real browser by the Tauri shell, never shown
 // in-app. Keep this an allowlist, not a blocklist — new marketing slugs must
 // stay blocked by default.
 const DESKTOP_ALLOWED_ROUTES = [
-  '/projects',
+  '/sessions',
   '/accounts',
   '/invites',
   '/admin',

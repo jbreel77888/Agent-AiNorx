@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
-import { sessionDisplayLabel } from '@/components/projects/session-label';
+import { sessionDisplayLabel } from '@/features/session/session-label';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,9 +33,9 @@ import { Input } from '@/components/ui/input';
 import { Kbd, KbdGroup } from '@/components/ui/kbd';
 import Loading from '@/components/ui/loading';
 import { errorToast, successToast } from '@/components/ui/toast';
-import { RenameSessionModal } from '@/features/co-worker/project-sidebar/modal/rename-session-modal';
-import { SessionDeleteModal } from '@/features/co-worker/project-sidebar/modal/session-delete-modal';
-import { ShareSessionModal } from '@/features/co-worker/project-sidebar/modal/share-session-modal';
+import { RenameSessionModal } from '@/features/session/modals/rename-session-modal';
+import { SessionDeleteModal } from '@/features/session/modals/session-delete-modal';
+import { ShareSessionModal } from '@/features/session/modals/share-session-modal';
 import { CompactModal } from '@/features/session/header/compact-modal';
 import { ExportTranscriptModal } from '@/features/session/header/export-transcript-modal';
 import { SessionChangesIndicator } from '@/features/session/header/session-changes-indicator';

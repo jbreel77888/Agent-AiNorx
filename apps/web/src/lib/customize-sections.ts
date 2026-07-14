@@ -1,11 +1,12 @@
 /**
- * Customize section identifiers + helpers.
+ * Customize section identifiers + helpers — STUB (Phase 7.2.8).
  *
- * The /projects/[id]/customize page reads its active section from either the
- * path segment (`/customize/skills`) or the legacy `?section=` query param.
- * This module keeps the section enum, the default, and a parser in one spot
- * so the page, the sidebar, and any deep-link helpers all agree on the
- * canonical list.
+ * The original module managed the section enum for the project-scoped
+ * Customize overlay. Session-only mode has no Customize overlay, so this
+ * is now dead code.
+ *
+ * The type + parser are kept so legacy callers (command-palette) keep
+ * compiling.
  */
 
 export type CustomizeSection =
@@ -47,9 +48,10 @@ export const CUSTOMIZE_SECTIONS: readonly CustomizeSection[] = [
   'settings',
 ];
 
-export function parseCustomizeSection(raw: string | null | undefined): CustomizeSection | null {
-  if (!raw) return null;
-  return (CUSTOMIZE_SECTIONS as readonly string[]).includes(raw)
-    ? (raw as CustomizeSection)
+/** Parse a section slug from a URL path segment. Returns null if invalid. */
+export function parseCustomizeSection(value: string | null | undefined): CustomizeSection | null {
+  if (!value) return null;
+  return CUSTOMIZE_SECTIONS.includes(value as CustomizeSection)
+    ? (value as CustomizeSection)
     : null;
 }

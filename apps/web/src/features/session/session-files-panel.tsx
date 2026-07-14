@@ -1,6 +1,5 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
 import { GitPullRequestArrow, Loader2, Sparkles } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
@@ -8,7 +7,6 @@ import { useState } from 'react';
 
 import { errorToast, successToast } from '@/components/ui/toast';
 import { useGitStatus } from '@/features/files/hooks/use-git-status';
-import { getProjectSession } from '@/lib/projects-client';
 import { cn } from '@/lib/utils';
 import { useChatSendStore } from '@/stores/chat-send-store';
 import { useFilePreviewStore } from '@/stores/file-preview-store';
@@ -34,6 +32,10 @@ const STATUS_BADGE: Record<string, { letter: string; cls: string; label: string 
  *   1. what changed in this session (git status), and
  *   2. the one way to persist it: ask the agent to open a change request, which
  *      it commits + opens via `kortix cr open` for the user to review & merge.
+ *
+ * NOTE: In simple/session-only mode there's no git branch, so `baseRef` is
+ * hardcoded to 'main'. The project-mode `getProjectSession` lookup was
+ * removed in Phase 7.2.4. The panel is kept for the debug page only.
  */
 export function SessionFilesPanel({
   /**
@@ -61,13 +63,10 @@ export function SessionFilesPanel({
   // with nothing yet) instead of flashing the empty state prematurely.
   const isLoadingChanges = !statusQuery.data && (statusQuery.isLoading || statusQuery.isFetching);
 
-  const sessionQuery = useQuery({
-    queryKey: ['project', 'session', projectId, gitSessionId],
-    queryFn: () => getProjectSession(projectId!, gitSessionId!),
-    enabled: !!projectId && !!gitSessionId,
-    staleTime: 60_000,
-  });
-  const baseRef = sessionQuery.data?.base_ref ?? 'main';
+  // In simple mode there's no project-backed session, so the base ref is
+  // always 'main'. The previous useQuery+getProjectSession lookup was removed
+  // in Phase 7.2.4 (the query was disabled in simple mode anyway).
+  const baseRef = 'main';
 
   const { openPreview } = useFilePreviewStore();
   const sendToSession = useChatSendStore((s) => s.sendToSession);

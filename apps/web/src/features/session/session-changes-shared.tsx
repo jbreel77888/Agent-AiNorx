@@ -5,14 +5,17 @@
  * both the in-panel <SessionVersionHeader> and the header
  * <SessionChangesIndicator>. Keeping the prompt wording, the base-ref lookup,
  * and the status badges in one place means the two surfaces never drift.
+ *
+ * NOTE: In simple/session-only mode there's no git branch, so `baseRef`
+ * always resolves to 'main' (the historical default). The project-mode
+ * `getProjectSession` lookup was removed in Phase 7.2.4 — the hook is kept
+ * so existing callers keep compiling while the panel is being phased out.
  */
 
-import { useQuery } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 
 import { STATUS_TEXT } from '@/components/ui/status';
 import { errorToast, successToast } from '@/components/ui/toast';
-import { getProjectSession } from '@/lib/projects-client';
 import { useChatSendStore } from '@/stores/chat-send-store';
 
 /** git-status status → single-letter badge, using the canonical status tones. */
@@ -22,18 +25,16 @@ export const CHANGE_STATUS_BADGE: Record<string, { letter: string; cls: string; 
   deleted: { letter: 'D', cls: STATUS_TEXT.destructive, label: 'Deleted' },
 };
 
-/** The base branch this session forks from (e.g. `main`). Defaults to `main`. */
+/**
+ * The base branch this session forks from. In simple mode there's no git
+ * backing, so we always return 'main'. The `projectId`/`gitSessionId`
+ * parameters are kept for API compatibility but ignored.
+ */
 export function useSessionBaseRef(
-  projectId: string | undefined,
-  gitSessionId: string | undefined,
+  _projectId: string | undefined,
+  _gitSessionId: string | undefined,
 ): string {
-  const sessionQuery = useQuery({
-    queryKey: ['project', 'session', projectId, gitSessionId],
-    queryFn: () => getProjectSession(projectId!, gitSessionId!),
-    enabled: !!projectId && !!gitSessionId,
-    staleTime: 60_000,
-  });
-  return sessionQuery.data?.base_ref ?? 'main';
+  return 'main';
 }
 
 /**
