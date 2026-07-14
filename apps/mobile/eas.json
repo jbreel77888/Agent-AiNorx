@@ -10,12 +10,22 @@
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleDebug"
+      },
+      "env": {
+        "EXPO_PUBLIC_BACKEND_URL": "https://kortix-api-vaelorx.bunnyenv.com/v1",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://lnmyqdukyyxfwmqpnrqr.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxubXlxZHVreXl4ZndtcXBucnFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNDU2ODYsImV4cCI6MjA5NzkyMTY4Nn0.yfEUOU8uCFxnB2Ma2384ezl_zZENVJIhqbjPZHOAAKA"
       }
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_BACKEND_URL": "https://kortix-api-vaelorx.bunnyenv.com/v1",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://lnmyqdukyyxfwmqpnrqr.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxubXlxZHVreXl4ZndtcXBucnFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNDU2ODYsImV4cCI6MjA5NzkyMTY4Nn0.yfEUOU8uCFxnB2Ma2384ezl_zZENVJIhqbjPZHOAAKA"
       }
     },
     "production": {

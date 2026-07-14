@@ -151,13 +151,14 @@
     },
     "extra": {
       "eas": {
-        "projectId": "9fca3cff-a291-41c9-88b9-feb8053b990f"
-      }
+        "projectId": "a7a3e955-8530-4da2-83ea-de66023a7eb9"
+      },
+      "router": {}
     },
-    "owner": "kortix",
+    "owner": "noor77189",
     "runtimeVersion": "1.1.2",
     "updates": {
-      "url": "https://u.expo.dev/9fca3cff-a291-41c9-88b9-feb8053b990f",
+      "url": "https://u.expo.dev/a7a3e955-8530-4da2-83ea-de66023a7eb9",
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
     }
