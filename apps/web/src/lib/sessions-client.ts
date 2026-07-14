@@ -155,12 +155,17 @@ export async function listSessionFiles(sessionId: string): Promise<SessionFile[]
 /** Read a file's content. */
 export async function readSessionFile(sessionId: string, path: string): Promise<string> {
   const headers = await authHeaders();
-  const res = await backendApi.get(`/sessions/${sessionId}/files/content`, {
+  // Build query string manually — backendApi (fetch-based) doesn't support
+  // `params` or `responseType` options (those are axios-style). The previous
+  // `params: { path }` was silently ignored, so the path was never sent.
+  const query = new URLSearchParams({ path }).toString();
+  const res = await backendApi.get(`/sessions/${sessionId}/files/content?${query}`, {
     headers,
-    params: { path },
-    responseType: 'text',
   });
-  return res.data;
+  // The endpoint returns text content. backendApi wraps the fetch response,
+  // so `res.data` may be a string (when Content-Type is text/plain) or an
+  // object (when JSON). Coerce to string for text responses.
+  return typeof res.data === 'string' ? res.data : (res.data as any)?.content ?? String(res.data ?? '');
 }
 
 /** Write a file. */
@@ -181,9 +186,10 @@ export async function writeSessionFile(
 /** Delete a file. */
 export async function deleteSessionFile(sessionId: string, path: string): Promise<void> {
   const headers = await authHeaders();
-  await backendApi.delete(`/sessions/${sessionId}/files`, {
+  // Build query string manually — same reason as readSessionFile above.
+  const query = new URLSearchParams({ path }).toString();
+  await backendApi.delete(`/sessions/${sessionId}/files?${query}`, {
     headers,
-    params: { path },
   });
 }
 

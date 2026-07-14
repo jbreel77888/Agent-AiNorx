@@ -103,11 +103,12 @@ export function SessionSiteHeader({
   const canShare = !!projectSession && projectSession.can_manage_sharing !== false;
 
   const restartMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async (): Promise<void> => {
       if (isSimpleSession) {
-        return restartSession(simpleSessionId!);
+        await restartSession(simpleSessionId!);
+        return;
       }
-      return restartProjectSession(projectId!, projectSessionId!);
+      await restartProjectSession(projectId!, projectSessionId!);
     },
     onSuccess: () => {
       successToast('Restarting session…');

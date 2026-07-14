@@ -58,7 +58,16 @@ const DropdownMenuSubContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent> & {
     side?: 'top' | 'bottom' | 'left' | 'right';
-    align?: 'start' | 'center' | 'end';
+    /**
+     * Alignment of the sub-content relative to its trigger.
+     *
+     * NOTE: Radix UI's `MenuSubContent` does NOT support `'center'` alignment
+     * (it's excluded from `ALIGN_OPTIONS` at the type level). Only `'start'`
+     * and `'end'` are valid here. The `'center'` value is kept in the type
+     * for back-compat with callers that pass it, but it's a no-op — Radix
+     * silently falls back to its default alignment.
+     */
+    align?: 'start' | 'end' | 'center';
   }
 >(({ className, side, align, style, ...props }, ref) => {
   const depth = useDialogDepth();
@@ -74,7 +83,6 @@ const DropdownMenuSubContent = React.forwardRef<
         side === 'left' && 'data-[side=left]:slide-in-from-right-2',
         side === 'right' && 'data-[side=right]:slide-in-from-left-2',
         align === 'start' && 'data-[align=start]:slide-in-from-end-2',
-        align === 'center' && 'data-[align=center]:slide-in-from-center-2',
         align === 'end' && 'data-[align=end]:slide-in-from-start-2',
       )}
       style={{ zIndex: floatingZ(depth), ...style }}

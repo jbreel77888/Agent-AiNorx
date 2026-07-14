@@ -600,7 +600,12 @@ export function useOpenCodeEventStream() {
       // the only place message/part data lives.
       applySyncEvent(event);
 
-      switch (event.type) {
+      // The v2 SDK type doesn't include 'lsp.client.diagnostics' (it's only in
+      // the v1 types), but the server emits it. Cast to a wider type so the
+      // switch below can handle it without TS errors.
+      const eventType = event.type as string;
+
+      switch (eventType) {
         // ---- Message events — handled by sync store only ----
         case 'message.updated':
         case 'message.removed':

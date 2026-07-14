@@ -401,7 +401,7 @@ export function ConnectProviderContent({
                 await upsertProjectSecret(projectId, {
                   name: envVar,
                   value: apiKey.trim(),
-                  sharing: 'project',
+                  sharing: { mode: 'project' },
                 });
               } catch (secretErr) {
                 // Non-fatal: the sandbox auth path already succeeded.
