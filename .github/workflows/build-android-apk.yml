@@ -1,0 +1,132 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Build profile (development | preview)'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - development
+          - preview
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_PUBLIC_BACKEND_URL: ${{ vars.EXPO_PUBLIC_BACKEND_URL || 'https://kortix-api-vaelorx.bunnyenv.com/v1' }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 📲 Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: 📲 Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+
+      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🔑 Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: 🔨 Create eas.json
+        working-directory: apps/mobile
+        run: |
+          cat > eas.json << 'EOF'
+          {
+            "cli": {
+              "version": ">= 5.9.0",
+              "appVersionSource": "remote"
+            },
+            "build": {
+              "development": {
+                "developmentClient": true,
+                "distribution": "internal",
+                "android": {
+                  "buildType": "apk",
+                  "gradleCommand": ":app:assembleDebug"
+                },
+                "env": {
+                  "EXPO_PUBLIC_BACKEND_URL": "https://kortix-api-vaelorx.bunnyenv.com/v1",
+                  "EXPO_PUBLIC_SUPABASE_URL": "${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}",
+                  "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}"
+                }
+              },
+              "preview": {
+                "distribution": "internal",
+                "android": {
+                  "buildType": "apk"
+                },
+                "env": {
+                  "EXPO_PUBLIC_BACKEND_URL": "https://kortix-api-vaelorx.bunnyenv.com/v1",
+                  "EXPO_PUBLIC_SUPABASE_URL": "${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}",
+                  "EXPO_PUBLIC_SUPABASE_ANON_KEY": "${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}"
+                }
+              },
+              "production": {
+                "android": {
+                  "buildType": "app-bundle"
+                }
+              }
+            },
+            "submit": {
+              "production": {}
+            }
+          }
+          EOF
+
+      - name: 🏗️ Build APK (local — no EAS cloud)
+        working-directory: apps/mobile
+        run: |
+          # Prebuild native Android project
+          npx expo prebuild --platform android --clean
+
+          # Build the APK using Gradle directly
+          cd android
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: 📤 Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vaelorx-android-${{ github.event.inputs.profile || 'preview' }}
+          path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: 📊 Summary
+        run: |
+          echo "### ✅ APK Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Build profile: ${{ github.event.inputs.profile || 'preview' }}" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download the APK from the Artifacts section below." >> $GITHUB_STEP_SUMMARY
