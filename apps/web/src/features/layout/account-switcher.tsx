@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CreateAccountModal } from '@/features/accounts/create-account-modal';
+import { useAuth } from '@/features/providers/auth-provider';
 import { isBillingEnabled } from '@/lib/config';
 import { listAccounts, type KortixAccount } from '@/lib/projects-client';
 import { usePermission } from '@/lib/use-permission';
@@ -48,6 +49,7 @@ export function AccountSwitcher({
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { selectedAccountId, setSelectedAccountId } = useCurrentAccountStore();
   const billingActive = isBillingEnabled();
 
@@ -63,6 +65,8 @@ export function AccountSwitcher({
     queryKey: ['accounts'],
     queryFn: listAccounts,
     staleTime: 60_000,
+    // Only fetch when user is authenticated — avoids 401 errors on splash/auth
+    enabled: !!user,
   });
 
   const activeAccount =
