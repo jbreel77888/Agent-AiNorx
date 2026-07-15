@@ -204,7 +204,11 @@ async function listProjectSessionSandboxes(): Promise<Array<{
   runtime: ProjectSessionSandbox | null;
   sandbox: SandboxInfo;
 }>> {
-  const projects = await listProjects();
+  // Phase 7: session-only mode — use /v1/sessions instead of /v1/projects.
+  // The old code listed projects then sessions per project; /v1/projects was
+  // removed in Phase 7.1. /v1/sessions returns all the user's sessions
+  // directly (no project scoping needed in simple mode).
+  const sessions = await listSimpleSessionsForPlatform().catch(() => []);
   const rows: Array<{
     project: KortixProject;
     session: ProjectSession;
@@ -212,20 +216,17 @@ async function listProjectSessionSandboxes(): Promise<Array<{
     sandbox: SandboxInfo;
   }> = [];
 
-  for (const project of projects) {
-    const sessions = await listProjectSessions(project.project_id).catch(() => []);
-    for (const session of sessions) {
-      // Derive runtime info from the session row — do NOT call /start here, or
-      // listing would wake every sandbox across every project. The single-session
-      // open/create paths below use /start; a passive list must not.
-      const runtime = null;
-      rows.push({
-        project,
-        session,
-        runtime,
-        sandbox: projectSessionToSandboxInfo(project, session, runtime),
-      });
-    }
+  for (const session of sessions) {
+    // Derive runtime info from the session row — do NOT call /start here, or
+    // listing would wake every sandbox. The single-session open/create paths
+    // below use /start; a passive list must not.
+    const runtime = null;
+    rows.push({
+      project: synthProjectFromSession(session),
+      session,
+      runtime,
+      sandbox: simpleSessionToSandboxInfo(session),
+    });
   }
 
   return rows.sort((a, b) => {
@@ -234,6 +235,61 @@ async function listProjectSessionSandboxes(): Promise<Array<{
     if (statusDelta !== 0) return statusDelta;
     return Date.parse(b.sandbox.updated_at) - Date.parse(a.sandbox.updated_at);
   });
+}
+
+/**
+ * Fetch sessions via the /v1/sessions endpoint (session-only mode).
+ * Returns ProjectSession-shaped objects so the rest of the platform-client
+ * code keeps working without changes.
+ */
+async function listSimpleSessionsForPlatform(): Promise<ProjectSession[]> {
+  const res = await platformFetch<{ sessions: ProjectSession[] }>('/sessions');
+  return res.data?.sessions ?? [];
+}
+
+/**
+ * Synthesize a minimal KortixProject from a session row — needed because
+ * the platform-client was originally project-scoped. In session-only mode
+ * there's no project, but projectSessionToSandboxInfo expects one.
+ */
+function synthProjectFromSession(session: ProjectSession): KortixProject {
+  return {
+    project_id: session.project_id ?? '',
+    account_id: session.account_id,
+    name: session.name || 'Session',
+    repo_url: '',
+    default_branch: 'main',
+    status: 'active',
+    created_at: session.created_at,
+    updated_at: session.updated_at,
+  } as KortixProject;
+}
+
+/**
+ * Convert a ProjectSession (from /v1/sessions) directly to a SandboxInfo,
+ * bypassing the project-scoped projectSessionToSandboxInfo.
+ */
+function simpleSessionToSandboxInfo(session: ProjectSession): SandboxInfo {
+  const externalId =
+    session.sandbox_url?.match(/\/p\/([^/]+)\//)?.[1] ||
+    session.sandbox_id ||
+    session.session_id;
+  return {
+    sandbox_id: session.sandbox_id || session.session_id,
+    external_id: externalId,
+    name: session.name || 'Session',
+    provider: (session.sandbox_provider as SandboxProviderName | null) || 'daytona',
+    base_url: session.sandbox_url || (externalId ? `${getPlatformUrl()}/p/${externalId}/${SANDBOX_PORTS.KORTIX_MASTER}` : ''),
+    status: normalizeSessionStatus(session.status),
+    metadata: {
+      ...(session.metadata ?? {}),
+      session_id: session.session_id,
+      runtime_status: session.status,
+      error: session.error,
+    },
+    created_at: session.created_at,
+    updated_at: session.updated_at,
+  };
 }
 
 async function findProjectSessionSandbox(sandboxId?: string): Promise<{

@@ -204,18 +204,27 @@ sessionFilesApp.get('/', async (c) => {
   }
   if (!accountId) return c.json({ sessions: [] });
 
+  // Join with session_sandboxes to get sandbox_id, external_id, provider, base_url.
+  // This lets the web's platform-client build SandboxInfo without calling /start
+  // for every session (which would wake all sandboxes).
   const sessions = await db
     .select({
       sessionId: projectSessions.sessionId,
+      accountId: projectSessions.accountId,
+      projectId: projectSessions.projectId,
       status: projectSessions.status,
       metadata: projectSessions.metadata,
       createdAt: projectSessions.createdAt,
       updatedAt: projectSessions.updatedAt,
+      sbExternalId: sessionSandboxes.externalId,
+      sbProvider: sessionSandboxes.provider,
+      sbStatus: sessionSandboxes.status,
+      sbBaseUrl: sessionSandboxes.baseUrl,
     })
     .from(projectSessions)
+    .leftJoin(sessionSandboxes, eq(sessionSandboxes.sandboxId, projectSessions.sessionId))
     .where(
       eq(projectSessions.accountId, accountId),
-      // Filter out deleted/archived — they should not appear in the sidebar
     )
     .orderBy(desc(projectSessions.updatedAt))
     .limit(50);
@@ -225,13 +234,26 @@ sessionFilesApp.get('/', async (c) => {
   const visible = sessions.filter(s => !EXCLUDED_STATUSES.includes(s.status as any));
 
   return c.json({
-    sessions: visible.map(s => ({
-      session_id: s.sessionId,
-      status: s.status,
-      name: (s.metadata as any)?.name || 'Untitled',
-      created_at: s.createdAt,
-      updated_at: s.updatedAt,
-    })),
+    sessions: visible.map(s => {
+      // Build sandbox_url from external_id if base_url is missing.
+      const externalId = s.sbExternalId;
+      const baseUrl = s.sbBaseUrl || (externalId
+        ? `${config.KORTIX_URL?.replace(/\/+$/, '') || 'http://localhost:8008'}/v1/p/${externalId}/8000`
+        : null);
+      return {
+        session_id: s.sessionId,
+        account_id: s.accountId,
+        project_id: s.projectId,
+        status: s.status,
+        name: (s.metadata as any)?.name || 'Untitled',
+        sandbox_id: s.sessionId,  // in simple mode, sandbox_id == session_id
+        sandbox_provider: s.sbProvider,
+        sandbox_url: baseUrl,
+        opencode_session_id: (s.metadata as any)?.opencode_session_id ?? null,
+        created_at: s.createdAt,
+        updated_at: s.updatedAt,
+      };
+    }),
   });
 });
 
