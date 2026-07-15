@@ -60,8 +60,12 @@ export function SandboxProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();
   const queryClient = useQueryClient();
 
-  // Only fetch sandbox when user is fully authenticated (not loading, not anonymous)
-  const shouldFetch = isAuthenticated === true && !authLoading;
+  // In session-only mode, we DON'T auto-fetch a project-scoped sandbox via
+  // useSandbox() — that calls /v1/projects/* which was removed in Phase 7.1.
+  // Instead, the sandbox URL is set per-session via switchSandbox() when the
+  // user opens a session from /sessions/[id].
+  // Keeping shouldFetch=false avoids 404 errors and potential crashes.
+  const shouldFetch = false;
 
   const { data, isLoading, error } = useSandbox(shouldFetch);
 

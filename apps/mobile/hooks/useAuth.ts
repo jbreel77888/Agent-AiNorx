@@ -207,6 +207,20 @@ export function useAuth() {
           log.log('🔄 Auth state changed:', _event);
         }
 
+        // Guard: Ignore spurious SIGNED_OUT events that fire right after
+        // SIGNED_IN (known Supabase RN SDK behavior). If we just signed in
+        // successfully, don't let a null session from a transitional event
+        // wipe the auth state — the session is persisted in AsyncStorage and
+        // will be rehydrated on the next getSession() call.
+        if (_event === 'SIGNED_OUT' && !session) {
+          // Check if we still have a valid session in storage before clearing
+          const { data: { session: storedSession } } = await supabase.auth.getSession();
+          if (storedSession) {
+            log.log('🔄 Ignoring spurious SIGNED_OUT — session still in storage');
+            return;
+          }
+        }
+
         // Login-only gate for direct mobile OAuth sign-up only. Password and magic
         // link sign-in, plus session hydration, must not consult the new-user window
         // — a user who registered separately on the web can sign in immediately.
