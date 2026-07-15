@@ -222,7 +222,7 @@ sessionFilesApp.get('/', async (c) => {
       sbBaseUrl: sessionSandboxes.baseUrl,
     })
     .from(projectSessions)
-    .leftJoin(sessionSandboxes, eq(sessionSandboxes.sandboxId, projectSessions.sessionId))
+    .leftJoin(sessionSandboxes, eq(sessionSandboxes.sessionId, projectSessions.sessionId))
     .where(
       eq(projectSessions.accountId, accountId),
     )
