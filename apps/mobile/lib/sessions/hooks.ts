@@ -61,9 +61,10 @@ export function useSessionStartPolling(sessionId: string | null, enabled = true)
     queryKey: sessionId ? sessionKeys.start(sessionId) : ['sessions', 'start', 'idle'],
     queryFn: () => startSession(sessionId!),
     enabled: !!sessionId && enabled,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
+      const data = query.state.data;
       // Stop polling when ready or failed
-      if (data?.stage === 'ready' || data?.stage === 'failed') return false;
+      if (data && !('not_found' in data) && (data.stage === 'ready' || data.stage === 'failed')) return false;
       if (data && 'not_found' in data) return false;
       return 3000; // poll every 3s
     },

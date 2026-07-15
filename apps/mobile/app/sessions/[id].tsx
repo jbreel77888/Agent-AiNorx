@@ -24,9 +24,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSessionStartPolling, useSessionHealth, useRestartSession } from '@/lib/sessions/hooks';
 import { useSessionStore } from '@/stores/session-store';
+import { useSandboxContext } from '@/contexts/SandboxContext';
 import { KortixLogo } from '@/components/ui/KortixLogo';
 import { haptics } from '@/lib/haptics';
+import { getSandboxUrl } from '@/lib/platform/client';
 import type { SessionStartResult } from '@/lib/sessions/types';
+import { SessionPage } from '@/components/session/SessionPage';
 
 export default function SessionDetailScreen() {
   const { id: sessionId } = useLocalSearchParams<{ id: string }>();
@@ -35,11 +38,13 @@ export default function SessionDetailScreen() {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
   const { setLastSessionId } = useSessionStore();
+  const { switchSandbox, sandboxUrl: activeSandboxUrl } = useSandboxContext();
 
   const { data: startResult, isLoading: isStarting } = useSessionStartPolling(sessionId);
+  const isReady = startResult && !('not_found' in startResult) && startResult.stage === 'ready';
   const { data: health } = useSessionHealth(
     sessionId,
-    startResult?.stage === 'ready'
+    isReady
   );
   const restartMut = useRestartSession();
 
@@ -48,6 +53,25 @@ export default function SessionDetailScreen() {
       setLastSessionId(sessionId);
     }
   }, [sessionId, setLastSessionId]);
+
+  // When the session becomes ready, switch the global SandboxContext to point
+  // at this session's sandbox so SessionPage (which reads sandboxUrl from
+  // context) can connect to the right sandbox.
+  useEffect(() => {
+    if (!startResult || 'not_found' in startResult) return;
+    if (startResult.stage !== 'ready') return;
+    const sandbox = (startResult as SessionStartResult).sandbox;
+    if (!sandbox?.external_id) return;
+    const expectedUrl = getSandboxUrl(sandbox.external_id);
+    // Only switch if we're not already pointing at this sandbox (avoids loops).
+    if (activeSandboxUrl !== expectedUrl) {
+      switchSandbox({
+        external_id: sandbox.external_id,
+        sandbox_id: sandbox.sandbox_id,
+        name: 'Session',
+      } as any);
+    }
+  }, [startResult, switchSandbox, activeSandboxUrl]);
 
   const handleRestart = useCallback(async () => {
     if (!sessionId || restartMut.isPending) return;
@@ -70,15 +94,15 @@ export default function SessionDetailScreen() {
             size={48}
             color={isDark ? 'rgba(248,248,248,0.2)' : 'rgba(18,18,21,0.2)'}
           />
-          <Text style={styles.mutedText(isDark)}>
+          <Text style={[styles.mutedText, { color: isDark ? "rgba(248,248,248,0.4)" : "rgba(18,18,21,0.4)" }]}>
             Session not found
           </Text>
           <TouchableOpacity
             onPress={() => router.replace('/sessions')}
             activeOpacity={0.7}
-            style={styles.button(isDark)}
+            style={[styles.button, { backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }]}
           >
-            <Text style={styles.buttonText(isDark)}>Back to Sessions</Text>
+            <Text style={[styles.buttonText, { color: isDark ? "rgba(248,248,248,0.6)" : "rgba(18,18,21,0.5)" }]}>Back to Sessions</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -177,7 +201,7 @@ export default function SessionDetailScreen() {
               onPress={handleRestart}
               disabled={restartMut.isPending}
               activeOpacity={0.7}
-              style={styles.pillButton(isDark)}
+              style={[styles.pillButton, { backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }]}
             >
               {restartMut.isPending ? (
                 <ActivityIndicator size="small" color={isDark ? 'rgba(248,248,248,0.6)' : 'rgba(18,18,21,0.5)'} />
@@ -188,16 +212,16 @@ export default function SessionDetailScreen() {
                   color={isDark ? 'rgba(248,248,248,0.6)' : 'rgba(18,18,21,0.5)'}
                 />
               )}
-              <Text style={styles.pillText(isDark)}>
+              <Text style={[styles.pillText, { color: isDark ? "rgba(248,248,248,0.6)" : "rgba(18,18,21,0.5)" }]}>
                 {restartMut.isPending ? 'Restarting…' : 'Restart'}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.replace('/sessions')}
               activeOpacity={0.7}
-              style={styles.pillButton(isDark)}
+              style={[styles.pillButton, { backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }]}
             >
-              <Text style={styles.pillText(isDark)}>Back</Text>
+              <Text style={[styles.pillText, { color: isDark ? "rgba(248,248,248,0.6)" : "rgba(18,18,21,0.5)" }]}>Back</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -205,114 +229,19 @@ export default function SessionDetailScreen() {
     );
   }
 
-  // Ready — sandbox is provisioned
-  const sandbox = (startResult as SessionStartResult).sandbox;
-  const opencodeSessionId = (startResult as SessionStartResult).opencode_session_id;
-
-  // TODO: Replace with the actual SessionPage component once it's updated
-  // to accept sessionId + sandboxUrl without projectId.
-  // For now, show a success state with connection info.
+  // Ready — sandbox is provisioned. Render the full SessionPage (chat UI).
+  // The SandboxContext has been switched (via the useEffect above) to point
+  // at this session's sandbox, so SessionPage can read sandboxUrl from context.
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#09090b' : '#FFFFFF' }]}>
-      {/* Header */}
-      <View
-        style={{
-          paddingTop: insets.top + 8,
-          paddingHorizontal: 16,
-          paddingBottom: 12,
-          borderBottomWidth: 0.5,
-          borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-        }}
-      >
-        <TouchableOpacity onPress={() => router.back()} hitSlop={8}>
-          <Ionicons
-            name="chevron-back"
-            size={24}
-            color={isDark ? '#f8f8f8' : '#121215'}
-          />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text
-            style={{
-              fontSize: 16,
-              fontFamily: 'Roobert-SemiBold',
-              color: isDark ? '#f8f8f8' : '#121215',
-            }}
-            numberOfLines={1}
-          >
-            Session
-          </Text>
-          <Text
-            style={{
-              fontSize: 12,
-              fontFamily: 'Roobert',
-              color: isDark ? 'rgba(248,248,248,0.4)' : 'rgba(18,18,21,0.4)',
-            }}
-            numberOfLines={1}
-          >
-            {sandbox?.external_id ?? 'N/A'}
-          </Text>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <View
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: 3,
-              backgroundColor: health?.runtimeReady ? (isDark ? '#4ade80' : '#22c55e') : (isDark ? '#fbbf24' : '#f59e0b'),
-            }}
-          />
-          <Text
-            style={{
-              fontSize: 12,
-              fontFamily: 'Roobert',
-              color: isDark ? 'rgba(248,248,248,0.4)' : 'rgba(18,18,21,0.4)',
-            }}
-          >
-            {health?.runtimeReady ? 'Ready' : 'Starting...'}
-          </Text>
-        </View>
-      </View>
-
-      {/* Body — placeholder until SessionPage is wired */}
-      <View style={styles.centerContent}>
-        <KortixLogo size={32} variant="symbol" color={isDark ? 'dark' : 'light'} />
-        <Text
-          style={{
-            marginTop: 16,
-            fontSize: 16,
-            fontFamily: 'Roobert-Medium',
-            color: isDark ? 'rgba(248,248,248,0.5)' : 'rgba(18,18,21,0.5)',
-          }}
-        >
-          Session Ready
-        </Text>
-        <Text
-          style={{
-            marginTop: 8,
-            fontSize: 13,
-            fontFamily: 'Roobert',
-            color: isDark ? 'rgba(248,248,248,0.25)' : 'rgba(18,18,21,0.25)',
-            textAlign: 'center',
-            maxWidth: 280,
-          }}
-        >
-          Chat UI will be rendered here once SessionPage is updated to work without projectId.
-        </Text>
-        <Text
-          style={{
-            marginTop: 4,
-            fontSize: 12,
-            fontFamily: 'Roobert',
-            color: isDark ? 'rgba(248,248,248,0.15)' : 'rgba(18,18,21,0.15)',
-          }}
-        >
-          OpenCode: {opencodeSessionId ?? 'N/A'}
-        </Text>
-      </View>
+      <SessionPage
+        sessionId={sessionId}
+        onBack={() => router.replace('/sessions')}
+        onOpenDrawer={() => {}}
+        onOpenRightDrawer={() => {}}
+        isDrawerOpen={false}
+        isRightDrawerOpen={false}
+      />
     </View>
   );
 }
@@ -329,36 +258,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 40,
   },
-  mutedText: (isDark: boolean) => ({
+  mutedText: {
     fontSize: 16,
     fontFamily: 'Roobert-Medium',
-    color: isDark ? 'rgba(248,248,248,0.4)' : 'rgba(18,18,21,0.4)',
     marginTop: 16,
-  }),
-  button: (isDark: boolean) => ({
+  },
+  button: {
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
     marginTop: 20,
-  }),
-  buttonText: (isDark: boolean) => ({
+  },
+  buttonText: {
     fontSize: 14,
     fontFamily: 'Roobert-Medium',
-    color: isDark ? 'rgba(248,248,248,0.6)' : 'rgba(18,18,21,0.5)',
-  }),
-  pillButton: (isDark: boolean) => ({
+  },
+  pillButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-  }),
-  pillText: (isDark: boolean) => ({
+  },
+  pillText: {
     fontSize: 13,
     fontFamily: 'Roobert-Medium',
-    color: isDark ? 'rgba(248,248,248,0.6)' : 'rgba(18,18,21,0.5)',
-  }),
+  },
 });

@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { MessageSquare, Clock, ChevronRight, Plus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { Alert } from 'react-native';
 
 import { useSessions, useCreateSession, useDeleteSession } from '@/lib/sessions/hooks';
 import { useSessionStore } from '@/stores/session-store';
@@ -72,7 +73,6 @@ interface SessionRowProps {
 function SessionRow({ session, onPress, onDelete }: SessionRowProps) {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { colors } = useThemeColors();
 
   return (
     <TouchableOpacity
@@ -186,13 +186,15 @@ export default function SessionsScreen() {
       const result = await createMut.mutateAsync({ name: 'New Session' });
       setLastSessionId(result.session_id);
       router.push(`/sessions/${result.session_id}`);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to create session:', err);
+      const msg = err?.message || (typeof err === 'string' ? err : 'Could not create session. Check your connection and try again.');
+      Alert.alert('Failed to create session', msg);
     }
   }, [createMut, setLastSessionId, router]);
 
   const handleOpen = useCallback((sessionId: string) => {
-    haptics.light();
+    haptics.tap();
     setLastSessionId(sessionId);
     router.push(`/sessions/${sessionId}`);
   }, [setLastSessionId, router]);
@@ -218,8 +220,8 @@ export default function SessionsScreen() {
       {/* Header */}
       <PageHeader
         title="Sessions"
-        onBack={() => router.back()}
-        rightAction={
+        hideRightDrawerToggle
+        rightActions={
           <TouchableOpacity
             onPress={handleCreate}
             disabled={createMut.isPending}
