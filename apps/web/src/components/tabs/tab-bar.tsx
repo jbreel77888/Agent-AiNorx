@@ -109,7 +109,6 @@ function resolveRouteTab(pathname: string): Omit<Tab, 'openedAt'> | null {
     '/admin/feedback': { title: 'Feedback', type: 'page' },
     '/admin/notifications': { title: 'Notifications', type: 'page' },
     '/admin/sandbox-pool': { title: 'Sandbox Pool', type: 'page' },
-    '/admin/stress-test': { title: 'Stress Test', type: 'page' },
     '/changelog': { title: 'Changelog', type: 'page' },
   };
 

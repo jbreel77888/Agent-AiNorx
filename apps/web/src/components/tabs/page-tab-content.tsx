@@ -13,76 +13,72 @@ const DEPLOYMENTS_ENABLED = process.env.NEXT_PUBLIC_KORTIX_DEPLOYMENTS_ENABLED =
 // ---------------------------------------------------------------------------
 
 const DashboardContent = lazy(() =>
-	import('@/components/dashboard/dashboard-content').then((m) => ({
-		default: m.DashboardContent,
-	})),
+        import('@/components/dashboard/dashboard-content').then((m) => ({
+                default: m.DashboardContent,
+        })),
 );
 
 const SecretsPage = lazy(() =>
-	import('@/components/pages/settings/credentials/page'),
+        import('@/components/pages/settings/credentials/page'),
 );
 
 const ApiKeysPage = lazy(() =>
-	import('@/components/pages/settings/api-keys/page'),
+        import('@/components/pages/settings/api-keys/page'),
 );
 
 const ProvidersPage = lazy(() =>
-	import('@/components/pages/settings/providers/page'),
+        import('@/components/pages/settings/providers/page'),
 );
 
 const CreditsPage = lazy(() =>
-	import('@/components/pages/credits-explained/page'),
+        import('@/components/pages/credits-explained/page'),
 );
 
 const ChangelogPage = lazy(() =>
-	import('@/components/pages/changelog/page'),
+        import('@/components/pages/changelog/page'),
 );
 
 const WorkspacePage = lazy(() =>
-	import('@/components/pages/workspace/page'),
+        import('@/components/pages/workspace/page'),
 );
 
 const TriggersPage = lazy(() =>
-	import('@/components/scheduled-tasks/scheduled-tasks-page').then((m) => ({
-		default: m.ScheduledTasksPage,
-	})),
+        import('@/components/scheduled-tasks/scheduled-tasks-page').then((m) => ({
+                default: m.ScheduledTasksPage,
+        })),
 );
 
 
 const FilesPage = lazy(() =>
-	import('@/features/files/components/file-explorer-page').then((m) => ({
-		default: m.FileExplorerPage,
-	})),
+        import('@/features/files/components/file-explorer-page').then((m) => ({
+                default: m.FileExplorerPage,
+        })),
 );
 
 const BoardPage = lazy(() => import('@/components/pages/board/page'));
 
 const DeploymentsPage = lazy(() =>
-	import('@/components/deployments/deployments-page').then((m) => ({
-		default: m.DeploymentsPage,
-	})),
+        import('@/components/deployments/deployments-page').then((m) => ({
+                default: m.DeploymentsPage,
+        })),
 );
 
 // Admin pages (currently live under the dashboard route group)
-);
 const AdminFeedbackPage = lazy(() =>
-	import('@/components/pages/admin/feedback/page'),
+        import('@/components/pages/admin/feedback/page'),
 );
 const AdminNotificationsPage = lazy(() =>
-	import('@/components/pages/admin/notifications/page'),
+        import('@/components/pages/admin/notifications/page'),
 );
 const AdminSandboxPoolPage = lazy(() =>
-	import('@/components/pages/admin/sandbox-pool/page'),
-);
-const AdminStressTestPage = lazy(() =>
-	import('@/components/pages/admin/stress-test/page'),
+        import('@/components/pages/admin/sandbox-pool/page'),
 );
 const LegacyThreadPage = lazy(() =>
-	import('@/components/pages/legacy/page'),
+        import('@/components/pages/legacy/page'),
 );
 
 const TaskDetailPage = lazy(() =>
-	import('@/components/pages/tasks/page'),
+        import('@/components/pages/tasks/page'),
 );
 
 // ---------------------------------------------------------------------------
@@ -90,85 +86,84 @@ const TaskDetailPage = lazy(() =>
 // ---------------------------------------------------------------------------
 
 const PAGE_COMPONENTS: Record<string, ComponentType> = {
-	'/dashboard': DashboardContent,
-	'/configuration': WorkspacePage,
-	'/settings/credentials': SecretsPage,
-	'/settings/api-keys': ApiKeysPage,
-	'/settings/providers': ProvidersPage,
-	'/credits-explained': CreditsPage,
-	'/changelog': ChangelogPage,
-	'/workspace': WorkspacePage,
-	'/tools': WorkspacePage,
-	'/commands': WorkspacePage,
-	'/agents': WorkspacePage,
-	// Extra pages not in original ROUTE_MAP but exist as routes
-	'/scheduled-tasks': TriggersPage,
-	'/files': FilesPage,
-	'/board': BoardPage,
-	...(DEPLOYMENTS_ENABLED ? { '/deployments': DeploymentsPage } : {}),
-	// Admin
-	'/admin/feedback': AdminFeedbackPage,
-	'/admin/notifications': AdminNotificationsPage,
-	'/admin/sandbox-pool': AdminSandboxPoolPage,
-	'/admin/stress-test': AdminStressTestPage,
+        '/dashboard': DashboardContent,
+        '/configuration': WorkspacePage,
+        '/settings/credentials': SecretsPage,
+        '/settings/api-keys': ApiKeysPage,
+        '/settings/providers': ProvidersPage,
+        '/credits-explained': CreditsPage,
+        '/changelog': ChangelogPage,
+        '/workspace': WorkspacePage,
+        '/tools': WorkspacePage,
+        '/commands': WorkspacePage,
+        '/agents': WorkspacePage,
+        // Extra pages not in original ROUTE_MAP but exist as routes
+        '/scheduled-tasks': TriggersPage,
+        '/files': FilesPage,
+        '/board': BoardPage,
+        ...(DEPLOYMENTS_ENABLED ? { '/deployments': DeploymentsPage } : {}),
+        // Admin
+        '/admin/feedback': AdminFeedbackPage,
+        '/admin/notifications': AdminNotificationsPage,
+        '/admin/sandbox-pool': AdminSandboxPoolPage,
 };
 
 function resolveComponent(routeKey: string): { Component: ComponentType<any>; params?: Record<string, string> } | null {
-	const exact = PAGE_COMPONENTS[routeKey];
-	if (exact) return { Component: exact };
+        const exact = PAGE_COMPONENTS[routeKey];
+        if (exact) return { Component: exact };
 
-	const legacyMatch = routeKey.match(/^\/legacy\/(.+)$/);
-	if (legacyMatch) {
-		return { Component: LegacyThreadPage, params: { threadId: legacyMatch[1] } };
-	}
+        const legacyMatch = routeKey.match(/^\/legacy\/(.+)$/);
+        if (legacyMatch) {
+                return { Component: LegacyThreadPage, params: { threadId: legacyMatch[1] } };
+        }
 
-	const taskMatch = routeKey.match(/^\/tasks\/([^/]+)$/);
-	if (taskMatch) {
-		return { Component: TaskDetailPage, params: { id: decodeURIComponent(taskMatch[1]) } };
-	}
+        const taskMatch = routeKey.match(/^\/tasks\/([^/]+)$/);
+        if (taskMatch) {
+                return { Component: TaskDetailPage, params: { id: decodeURIComponent(taskMatch[1]) } };
+        }
 
-	return null;
+        return null;
 }
 
 export function PageTabContent({ href }: { href: string }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
-	const routeKey = useMemo(() => {
-		try {
-			return new URL(href, window.location.origin).pathname;
-		} catch {
-			return href.split('?')[0]?.split('#')[0] || href;
-		}
-	}, [href]);
+        const routeKey = useMemo(() => {
+                try {
+                        return new URL(href, window.location.origin).pathname;
+                } catch {
+                        return href.split('?')[0]?.split('#')[0] || href;
+                }
+        }, [href]);
 
-	const resolved = useMemo(() => resolveComponent(routeKey), [routeKey]);
+        const resolved = useMemo(() => resolveComponent(routeKey), [routeKey]);
 
-	// IMPORTANT: memoize the params Promise so we hand the SAME promise
-	// reference to `use()` across re-renders. A new Promise instance every
-	// render makes React.use() re-suspend → Suspense fallback flashes →
-	// the user sees a loader spinner every time the parent re-renders.
-	const paramsPromise = useMemo(
-		() => (resolved?.params ? Promise.resolve(resolved.params) : undefined),
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[resolved?.params && JSON.stringify(resolved.params)],
-	);
+        // IMPORTANT: memoize the params Promise so we hand the SAME promise
+        // reference to `use()` across re-renders. A new Promise instance every
+        // render makes React.use() re-suspend → Suspense fallback flashes →
+        // the user sees a loader spinner every time the parent re-renders.
+        const paramsPromise = useMemo(
+                () => (resolved?.params ? Promise.resolve(resolved.params) : undefined),
+                // eslint-disable-next-line react-hooks/exhaustive-deps
+                [resolved?.params && JSON.stringify(resolved.params)],
+        );
 
-	if (!resolved) {
-		return (
-			<div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">{tHardcodedUi.raw('componentsTabsPageTabContent.line164JsxTextPageNotFound')}</div>
-		);
-	}
+        if (!resolved) {
+                return (
+                        <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">{tHardcodedUi.raw('componentsTabsPageTabContent.line164JsxTextPageNotFound')}</div>
+                );
+        }
 
-	const { Component } = resolved;
+        const { Component } = resolved;
 
-	return (
-		<Suspense
-			fallback={
-				<div className="flex-1 flex items-center justify-center">
-					<KortixLoader size="medium" />
-				</div>
-			}
-		>
-			<Component params={paramsPromise} />
-		</Suspense>
-	);
+        return (
+                <Suspense
+                        fallback={
+                                <div className="flex-1 flex items-center justify-center">
+                                        <KortixLoader size="medium" />
+                                </div>
+                        }
+                >
+                        <Component params={paramsPromise} />
+                </Suspense>
+        );
 }

@@ -140,9 +140,6 @@ const STATIC_TAB_ROUTES: Record<string, TabDescriptor> = {
     href: '/settings/providers',
   },
   // Admin pages
-    title: 'Analytics',
-    type: 'page',
-  },
   '/admin/feedback': {
     id: 'page:/admin/feedback',
     title: 'Feedback',
@@ -160,12 +157,6 @@ const STATIC_TAB_ROUTES: Record<string, TabDescriptor> = {
     title: 'Sandbox Pool',
     type: 'page',
     href: '/admin/sandbox-pool',
-  },
-  '/admin/stress-test': {
-    id: 'page:/admin/stress-test',
-    title: 'Stress Test',
-    type: 'page',
-    href: '/admin/stress-test',
   },
 };
 
