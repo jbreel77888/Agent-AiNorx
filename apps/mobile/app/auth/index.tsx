@@ -163,7 +163,12 @@ export default function AuthScreen() {
         setErrorMessage(friendlySignInError(res?.error?.message));
         return;
       }
-      router.replace('/sessions');
+      // DON'T call router.replace('/sessions') here — the signIn function
+      // sets isAuthenticated=true synchronously, and the useEffect below
+      // (line 100-102) will automatically navigate to /sessions when it
+      // detects the auth state change. Calling router.replace here causes
+      // a race condition with AuthProtection.
+      // The useEffect: if (isAuthenticated) router.replace('/sessions');
     } catch (err: any) {
       log.error('Auth submit exception:', err);
       setErrorMessage(err?.message || 'An unexpected error occurred.');

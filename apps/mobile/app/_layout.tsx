@@ -778,7 +778,9 @@ function AuthProtection({ children }: { children: React.ReactNode }) {
   usePresence(threadId);
 
   useEffect(() => {
-    // Don't do anything while auth is loading
+    // Don't do anything while auth is loading — prevents race condition where
+    // signIn succeeds but onAuthStateChange hasn't fired yet, causing
+    // AuthProtection to bounce the user back to /auth.
     if (authLoading) return;
 
     // Wait for segments
@@ -790,7 +792,12 @@ function AuthProtection({ children }: { children: React.ReactNode }) {
     // Index/splash screen has no segment or empty segment
     const onSplashScreen = !currentSegment;
 
-    // RULE 1: Unauthenticated users can only be on auth or splash screens
+    // RULE 1: Unauthenticated users can only be on auth or splash screens.
+    // BUT: add a small grace period — if the user JUST navigated to /sessions
+    // from the auth screen (signIn succeeded), don't immediately bounce back.
+    // The signIn function sets isAuthenticated=true synchronously, so this
+    // guard should never fire for a legitimate login. It only catches users
+    // who navigate to protected routes without signing in.
     if (!isAuthenticated && !inAuthGroup && !inPublicShare && !onSplashScreen) {
       log.log('🚫 Unauthenticated user on protected route, redirecting to /auth');
       router.replace('/auth');

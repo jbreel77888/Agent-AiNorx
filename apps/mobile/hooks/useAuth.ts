@@ -306,11 +306,26 @@ export function useAuth() {
 
         log.log('✅ Sign in successful:', data.user?.email);
 
+        // CRITICAL: Set isAuthenticated IMMEDIATELY using the session returned
+        // by signInWithPassword. Don't wait for onAuthStateChange — there's a
+        // race condition where AuthProtection sees isAuthenticated=false after
+        // router.replace('/sessions') and bounces the user back to /auth.
+        if (data.session && data.user) {
+          setAuthState({
+            user: data.user,
+            session: data.session,
+            isLoading: false,
+            isAuthenticated: true,
+          });
+          setLoggerUserId(data.user.id);
+        } else {
+          setAuthState((prev) => ({ ...prev, isLoading: false }));
+        }
+
         // Immediately invalidate React Query cache to fetch fresh account state
         log.log('🔄 Invalidating cache to fetch fresh account state');
         queryClient.invalidateQueries({ queryKey: ['account-state'] });
 
-        setAuthState((prev) => ({ ...prev, isLoading: false }));
         return { success: true, data };
       } catch (err: any) {
         log.error('❌ Sign in exception:', err);
