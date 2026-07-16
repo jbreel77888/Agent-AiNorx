@@ -309,7 +309,17 @@ export async function middleware(request: NextRequest) {
       url.pathname = '/auth';
       const redirectTarget = `${pathname}${request.nextUrl.search || ''}`;
       url.searchParams.set('redirect', redirectTarget);
-      return NextResponse.redirect(url);
+      // CRITICAL: Carry over cookies from supabaseResponse to the redirect.
+      // getUser() may have refreshed the token and set new cookies on
+      // supabaseResponse. If we return a plain NextResponse.redirect(),
+      // those cookies are lost → the browser keeps a stale (revoked) refresh
+      // token → "Refresh Token Not Found" on the next request → logout loop.
+      const redirectResponse = NextResponse.redirect(url);
+      // Copy all Set-Cookie headers from supabaseResponse to the redirect
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+      });
+      return redirectResponse;
     }
 
     // ── Billing-related routes (activate-trial, etc.) ────────────────────
