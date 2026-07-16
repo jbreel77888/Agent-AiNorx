@@ -6,6 +6,7 @@ import { Plus, Trash2, Loader2, MoreHorizontal, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { createSession, deleteSession, listSessions, renameSession, type SimpleSession } from '@/lib/sessions-client';
 import { markSessionFresh } from '@/lib/fresh-sessions';
+import { useAuth } from '@/features/providers/auth-provider';
 import { cn } from '@/lib/utils';
 import { useParams } from 'next/navigation';
 import {
@@ -52,6 +53,7 @@ export function SimpleSessionList() {
   const router = useRouter();
   const params = useParams();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const activeSessionId = params?.sessionId as string | undefined;
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -63,6 +65,8 @@ export function SimpleSessionList() {
     queryKey: ['sessions'],
     queryFn: listSessions,
     refetchOnWindowFocus: true,
+    // Only fetch when user is authenticated — avoids 401 errors
+    enabled: !!user,
   });
 
   const createMutation = useMutation({

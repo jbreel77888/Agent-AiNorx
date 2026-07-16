@@ -374,7 +374,7 @@ function CollapsedIconButton({
 function SessionsFlyout({ collapsed }: { collapsed?: boolean }) {
   const tHardcodedUi = useTranslations('hardcodedUi');
   const pathname = normalizeAppPathname(usePathname());
-  const isSimpleMode = process.env.NEXT_PUBLIC_SESSION_MODE === 'simple';
+  const isSimpleMode = true;
   const { data: sessions } = useOpenCodeSessions();
   const permissions = useOpenCodePendingStore((s) => s.permissions);
   const questions = useOpenCodePendingStore((s) => s.questions);
@@ -763,7 +763,7 @@ function SidebarSections() {
   const { data: legacyData, isLoading: legacyLoading } = useLegacyThreads();
   const pathname = normalizeAppPathname(usePathname());
   const { isMobile, setOpenMobile } = useSidebar();
-  const isSimpleMode = process.env.NEXT_PUBLIC_SESSION_MODE === 'simple';
+  const isSimpleMode = true;
 
   // Legacy threads
   const migrateAll = useMigrateAllLegacyThreads();
@@ -1413,7 +1413,7 @@ export function SidebarLeft({ ...props }: React.ComponentProps<typeof Sidebar>) 
 
   // In simple mode, "New Session" creates a new Kortix session (new sandbox)
   // instead of just an OpenCode session inside the current sandbox.
-  const isSimpleMode = process.env.NEXT_PUBLIC_SESSION_MODE === 'simple';
+  const isSimpleMode = true;
 
   const handleNewSession = useCallback(async () => {
     posthog.capture('new_task_clicked', { source: 'new_session_button' });

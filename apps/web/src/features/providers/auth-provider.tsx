@@ -43,15 +43,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           // Validate the session against the auth server — catches stale
           // sessions after a DB reset where the JWT is valid but the user
           // no longer exists.
+          //
+          // IMPORTANT: Only sign out on EXPLICIT "user not found" errors.
+          // Transient network errors or token refresh failures should NOT
+          // trigger signOut — that causes a logout loop on page refresh.
           const { error: userError } = await supabase.auth.getUser();
           if (userError) {
-            console.warn('[AuthProvider] Stale session detected, signing out:', userError.message);
-            await supabase.auth.signOut();
-            setBootstrapAuthToken(null);
-            setCachedAuthToken(null);
-            setSession(null);
-            setUser(null);
-            return;
+            // Check if it's a real "user not found" vs a transient error
+            const msg = userError.message || '';
+            const isUserNotFound =
+              msg.includes('user_not_found') ||
+              msg.includes('User not found') ||
+              msg.includes('invalid token') ||
+              msg.includes('JWT invalid');
+            
+            if (isUserNotFound) {
+              console.warn('[AuthProvider] Stale session (user not found), signing out:', msg);
+              await supabase.auth.signOut();
+              setBootstrapAuthToken(null);
+              setCachedAuthToken(null);
+              setSession(null);
+              setUser(null);
+              return;
+            }
+            // Transient error — keep the session, it will refresh on next API call
+            console.warn('[AuthProvider] getUser() transient error, keeping session:', msg);
           }
         }
 
