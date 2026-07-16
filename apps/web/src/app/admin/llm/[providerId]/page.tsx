@@ -309,7 +309,7 @@ export default function ProviderDetailPage() {
                     className={cn(
                       'h-8 w-8',
                       active
-                        ? 'text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 dark:hover:text-emerald-300 hover:bg-emerald-500/10'
+                        ? 'text-emerald-600 hover:text-emerald-600 dark:text-emerald-400 dark:text-emerald-400 dark:hover:text-emerald-300 hover:bg-emerald-500/10'
                         : 'text-muted-foreground hover:text-foreground hover:bg-muted',
                     )}
                   >

@@ -22,7 +22,6 @@ import { SectionContainer, SectionHeader, StatPill, StatRow } from '../_componen
 const MAX_AUDIT_ROWS = 100;
 
 export default function AdminOpsPage() {
-  const tI18nHardcoded = useTranslations('hardcodedUi');
   const tHardcodedUi = useTranslations('hardcodedUi');
   const { data, isLoading, refetch, isFetching } = useOpsOverview();
 
@@ -209,7 +208,7 @@ export default function AdminOpsPage() {
         </Table>
         {data.audit.recent.length > MAX_AUDIT_ROWS && (
           <p className="text-muted-foreground mt-2 text-xs">
-            {tI18nHardcoded.raw('autoAppAdminOpsPageJsxTextShowingTheLatestecb396dc')}
+            {tHardcodedUi.raw('autoAppAdminOpsPageJsxTextShowingTheLatestecb396dc')}
             {MAX_AUDIT_ROWS} of {data.audit.recent.length} events.
           </p>
         )}

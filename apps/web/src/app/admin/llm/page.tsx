@@ -25,6 +25,15 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from '@/lib/toast';
 import {
   Search,
@@ -226,7 +235,7 @@ function ConnectProviderModal({
             )}>
               <div className="flex items-center gap-2">
                 {testResult.ok ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                 ) : (
                   <XCircle className="h-4 w-4 text-destructive" />
                 )}
@@ -334,7 +343,6 @@ function ConnectedProviderRow({
   }, [onToggle]);
 
   const handleDelete = useCallback(async () => {
-    if (!confirm(`Delete ${provider.displayName}? This removes all its models.`)) return;
     setDeleting(true);
     try { await onDelete(); } finally { setDeleting(false); }
   }, [provider.displayName, onDelete]);
@@ -383,7 +391,7 @@ function ConnectedProviderRow({
         className={cn(
           'h-8 w-8',
           provider.isActive
-            ? 'text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 dark:hover:text-emerald-300 hover:bg-emerald-500/10'
+            ? 'text-emerald-600 hover:text-emerald-600 dark:text-emerald-400 dark:text-emerald-400 dark:hover:text-emerald-300 hover:bg-emerald-500/10'
             : 'text-muted-foreground hover:text-foreground hover:bg-muted'
         )}
       >
@@ -412,6 +420,7 @@ export default function UnifiedLLMPage() {
   const [activeTab, setActiveTab] = useState<'available' | 'connected'>('available');
   const [search, setSearch] = useState('');
   const [connectProvider, setConnectProvider] = useState<{ key: string; catalog: ProviderCatalogEntry } | null>(null);
+  const [deleteProviderToDelete, setDeleteProviderToDelete] = useState<PlatformProvider | null>(null);
 
   const { data: catalog, isLoading: catalogLoading } = useQuery({
     queryKey: ['provider-catalog'],
@@ -533,7 +542,7 @@ export default function UnifiedLLMPage() {
           </div>
         ) : availableProviders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <CheckCircle2 className="h-8 w-8 text-emerald-500/50 mb-3" />
+            <CheckCircle2 className="h-8 w-8 text-emerald-600 dark:text-emerald-400/50 mb-3" />
             <p className="text-sm text-muted-foreground">
               {search ? 'No providers match your search.' : 'All providers are already connected!'}
             </p>
@@ -568,7 +577,7 @@ export default function UnifiedLLMPage() {
                 key={provider.providerId}
                 provider={provider}
                 onToggle={() => toggleMut.mutate(provider.providerId)}
-                onDelete={() => deleteMut.mutate(provider.providerId)}
+                onDelete={() => setDeleteProviderToDelete(provider)}
                 onManage={() => router.push(`/admin/llm/${provider.providerId}`)}
               />
             ))}
@@ -588,6 +597,32 @@ export default function UnifiedLLMPage() {
           }}
         />
       )}
+
+      {/* Delete confirmation */}
+      <AlertDialog open={deleteProviderToDelete !== null} onOpenChange={(o) => !o && setDeleteProviderToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteProviderToDelete?.displayName}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the provider and all its models. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deleteProviderToDelete) deleteMut.mutate(deleteProviderToDelete.providerId);
+                setDeleteProviderToDelete(null);
+              }}
+              disabled={deleteMut.isPending}
+            >
+              {deleteMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Delete
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SectionContainer>
   );
 }

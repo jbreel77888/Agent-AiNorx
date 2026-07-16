@@ -1,11 +1,12 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   listSkills, createSkill, updateSkill, deleteSkill,
   type PlatformSkill,
 } from '@/lib/platform-admin-client';
+import { SectionHeader, SectionContainer } from '../_components/section-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -16,14 +17,15 @@ import {
   AlertDialog, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { FileCode, Plus, Trash2, Pencil, Loader2 } from 'lucide-react';
+import { FileCode, Plus, Trash2, Pencil, Loader2, Search, AlertCircle } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
 export default function AdminSkillsPage() {
   const queryClient = useQueryClient();
-  const { data: skills, isLoading } = useQuery({ queryKey: ['admin-skills'], queryFn: listSkills });
+  const { data: skills, isLoading, isError } = useQuery({ queryKey: ['admin-skills'], queryFn: listSkills });
 
+  const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<PlatformSkill | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -48,33 +50,53 @@ export default function AdminSkillsPage() {
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
   });
 
+  const filteredSkills = useMemo(() => {
+    if (!skills) return [];
+    if (!search.trim()) return skills;
+    const q = search.toLowerCase();
+    return skills.filter((s) => s.slug.toLowerCase().includes(q));
+  }, [skills, search]);
+
   return (
-    <div className="flex h-full flex-col p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <FileCode className="h-6 w-6" /> Skills
-          </h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Manage skill definitions available to agents in sessions.
-          </p>
-        </div>
-        <Button onClick={() => setCreating(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Add Skill
-        </Button>
+    <SectionContainer>
+      <SectionHeader
+        icon={FileCode}
+        title="Skills"
+        description="Manage skill definitions available to agents in sessions."
+        actions={
+          <Button onClick={() => setCreating(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Add Skill
+          </Button>
+        }
+      />
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search skills..."
+          className="pl-9"
+        />
       </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : !skills || skills.length === 0 ? (
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <AlertCircle className="h-8 w-8 text-destructive/50 mb-3" />
+          <p className="text-sm text-muted-foreground">Failed to load skills. Please try refreshing the page.</p>
+        </div>
+      ) : !filteredSkills || filteredSkills.length === 0 ? (
         <div className="text-muted-foreground rounded-lg border border-dashed p-8 text-center text-sm">
-          No skills yet. Click "Add Skill" to create one.
+          {search ? 'No skills match your search.' : 'No skills yet. Click "Add Skill" to create one.'}
         </div>
       ) : (
         <div className="space-y-3">
-          {skills.map(skill => (
+          {filteredSkills.map(skill => (
             <div key={skill.skillId} className="border-border/60 bg-card/50 flex items-start gap-4 rounded-xl border p-4">
               <div className="bg-primary/10 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg">
                 <FileCode className="text-primary h-5 w-5" />
@@ -83,7 +105,7 @@ export default function AdminSkillsPage() {
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-semibold">{skill.name}</h3>
                   <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium',
-                    skill.isActive ? 'bg-emerald-500/15 text-emerald-500' : 'bg-muted text-muted-foreground')}>
+                    skill.isActive ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-muted text-muted-foreground')}>
                     {skill.isActive ? 'Active' : 'Inactive'}
                   </span>
                 </div>
@@ -130,7 +152,7 @@ export default function AdminSkillsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </SectionContainer>
   );
 }
 

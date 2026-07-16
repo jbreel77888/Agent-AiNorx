@@ -1,11 +1,12 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   listAgents, createAgent, updateAgent, deleteAgent, setDefaultAgent,
   type PlatformAgent,
 } from '@/lib/platform-admin-client';
+import { SectionHeader, SectionContainer } from '../_components/section-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -13,20 +14,21 @@ import {
   DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialog, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Bot, Plus, Trash2, Pencil, Star, Loader2 } from 'lucide-react';
+import { Bot, Plus, Trash2, Pencil, Star, Loader2, Search, AlertCircle } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
 export default function AdminAgentsPage() {
   const queryClient = useQueryClient();
-  const { data: agents, isLoading } = useQuery({
+  const { data: agents, isLoading, isError } = useQuery({
     queryKey: ['admin-agents'],
     queryFn: listAgents,
   });
 
+  const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<PlatformAgent | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -71,33 +73,55 @@ export default function AdminAgentsPage() {
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
   });
 
+  const filteredAgents = useMemo(() => {
+    if (!agents) return [];
+    if (!search.trim()) return agents;
+    const q = search.toLowerCase();
+    return agents.filter(
+      (a) => a.name.toLowerCase().includes(q) || (a.description ?? '').toLowerCase().includes(q),
+    );
+  }, [agents, search]);
+
   return (
-    <div className="flex h-full flex-col p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <Bot className="h-6 w-6" /> Agents
-          </h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Manage agent definitions. Changes apply to new sessions immediately.
-          </p>
-        </div>
-        <Button onClick={() => setCreating(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Add Agent
-        </Button>
+    <SectionContainer>
+      <SectionHeader
+        icon={Bot}
+        title="Agents"
+        description="Manage agent definitions. Changes apply to new sessions immediately."
+        actions={
+          <Button onClick={() => setCreating(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Add Agent
+          </Button>
+        }
+      />
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search agents..."
+          className="pl-9"
+        />
       </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : !agents || agents.length === 0 ? (
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <AlertCircle className="h-8 w-8 text-destructive/50 mb-3" />
+          <p className="text-sm text-muted-foreground">Failed to load agents. Please try refreshing the page.</p>
+        </div>
+      ) : !filteredAgents || filteredAgents.length === 0 ? (
         <div className="text-muted-foreground rounded-lg border border-dashed p-8 text-center text-sm">
-          No agents yet. Click "Add Agent" to create one.
+          {search ? 'No agents match your search.' : 'No agents yet. Click "Add Agent" to create one.'}
         </div>
       ) : (
         <div className="space-y-3">
-          {agents.map((agent) => (
+          {filteredAgents.map((agent) => (
             <div
               key={agent.agentId}
               className="border-border/60 bg-card/50 flex items-start gap-4 rounded-xl border p-4"
@@ -109,14 +133,14 @@ export default function AdminAgentsPage() {
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-semibold">{agent.name}</h3>
                   {agent.isDefault && (
-                    <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-500">
+                    <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
                       <Star className="h-3 w-3" /> Default
                     </span>
                   )}
                   <span className={cn(
                     'rounded-full px-2 py-0.5 text-xs font-medium',
                     agent.isActive
-                      ? 'bg-emerald-500/15 text-emerald-500'
+                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
                       : 'bg-muted text-muted-foreground',
                   )}>
                     {agent.isActive ? 'Active' : 'Inactive'}
@@ -202,7 +226,7 @@ export default function AdminAgentsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </SectionContainer>
   );
 }
 

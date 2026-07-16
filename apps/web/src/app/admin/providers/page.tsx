@@ -165,9 +165,9 @@ function StatStrip({
 }) {
   const tone = {
     default: '',
-    success: 'text-emerald-500',
-    danger: 'text-red-500',
-    warning: 'text-amber-500',
+    success: 'text-emerald-600 dark:text-emerald-400',
+    danger: 'text-red-600 dark:text-red-400',
+    warning: 'text-amber-600 dark:text-amber-400',
   };
   return (
     <div className="border-border/60 divide-border/60 grid grid-cols-2 divide-x divide-y overflow-hidden rounded-2xl border lg:grid-cols-4 lg:divide-y-0">
@@ -870,7 +870,7 @@ export default function ProvidersPage() {
                         <TableCell
                           className={cn(
                             'text-right tabular-nums',
-                            p.successRate != null && p.successRate < 90 && 'text-amber-500',
+                            p.successRate != null && p.successRate < 90 && 'text-amber-600 dark:text-amber-400',
                           )}
                         >
                           {p.successRate == null ? '—' : `${p.successRate}%`}
@@ -880,7 +880,7 @@ export default function ProvidersPage() {
                           {fmtMs(p.p95Ms)}
                         </TableCell>
                         <TableCell
-                          className={cn('text-right tabular-nums', p.error > 0 && 'text-red-500')}
+                          className={cn('text-right tabular-nums', p.error > 0 && 'text-red-600 dark:text-red-400')}
                         >
                           {p.error}
                         </TableCell>

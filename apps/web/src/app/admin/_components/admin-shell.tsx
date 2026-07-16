@@ -16,13 +16,13 @@ import { AdminSidebar } from './admin-sidebar';
 const BREADCRUMBS: Record<string, string> = {
   '/admin': 'Overview',
   '/admin/accounts': 'Accounts',
-  '/admin/analytics': 'Analytics',
-  '/admin/feedback': 'Feedback',
-  '/admin/notifications': 'Notifications',
+  '/admin/agents': 'Agents',
+  '/admin/billing': 'Billing Plans',
+  '/admin/llm': 'LLM Providers',
   '/admin/ops': 'Operations',
-  '/admin/providers': 'Providers',
-  '/admin/sandbox-pool': 'Sandbox pool',
-  '/admin/stress-test': 'Stress test',
+  '/admin/providers': 'Sandbox Providers',
+  '/admin/settings': 'Settings',
+  '/admin/skills': 'Skills',
   '/admin/utils': 'Maintenance',
 };
 
@@ -38,6 +38,7 @@ export function AdminShell({
   const pathname = usePathname();
   const label =
     BREADCRUMBS[pathname ?? ''] ??
+    (pathname?.startsWith('/admin/llm/') ? 'Provider Detail' : null) ??
     (pathname?.startsWith('/admin/') ? pathname.replace('/admin/', '') : 'Admin');
 
   if (isLoading) {

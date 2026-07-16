@@ -5,6 +5,7 @@ import {
   listPlans, createPlan, updatePlan, deletePlan,
   type PlatformPlan,
 } from '@/lib/platform-admin-client';
+import { SectionHeader, SectionContainer } from '../_components/section-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -15,15 +16,16 @@ import {
   AlertDialog, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { CreditCard, Plus, Trash2, Pencil, Loader2 } from 'lucide-react';
+import { CreditCard, Plus, Trash2, Pencil, Loader2, Search, AlertCircle } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 
 export default function AdminBillingPage() {
   const queryClient = useQueryClient();
-  const { data: plans, isLoading } = useQuery({ queryKey: ['admin-plans'], queryFn: listPlans });
+  const { data: plans, isLoading, isError } = useQuery({ queryKey: ['admin-plans'], queryFn: listPlans });
 
+  const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<PlatformPlan | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -48,29 +50,53 @@ export default function AdminBillingPage() {
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
   });
 
+  const filteredPlans = useMemo(() => {
+    if (!plans) return [];
+    if (!search.trim()) return plans;
+    const q = search.toLowerCase();
+    return plans.filter((p) => p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q));
+  }, [plans, search]);
+
   return (
-    <div className="flex h-full flex-col p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <CreditCard className="h-6 w-6" /> Billing Plans
-          </h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Manage subscription plans. Prices are monthly in USD.
-          </p>
-        </div>
-        <Button onClick={() => setCreating(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Add Plan
-        </Button>
+    <SectionContainer>
+      <SectionHeader
+        icon={CreditCard}
+        title="Billing Plans"
+        description="Manage subscription plans. Prices are monthly in USD."
+        actions={
+          <Button onClick={() => setCreating(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Add Plan
+          </Button>
+        }
+      />
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search plans..."
+          className="pl-9"
+        />
       </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <AlertCircle className="h-8 w-8 text-destructive/50 mb-3" />
+          <p className="text-sm text-muted-foreground">Failed to load billing plans. Please try refreshing the page.</p>
+        </div>
+      ) : !filteredPlans || filteredPlans.length === 0 ? (
+        <div className="text-muted-foreground rounded-lg border border-dashed p-8 text-center text-sm">
+          {search ? 'No plans match your search.' : 'No plans yet. Click "Add Plan" to create one.'}
+        </div>
       ) : (
         <div className="space-y-3">
-          {plans?.map((plan) => (
+          {filteredPlans.map((plan) => (
             <div key={plan.planId} className="border-border/60 bg-card/50 flex items-start gap-4 rounded-xl border p-4">
               <div className="bg-primary/10 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg">
                 <CreditCard className="text-primary h-5 w-5" />
@@ -79,7 +105,7 @@ export default function AdminBillingPage() {
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-semibold">{plan.name}</h3>
                   <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium',
-                    plan.isActive ? 'bg-emerald-500/15 text-emerald-500' : 'bg-muted text-muted-foreground')}>
+                    plan.isActive ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-muted text-muted-foreground')}>
                     {plan.isActive ? 'Active' : 'Inactive'}
                   </span>
                 </div>
@@ -129,7 +155,7 @@ export default function AdminBillingPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </SectionContainer>
   );
 }
 

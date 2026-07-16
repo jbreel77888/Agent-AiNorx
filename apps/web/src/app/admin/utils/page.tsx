@@ -119,7 +119,7 @@ export default function AdminUtilsPage() {
   return (
     <div className="flex flex-col h-screen">
       <div className="flex-none">
-        <div className="max-w-4xl mx-auto px-6 py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-primary/10">
               <Settings className="w-5 h-5 text-primary" />
@@ -140,7 +140,7 @@ export default function AdminUtilsPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-6 pb-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-6">
           {/* Current status summary */}
           {currentLevel !== "none" && config && (
             <div className="mb-6 rounded-2xl border bg-muted/30 p-4">
