@@ -70,7 +70,6 @@ interface Sbx {
   sandboxId: string;
   sessionId: string;
   accountId: string;
-  projectId: string;
   provider: string;
   externalId: string | null;
   status: string;

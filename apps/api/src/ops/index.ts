@@ -129,7 +129,6 @@ opsApp.openapi(
 
   const [
     accountCount,
-    projectCount,
     activeLegacySandboxes,
     sessionStatus,
     sandboxStatus,
@@ -141,7 +140,6 @@ opsApp.openapi(
     recentAudit,
   ] = await Promise.all([
     withTimeout(oneCount(sql`SELECT count(*)::int AS count FROM kortix.accounts`)),
-    withTimeout(oneCount(sql`SELECT count(*)::int AS count FROM kortix.projects`)),
     withTimeout(oneCount(sql`
       SELECT count(*)::int AS count
       FROM kortix.sandboxes
@@ -190,7 +188,6 @@ opsApp.openapi(
     },
     totals: {
       accounts: accountCount,
-      projects: projectCount,
       active_legacy_sandboxes: activeLegacySandboxes,
     },
     sessions: {

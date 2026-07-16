@@ -140,11 +140,8 @@ const STATIC_TAB_ROUTES: Record<string, TabDescriptor> = {
     href: '/settings/providers',
   },
   // Admin pages
-  '/admin/analytics': {
-    id: 'page:/admin/analytics',
     title: 'Analytics',
     type: 'page',
-    href: '/admin/analytics',
   },
   '/admin/feedback': {
     id: 'page:/admin/feedback',

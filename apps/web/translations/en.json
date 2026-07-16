@@ -2553,7 +2553,7 @@
     "appAdminComponentsAdminShell": {
       "line55JsxTextAdminAccessRequired": "Admin access required",
       "line57JsxTextYourAccountDoesnAposTHaveAdminPermissions": "Your account doesn't have admin permissions. Return to the app and contact a workspace admin if this looks wrong.",
-      "line65JsxTextBackToProjects": "Back to projects"
+      "line65JsxTextBackToProjects": "Back to Sessions"
     },
     "appAdminComponentsAdminSidebar": {
       "line86JsxTextKortixConsole": "VaelonX console",
@@ -7127,7 +7127,7 @@
     "autoAppAdminProvidersPageJsxAttrAriaLabelEnableWarm7db63fc6": "Enable warm pool",
     "autoAppAdminProvidersPageJsxTextDefaultReadyCounte4299c59": "Default ready-count",
     "autoAppAdminProvidersPageJsxTextWarmForkSessionsf726dcdc": "Warm-fork sessions",
-    "autoAppAdminProvidersPageJsxTextPerProjectWarmbd60f907": "Per-project warm snapshots: sessions fork from a pre-baked template (repo + opencode already warm) instead of cold-cloning, cutting session start from ~40s to ~2s. Pure upside — a failed bake degrades to a cold clone. On by default; off = every session cold-clones its repo.",
+    "autoAppAdminProvidersPageJsxTextPerProjectWarmbd60f907": "Warm snapshots: sessions fork from a pre-baked template (sandbox image + opencode already warm) instead of cold-booting, cutting session start from ~40s to ~2s. Pure upside — a failed bake degrades to a cold boot. On by default; off = every session cold-boots from scratch.",
     "autoAppAdminProvidersPageJsxAttrAriaLabelEnableWarmForkb78de78a": "Enable warm-fork sessions",
     "autoAppAdminProvidersPageJsxTextSaveWarmFork8eeda5df": "Save warm-fork",
     "autoAppAdminProvidersPageJsxTextSaveWarmPool72b9a69a": "Save warm pool",

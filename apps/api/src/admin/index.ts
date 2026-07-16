@@ -500,7 +500,7 @@ adminApp.openapi(
   },
 );
 
-// PUT warm-snapshot toggle ({ enabled }). OFF = every session cold-clones its repo.
+// PUT warm-snapshot toggle ({ enabled }). OFF = every session cold-boots from scratch.
 adminApp.openapi(
   createRoute({
     method: 'put', path: '/api/warm-snapshot-config', tags: ['admin'],
@@ -578,7 +578,7 @@ adminApp.openapi(
     if (st) conds.push(eq(sessionSandboxes.status, st as any));
     const rows = await db.select({
       sandboxId: sessionSandboxes.sandboxId, sessionId: sessionSandboxes.sessionId,
-      accountId: sessionSandboxes.accountId, projectId: sessionSandboxes.projectId,
+      accountId: sessionSandboxes.accountId,
       provider: sessionSandboxes.provider, externalId: sessionSandboxes.externalId,
       status: sessionSandboxes.status, lastUsedAt: sessionSandboxes.lastUsedAt,
     }).from(sessionSandboxes).where(conds.length ? and(...conds) : undefined)
@@ -604,51 +604,51 @@ adminApp.openapi(
     const target = String(body.targetProvider || '');
     const { config } = await import('../config');
     if (!(config.ALLOWED_SANDBOX_PROVIDERS as readonly string[]).includes(target)) return c.json({ error: 'invalid targetProvider' }, 400);
+
+    // Session-only mode: migrate without project/git dependencies.
+    // The old migrate flow required a project + git commit-push + allocateRuntimeOnOpen.
+    // In session-only mode, we simply: terminate old sandbox → create new one on target.
     const { db } = await import('../shared/db');
-    const { sessionSandboxes, projectSessions, projects } = await import('@kortix/db');
+    const { sessionSandboxes, projectSessions } = await import('@kortix/db');
     const { eq } = await import('drizzle-orm');
     const [sb] = await db.select().from(sessionSandboxes).where(eq(sessionSandboxes.sessionId, sessionId)).limit(1);
     if (!sb) return c.json({ error: 'sandbox not found' }, 404);
     if (sb.provider === target) return c.json({ error: 'already on target provider' }, 400);
+
     const [sess] = await db.select().from(projectSessions).where(eq(projectSessions.sessionId, sessionId)).limit(1);
     if (!sess) return c.json({ error: 'session not found' }, 404);
-    if (!sess.projectId) return c.json({ error: 'session has no project' }, 400);
-    const [proj] = await db.select().from(projects).where(eq(projects.projectId, sess.projectId)).limit(1);
-    if (!proj) return c.json({ error: 'project not found' }, 404);
-    const oldProvider = sb.provider; const oldExternalId = sb.externalId;
+
+    const oldProvider = sb.provider;
+    const oldExternalId = sb.externalId;
     const { getProvider } = await import('../platform/providers');
-    // Data migration is via the session git branch (KORTIX_BRANCH_NAME=sessionId):
-    // the target re-clones it, so only *committed* work crosses over. Flush the
-    // old box's working tree to the branch first (best-effort, only while it's
-    // still active) so uncommitted changes survive the move. Same daemon contract
-    // as the /commit-push route — resolveEndpoint injects the service Bearer.
-    if (oldExternalId && sb.status === 'active') {
-      try {
-        const ep = await getProvider(oldProvider as any).resolveEndpoint(oldExternalId);
-        const res = await fetch(`${ep.url.replace(/\/$/, '')}/kortix/git/commit-push`, {
-          method: 'POST', headers: ep.headers,
-          body: JSON.stringify({ message: `chore: flush before migrate ${oldProvider}→${target}` }),
-          signal: AbortSignal.timeout(30_000),
-        });
-        console.log(`[migrate] flush ${sessionId} ${oldProvider}: ${res.status}`);
-      } catch (e: any) {
-        console.warn('[migrate] pre-teardown commit-push failed (committed work still migrates):', e?.message ?? e);
-      }
-    }
+
+    // Terminate old sandbox
     if (oldExternalId) {
       getProvider(oldProvider as any).remove(oldExternalId).catch((e: any) => console.warn('[migrate] old remove failed:', e?.message ?? e));
     }
+
+    // Delete old sandbox row
     await db.delete(sessionSandboxes).where(eq(sessionSandboxes.sessionId, sessionId));
-    const { allocateRuntimeOnOpen } = await import('../projects/routes/shared');
-    await allocateRuntimeOnOpen(
-      { row: proj as any, userId: sess.createdBy ?? '' },
-      { sandboxProvider: target, baseRef: sess.baseRef, agentName: sess.agentName },
-      sess.projectId, sessionId,
-    );
+
+    // Re-provision on target provider using the session-only-mode path
+    const { provisionSessionSandbox } = await import('../platform/services/session-sandbox');
+    await provisionSessionSandbox({
+      sandboxId: sessionId as string,
+      accountId: sess.accountId,
+      projectId: null, // session-only mode — no project
+      userId: sess.createdBy ?? '',
+      provider: target as any,
+      agentName: sess.agentName ?? 'default',
+      gitProject: { repoUrl: '', defaultBranch: 'main', manifestPath: '', metadata: {} } as any,
+    }).catch((e: any) => {
+      console.error('[migrate] provisionSessionSandbox failed:', e?.message ?? e);
+      throw e;
+    });
+
     const { recordProviderEvent } = await import('../platform/services/provider-events');
     recordProviderEvent({
       provider: target, kind: 'migrate', outcome: 'ok', fromProvider: oldProvider,
-      sessionId, accountId: (proj as any).accountId ?? null,
+      sessionId, accountId: sess.accountId ?? null,
     });
     return c.json({ ok: true, sessionId, from: oldProvider, to: target });
   },

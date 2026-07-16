@@ -61,7 +61,7 @@ export function AdminShell({
             <p className="text-sm text-muted-foreground">{tHardcodedUi.raw('appAdminComponentsAdminShell.line57JsxTextYourAccountDoesnAposTHaveAdminPermissions')}</p>
           </div>
           <Link
-            href="/projects"
+            href="/sessions"
             className="inline-flex text-sm font-medium text-foreground underline-offset-4 hover:underline"
           >{tHardcodedUi.raw('appAdminComponentsAdminShell.line65JsxTextBackToProjects')}</Link>
         </div>
