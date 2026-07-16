@@ -275,6 +275,8 @@ export interface ProviderCatalogEntry {
   displayName: string;
   baseUrl: string;
   docs: string;
+  envVar?: string;
+  category?: 'major' | 'fast-inference' | 'specialized' | 'aggregator' | 'cloud' | 'chinese' | 'other';
 }
 
 export async function getProviderCatalog(): Promise<Record<string, ProviderCatalogEntry>> {
@@ -309,4 +311,42 @@ export async function importModels(models: Array<{ id: string; name: string }>, 
     models, providerKey,
   }, { headers });
   return res.data;
+}
+
+// ─── New: Toggle + Refresh + Get by ID ───────────────────────────────────────
+
+export async function toggleProvider(providerId: string): Promise<PlatformProvider> {
+  const headers = await authHeaders();
+  const res = await backendApi.post(`/admin/platform/providers/${providerId}/toggle`, {}, { headers });
+  return res.data.provider;
+}
+
+export async function toggleModel(modelId: string): Promise<PlatformModel> {
+  const headers = await authHeaders();
+  const res = await backendApi.post(`/admin/platform/models/${modelId}/toggle`, {}, { headers });
+  return res.data.model;
+}
+
+export async function getProvider(providerId: string): Promise<PlatformProvider> {
+  const headers = await authHeaders();
+  const res = await backendApi.get(`/admin/platform/providers/${providerId}`, { headers });
+  return res.data.provider;
+}
+
+export async function refreshProviderModels(providerId: string): Promise<{
+  ok: boolean;
+  total: number;
+  imported: number;
+  updated: number;
+  skipped: number;
+}> {
+  const headers = await authHeaders();
+  const res = await backendApi.post(`/admin/platform/providers/${providerId}/refresh-models`, {}, { headers });
+  return res.data;
+}
+
+export async function listModelsByProvider(providerKey: string): Promise<PlatformModel[]> {
+  const headers = await authHeaders();
+  const res = await backendApi.get(`/admin/platform/models/by-provider/${providerKey}`, { headers });
+  return res.data?.models ?? [];
 }

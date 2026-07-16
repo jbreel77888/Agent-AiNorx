@@ -64,14 +64,9 @@ export function AdminSidebar() {
       icon: FileCode,
     },
     {
-      href: '/admin/llm-providers',
+      href: '/admin/llm',
       label: 'LLM Providers',
       icon: Sparkles,
-    },
-    {
-      href: '/admin/models',
-      label: 'Models',
-      icon: Cpu,
     },
     {
       href: '/admin/providers',
