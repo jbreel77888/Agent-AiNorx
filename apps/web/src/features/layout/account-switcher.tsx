@@ -137,11 +137,28 @@ export function AccountSwitcher({
       </SidebarMenuButton>
     );
 
-  if (accountsQuery.isLoading && !activeAccount) {
+  // Show skeleton only during the INITIAL load (no data yet, still fetching).
+  // Once we have data (even empty array), or if the query errored, show the
+  // real UI so the sidebar doesn't get stuck in loading forever.
+  if (accountsQuery.isLoading && !accountsQuery.data && !activeAccount) {
     return variant === 'header' ? (
       <Skeleton className={cn('h-8 w-36 rounded-md', className)} />
     ) : (
       <Skeleton className="h-9 w-full rounded-lg" />
+    );
+  }
+
+  // If the query errored or returned no accounts, show a minimal fallback
+  // instead of an infinite skeleton.
+  if (accountsQuery.isError || (!accountsQuery.data && !accountsQuery.isLoading)) {
+    return variant === 'header' ? (
+      <div className={cn('flex h-8 items-center', className)}>
+        <span className="text-muted-foreground text-xs">No account</span>
+      </div>
+    ) : (
+      <div className="flex h-9 items-center px-3">
+        <span className="text-muted-foreground text-xs">No account</span>
+      </div>
     );
   }
 

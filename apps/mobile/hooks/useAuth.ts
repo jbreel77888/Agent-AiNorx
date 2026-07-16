@@ -207,18 +207,14 @@ export function useAuth() {
           log.log('🔄 Auth state changed:', _event);
         }
 
-        // Guard: Ignore spurious SIGNED_OUT events that fire right after
-        // SIGNED_IN (known Supabase RN SDK behavior). If we just signed in
-        // successfully, don't let a null session from a transitional event
-        // wipe the auth state — the session is persisted in AsyncStorage and
-        // will be rehydrated on the next getSession() call.
-        if (_event === 'SIGNED_OUT' && !session) {
-          // Check if we still have a valid session in storage before clearing
-          const { data: { session: storedSession } } = await supabase.auth.getSession();
-          if (storedSession) {
-            log.log('🔄 Ignoring spurious SIGNED_OUT — session still in storage');
-            return;
-          }
+        // Guard: Ignore INITIAL_SESSION events that fire with null session
+        // right after signIn — this is a known Supabase RN SDK quirk where
+        // onAuthStateChange fires INITIAL_SESSION with null before the real
+        // SIGNED_IN. Only trust SIGNED_IN/SIGNED_OUT/TOKEN_REFRESHED events
+        // for state changes; ignore INITIAL_SESSION when it has no session.
+        if (_event === 'INITIAL_SESSION' && !session) {
+          log.log('🔄 Ignoring INITIAL_SESSION with no session');
+          return;
         }
 
         // Login-only gate for direct mobile OAuth sign-up only. Password and magic
