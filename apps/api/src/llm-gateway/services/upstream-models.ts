@@ -1,28 +1,11 @@
 /**
- * Upstream Models — returns the model catalog from the DB
- * instead of fetching from OpenRouter.
- *
- * Returns an OpenAI-compatible /models response so opencode
- * can populate its model picker.
- *
- * IMPORTANT: Each model entry includes `context_length`, `reasoning`,
- * `tool_call`, `attachment`, and `temperature` fields so the daemon
- * can display accurate context limits and capabilities in the UI
- * without relying on its hardcoded MINIMAL_FALLBACK_MODELS table.
+ * Upstream Models — returns the model catalog from the DB with accurate
+ * context limits and capabilities for each model.
  */
 import { db } from '../../shared/db';
 import { platformModels } from '@kortix/db';
 import { eq } from 'drizzle-orm';
 
-/**
- * Known model limits and capabilities, indexed by bare model id
- * (the tail after the last "/"), so a model offered under any provider
- * prefix (e.g. "z-ai/glm-5.2" on NVIDIA or "glm-5.2" on Zen) resolves
- * to the same limits.
- *
- * Sources: official provider docs as of 2026-07. Update when providers
- * publish new limits.
- */
 interface ModelSpec {
   context_length?: number;
   output?: number;
@@ -53,10 +36,10 @@ const MODEL_CATALOG: Record<string, ModelSpec> = {
   'gemini-3.5-flash': { context_length: 1_048_576, output: 65_536, reasoning: true, tool_call: true, attachment: true, temperature: true },
   'gemini-3.1-pro-preview': { context_length: 1_048_576, output: 65_536, reasoning: true, tool_call: true, attachment: true, temperature: true },
 
-  // DeepSeek
-  'deepseek-v4-flash': { context_length: 128_000, output: 8_000, reasoning: true, tool_call: true, attachment: true, temperature: true },
-  'deepseek-v4-flash-free': { context_length: 128_000, output: 8_000, reasoning: true, tool_call: true, attachment: true, temperature: true },
-  'deepseek-v4-pro': { context_length: 128_000, output: 8_000, reasoning: true, tool_call: true, attachment: true, temperature: true },
+  // DeepSeek (OpenCode Zen reports 1M context for v4-flash-free)
+  'deepseek-v4-flash': { context_length: 1_000_000, output: 64_000, reasoning: true, tool_call: true, attachment: true, temperature: true },
+  'deepseek-v4-flash-free': { context_length: 1_000_000, output: 64_000, reasoning: true, tool_call: true, attachment: true, temperature: true },
+  'deepseek-v4-pro': { context_length: 1_000_000, output: 64_000, reasoning: true, tool_call: true, attachment: true, temperature: true },
 
   // MiniMax
   'minimax-m3': { context_length: 1_048_576, output: 64_000, reasoning: true, tool_call: true, attachment: true, temperature: true },
@@ -95,28 +78,15 @@ const MODEL_CATALOG: Record<string, ModelSpec> = {
   'fuyu-8b': { context_length: 16_384, output: 4_096, reasoning: false, tool_call: false, attachment: true, temperature: true },
 };
 
-/**
- * Conservative default for models not in the catalog.
- * Better to compact a little early than to never compact and get stuck.
- */
 const DEFAULT_LIMITS: ModelSpec = { context_length: 128_000, output: 8_000 };
 
-/**
- * Look up model limits by ID. Tries exact match first, then bare id
- * (without provider prefix). Falls back to DEFAULT_LIMITS.
- */
 function lookupModelLimits(modelId: string): ModelSpec {
   if (!modelId) return DEFAULT_LIMITS;
-  // Exact match
   if (MODEL_CATALOG[modelId]) return MODEL_CATALOG[modelId];
-  // Bare id match (strip provider prefix: "z-ai/glm-5.2" → "glm-5.2")
   const bareId = modelId.includes('/') ? modelId.split('/').pop()! : modelId;
   if (MODEL_CATALOG[bareId]) return MODEL_CATALOG[bareId];
-  // Try without "us." prefix (NVIDIA sometimes prefixes: "us.anthropic.claude-sonnet-4-6")
   const withoutUs = bareId.replace(/^us\./, '');
   if (MODEL_CATALOG[withoutUs]) return MODEL_CATALOG[withoutUs];
-  // Try replacing dashes with dots in version numbers
-  // "claude-sonnet-4-6" → "claude-sonnet-4.6"
   const dotted = bareId.replace(/-(\d+)$/, '.$1');
   if (MODEL_CATALOG[dotted]) return MODEL_CATALOG[dotted];
   return DEFAULT_LIMITS;
@@ -135,10 +105,6 @@ export async function listUpstreamModels(): Promise<Response> {
       .from(platformModels)
       .where(eq(platformModels.isActive, true));
 
-    // OpenAI-compatible format with extended fields for limits + capabilities.
-    // The daemon reads these to populate OpenCode's model catalog with
-    // accurate context windows, reasoning flags, and tool support —
-    // without relying on its hardcoded MINIMAL_FALLBACK_MODELS table.
     const data = models.map((m) => {
       const id = m.upstreamModelId || m.modelKey;
       const limits = lookupModelLimits(id);
@@ -148,8 +114,6 @@ export async function listUpstreamModels(): Promise<Response> {
         object: 'model' as const,
         created: 0,
         owned_by: 'vaelorx',
-        // Extended fields (OpenAI-compatible, extra fields are ignored by
-        // clients that don't understand them):
         context_length: limits.context_length,
         max_tokens: limits.output,
         reasoning: limits.reasoning ?? false,

@@ -24,30 +24,36 @@ const REASONING_CAPABLE_MODELS = new Set<string>([
   'google/gemini-3.1-pro-preview',
   'deepseek/deepseek-v4-flash',
   'deepseek/deepseek-v4-pro',
+  'deepseek-v4-flash-free',
+  'deepseek-v4-flash',
+  'deepseek-v4-pro',
   'minimax/minimax-m3',
   'moonshotai/kimi-k2.6',
   'z-ai/glm-5.1',
   'z-ai/glm-5.2',
-  'x-ai/grok-4.3',
-  // Bare-id variants (without provider prefix) — same logical models
-  'claude-opus-4.8',
-  'claude-sonnet-4.6',
-  'gpt-5.5',
-  'gemini-3.5-flash',
-  'gemini-3.1-pro-preview',
-  'deepseek-v4-flash',
-  'deepseek-v4-pro',
-  'minimax-m3',
-  'kimi-k2.6',
   'glm-5.1',
   'glm-5.2',
+  'glm-5',
+  'x-ai/grok-4.3',
+  'claude-opus-4.8',
+  'claude-sonnet-4.6',
+  'claude-sonnet-5',
+  'claude-sonnet-4.5',
+  'claude-sonnet-4',
+  'claude-opus-4.7',
+  'claude-opus-4.6',
+  'claude-opus-4.5',
+  'claude-opus-4.1',
+  'claude-fable-5',
+  'gpt-5.5',
+  'gpt-5.1',
+  'gemini-3.5-flash',
+  'gemini-3.1-pro-preview',
+  'minimax-m3',
+  'kimi-k2.6',
   'grok-4.3',
 ]);
 
-// Models that are KNOWN to NOT support reasoning. This is a denylist
-// because some providers (NVIDIA) list models like meta/llama-3.1-8b-
-// instruct which definitely don't support reasoning, but OpenCode's
-// internal catalog may still send `reasoning` for them.
 const NON_REASONING_MODELS = new Set<string>([
   'meta/llama-3.1-8b-instruct',
   'meta/llama-3.2-1b-instruct',
@@ -58,7 +64,6 @@ const NON_REASONING_MODELS = new Set<string>([
   'adept/fuyu-8b',
   'poolside/laguna-xs-2.1',
   'nvidia/nemotron-3-embed-1b',
-  // Bare-id variants
   'llama-3.1-8b-instruct',
   'llama-3.2-1b-instruct',
   'llama-3.2-3b-instruct',
@@ -68,31 +73,16 @@ const NON_REASONING_MODELS = new Set<string>([
 
 function supportsReasoning(model: string): boolean {
   if (!model) return false;
-  // Strip vaelorx/ prefix (the daemon sends "vaelorx/<model>")
   const stripped = model.replace(/^vaelorx\//, '').replace(/^openrouter\//, '');
-  // Check denylist first — if explicitly non-reasoning, return false
   if (NON_REASONING_MODELS.has(model) || NON_REASONING_MODELS.has(stripped)) return false;
-  // Check allowlist
   if (REASONING_CAPABLE_MODELS.has(model) || REASONING_CAPABLE_MODELS.has(stripped)) return true;
-  // Default: don't add reasoning for unknown models (safer — avoids
-  // "Unsupported parameter" errors on providers that reject it)
   return false;
 }
 
 /**
  * Aggregate an OpenAI-style SSE chat-completion stream into a single JSON
  * chat-completion object. Used when the caller asked for stream:false but
- * we forced stream:true on the upstream call (to avoid Gateway Timeout on
- * slow reasoning models).
- *
- * SSE format (one event per line, terminated by \n\n):
- *   data: {"id":"...","choices":[{"delta":{"content":"hello"}}],"usage":null}
- *   data: {"id":"...","choices":[{"delta":{"content":" world"}}],"usage":null}
- *   data: {"id":"...","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":2}}
- *   data: [DONE]
- *
- * Output: a single object with merged content, total usage, and the last
- * finish_reason / role seen.
+ * we forced stream:true upstream (to avoid Gateway Timeout on slow models).
  */
 function aggregateSseToJson(sseBuffer: string): Record<string, unknown> {
   const lines = sseBuffer.split('\n');
@@ -241,12 +231,6 @@ export function createChatCompletionsRoute(
       body.reasoning = { effort: 'medium' };
     } else if (hasReasoning && !supportsReasoning(modelId)) {
       // STRIP reasoning params for models that don't support them.
-      // OpenCode may send `reasoning: {effort: "medium"}` based on its
-      // internal catalog, but non-reasoning models (e.g. meta/llama-3.1-
-      // 8b-instruct, deepseek-v4-flash-free) will reject the request
-      // with "Validation: Unsupported parameter(s): `reasoning`".
-      // Removing these fields ensures the request is accepted by every
-      // provider regardless of what OpenCode thinks the model supports.
       delete body.reasoning;
       delete body.reasoning_effort;
       delete body.thinking;
@@ -312,9 +296,8 @@ export function createChatCompletionsRoute(
 
     if (!streaming) {
       // The upstream is always called with stream:true (see callUpstream in
-      // upstream-client.ts — this avoids Cloudflare Gateway Timeout on
-      // slow reasoning models). When the caller asked for non-streaming,
-      // we aggregate the SSE stream into a single JSON completion object.
+      // upstream-client.ts). When the caller asked for non-streaming,
+      // aggregate the SSE stream into a single JSON completion object.
       const reader = upstream.body!.getReader();
       const decoder = new TextDecoder();
       let sseBuffer = '';
@@ -329,8 +312,6 @@ export function createChatCompletionsRoute(
         return c.json({ error: 'Upstream stream interrupted' }, 502);
       }
 
-      // Parse the SSE buffer into a single chat completion object.
-      // Each `data: {...}` line is a chunk with delta.content; we merge them.
       const aggregated = aggregateSseToJson(sseBuffer);
       const usage = extractUsageFromJson(aggregated);
       void finalize(usage, provider?.modelKey);

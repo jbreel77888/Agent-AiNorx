@@ -7,7 +7,6 @@ import { isRepoMaterialized } from './git'
 import { createHealthRouter, type SandboxBootState } from './routes/health'
 import { createRefreshRouter } from './routes/refresh'
 import { createAbortRouter } from './routes/abort'
-import { createModelUpdateRouter } from './routes/model-update'
 import { createEnvRouter } from './routes/env'
 import { createGitRouter } from './routes/git'
 import { createPortProxyRouter } from './routes/port-proxy'
@@ -58,9 +57,6 @@ export function buildOpencodeApp(
   kortixRouter.route('/refresh/', refreshRouter)
   kortixRouter.route('/abort', abortRouter)
   kortixRouter.route('/abort/', abortRouter)
-  const modelUpdateRouter = createModelUpdateRouter(cfg, opencode)
-  kortixRouter.route('/model', modelUpdateRouter)
-  kortixRouter.route('/model/', modelUpdateRouter)
   kortixRouter.route('/git', gitRouter)
   kortixRouter.route('/git/', gitRouter)
   if (envRouter) {
@@ -121,6 +117,71 @@ export function buildOpencodeApp(
   // formerly forwarded to OpenCode.
   app.route('/find', createFindRouter(cfg))
 
+  // ─── Dynamic default model cache ───────────────────────────────────────
+  // The admin can change the default model at any time. The daemon's local
+  // KORTIX_DEFAULT_MODEL env var is set at boot and may be stale. To always
+  // display the CURRENT default model in OpenCode's UI, we fetch it from the
+  // gateway's /models endpoint (which returns is_default:true on the admin's
+  // choice) and cache it for 30 seconds. This is a tiny GET with no body, so
+  // the latency cost is negligible.
+  let cachedDefaultModel: { model: string | null; fetchedAt: number } = {
+    model: null,
+    fetchedAt: 0,
+  };
+  const DEFAULT_MODEL_CACHE_MS = 30_000; // 30s
+
+  async function fetchCurrentDefaultModel(): Promise<string | null> {
+    const now = Date.now();
+    if (
+      cachedDefaultModel.model &&
+      now - cachedDefaultModel.fetchedAt < DEFAULT_MODEL_CACHE_MS
+    ) {
+      return cachedDefaultModel.model;
+    }
+    const llmBaseUrl = process.env.KORTIX_LLM_BASE_URL?.trim();
+    const llmApiKey = process.env.KORTIX_LLM_API_KEY?.trim();
+    if (!llmBaseUrl || !llmApiKey) {
+      // No gateway configured — fall back to env var
+      return process.env.KORTIX_DEFAULT_MODEL?.trim() || null;
+    }
+    try {
+      const url = `${llmBaseUrl.replace(/\/+$/, '')}/models`;
+      const res = await fetch(url, {
+        headers: {
+          authorization: `Bearer ${llmApiKey}`,
+          'user-agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          accept: 'application/json',
+        },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const body = (await res.json()) as {
+        data?: Array<{ id?: string; is_default?: boolean }>;
+      };
+      if (Array.isArray(body.data)) {
+        // Find the model with is_default=true
+        const defaultEntry = body.data.find((m) => m?.is_default === true);
+        if (defaultEntry?.id) {
+          cachedDefaultModel = { model: defaultEntry.id, fetchedAt: now };
+          return defaultEntry.id;
+        }
+      }
+      // No is_default flag in the response — fall back to env var
+      const envModel = process.env.KORTIX_DEFAULT_MODEL?.trim() || null;
+      cachedDefaultModel = { model: envModel, fetchedAt: now };
+      return envModel;
+    } catch (err) {
+      logger.warn(`[proxy] failed to fetch default model from gateway: ${(err as Error).message}`);
+      // Fall back to env var (may be stale, but better than nothing)
+      const envModel = process.env.KORTIX_DEFAULT_MODEL?.trim() || null;
+      cachedDefaultModel = { model: envModel, fetchedAt: now };
+      return envModel;
+    }
+  }
+
   // Reverse-proxy catch-all → OpenCode. Stream both directions so SSE works.
   // If opencode hasn't bound its port yet (state !== 'ok') we 503 instead of
   // attempting a fetch — surfaces the situation clearly to the client and
@@ -129,52 +190,43 @@ export function buildOpencodeApp(
     // ─── Model override for prompt requests ─────────────────────────────
     // The frontend may send a stale model from localStorage (e.g.
     // 'opencode/big-pickle') that doesn't match the admin-configured default.
-    // When the daemon has KORTIX_DEFAULT_MODEL set, REWRITE the model field
-    // to vaelorx/<default> so OpenCode uses the config default instead.
-    //
-    // When KORTIX_DEFAULT_MODEL is UNSET (legacy daemons or DB mis-config),
-    // at least STRIP the stale 'opencode/<anything>' / 'opencode' provider
-    // models from the body so OpenCode doesn't error with "Model not found:
-    // opencode/big-pickle" — it will then fall back to the vaelorx agent's
-    // configured model (which has a sensible default in opencode.jsonc).
+    // We rewrite the model field to the CURRENT default model (fetched
+    // dynamically from the gateway, cached 30s) so OpenCode displays the
+    // correct model in its UI. The gateway itself ignores the model field
+    // and uses the DB default for the actual upstream call, so this rewrite
+    // is purely cosmetic — but it prevents the user from seeing a stale
+    // model name in the session info panel.
     const url = new URL(c.req.url)
     const isPromptRequest =
       c.req.method.toUpperCase() === 'POST' &&
       /\/session\/[^/]+\/prompt(\/async)?$/.test(url.pathname)
-    const defaultModel = process.env.KORTIX_DEFAULT_MODEL?.trim()
     if (isPromptRequest) {
       try {
         const rawBody = await c.req.text()
         const body = JSON.parse(rawBody)
         let shouldRewrite = false
         if (body.model) {
-          // Detect a stale 'opencode/<id>' model (e.g. 'opencode/big-pickle')
-          // — these are OpenCode Zen built-in models that are NOT in our
-          // enabled_providers list, so OpenCode will reject them.
-          const modelStr = typeof body.model === 'string'
-            ? body.model
-            : (body.model?.providerID && body.model?.modelID
-                ? `${body.model.providerID}/${body.model.modelID}`
-                : (body.model?.modelID || body.model?.providerID || ''))
-          const isStaleOpencodeModel =
-            modelStr === 'opencode' ||
-            modelStr.startsWith('opencode/') ||
-            modelStr === 'big-pickle'
-          if (defaultModel) {
-            // Always rewrite to the admin-configured default
+          // Always fetch the current default from the gateway — this ensures
+          // we display the admin's CURRENT choice, not a stale env var.
+          const currentDefault = await fetchCurrentDefaultModel()
+          if (currentDefault) {
+            // Rewrite to the current default model
             shouldRewrite = true
-            logger.info(`[proxy] overriding model in prompt: ${JSON.stringify(body.model)} → vaelorx/${defaultModel}`)
-            body.model = { providerID: 'vaelorx', modelID: defaultModel }
-          } else if (isStaleOpencodeModel) {
-            // No admin default — but at least strip the stale opencode model
-            // so OpenCode falls back to the vaelorx agent's configured model
+            logger.info(
+              `[proxy] overriding model in prompt: ${JSON.stringify(body.model)} → vaelorx/${currentDefault}`,
+            )
+            body.model = { providerID: 'vaelorx', modelID: currentDefault }
+          } else {
+            // No gateway default available — strip the stale model so
+            // OpenCode falls back to its configured default
             shouldRewrite = true
-            logger.warn(`[proxy] stripping stale OpenCode model "${modelStr}" from prompt (no KORTIX_DEFAULT_MODEL set)`)
+            logger.warn(
+              `[proxy] no default model from gateway — stripping stale model ${JSON.stringify(body.model)}`,
+            )
             delete body.model
           }
         }
         if (shouldRewrite) {
-          // Re-forward with the modified body
           const upstreamUrl = `${opencode.getInternalUrl()}${url.pathname}${url.search}`
           const headers = new Headers()
           c.req.raw.headers.forEach((value, key) => {
@@ -234,9 +286,7 @@ export function buildOpencodeApp(
           return c.json({ error: 'upstream unreachable', details: (err as Error).message }, 502)
         }
       } catch (err) {
-        logger.warn('[proxy] failed to parse/override prompt body, forwarding as-is', { err: (err as Error).message })
-        // Fall through to normal proxy below — but we already consumed the
-        // body, so just return a 400 to surface the parse error clearly.
+        logger.warn('[proxy] failed to parse/override prompt body', { err: (err as Error).message })
         return c.json({ error: 'invalid JSON in prompt body' }, 400)
       }
     }

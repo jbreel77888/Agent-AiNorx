@@ -24,7 +24,6 @@ export function createModelsRoute(_config: LlmGatewayConfig) {
     async (c) => {
       const response = await listUpstreamModels();
       const data = await response.json();
-      // Use raw Response to avoid zod-openapi type constraints
       return new Response(JSON.stringify(data), {
         status: 200,
         headers: { 'content-type': 'application/json' },

@@ -14,8 +14,8 @@ WORKDIR /agent
 
 ARG KORTIX_AGENT_BUN_TARGET=bun-linux-x64
 # Cache bust: forces rebuild of the agent binary on every push
-ARG CACHE_BUST=20260717d
-ARG CACHE_BUST=20260717d
+ARG CACHE_BUST=20260718a
+ARG CACHE_BUST=20260718a
 
 COPY apps/kortix-sandbox-agent-server/package.json apps/kortix-sandbox-agent-server/bun.lock ./
 RUN bun install --frozen-lockfile
