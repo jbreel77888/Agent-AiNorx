@@ -18,12 +18,9 @@ export function createLlmGateway(
     return app;
   }
 
-  if (!config.openrouterApiKey) {
-    app.all('/*', (c) =>
-      c.json({ error: 'LLM gateway misconfigured: openrouterApiKey missing' }, 500),
-    );
-    return app;
-  }
+  // No longer require openrouterApiKey — the gateway reads provider keys from DB.
+  // The openrouterApiKey field is kept in the config type for backward compat
+  // but is no longer used.
 
   app.route('/', createHealthRoute(config));
   app.route('/', createModelsRoute(config));
