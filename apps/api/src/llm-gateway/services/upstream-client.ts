@@ -104,6 +104,25 @@ function buildAuthHeaders(providerKey: string, apiKey: string): Record<string, s
  * The body.model field is replaced with the real upstream model ID
  * because the sandbox sends "vaelorx/<model>" but the provider expects
  * just the model ID (e.g. "claude-sonnet-4-6").
+ *
+ * IMPORTANT — Gateway Timeout mitigation:
+ * Cloudflare / Bunnyshell's reverse proxy has a hard ~100s timeout on
+ * idle connections. Reasoning models (especially NVIDIA's z-ai/glm-5.2
+ * with reasoning effort) can take > 60s to produce the first byte on
+ * non-streaming requests, which causes the proxy to return "Gateway
+ * Timeout" to the client even though the upstream provider is still
+ * processing.
+ *
+ * Mitigation:
+ *   1. We force `stream: true` on the upstream call (the caller's
+ *      `stream` preference is preserved in the response — see
+ *      chat-completions.ts which already handles SSE → JSON conversion
+ *      when the caller asked for non-streaming).
+ *   2. We use a 110s timeout (just under Cloudflare's 100-120s limit)
+ *      so we fail fast with a clear message instead of letting the
+ *      proxy kill the connection silently.
+ *   3. The first SSE chunk arrives within seconds for all known
+ *      providers, so streaming keeps the connection alive.
  */
 export async function callUpstream(
   body: Record<string, unknown>,
@@ -125,23 +144,58 @@ export async function callUpstream(
   const upstreamBody = {
     ...body,
     model: provider.modelKey,
+    // Force streaming to keep the connection alive — see comment above.
+    // chat-completions.ts already converts the SSE stream back to a single
+    // JSON response when the original caller asked for non-streaming.
+    stream: true,
+    stream_options: { include_usage: true },
   };
 
   const headers = buildAuthHeaders(provider.providerKey, provider.apiKey);
+  // Some providers (NVIDIA) reject unknown OpenAI-specific fields like
+  // `stream_options`. We don't strip them here — they're standard OpenAI
+  // and NVIDIA's OpenAI-compatible endpoint accepts them.
 
   console.info(
     `[upstream-client] Calling provider: ${provider.providerKey} ` +
     `baseUrl=${provider.baseUrl} model=${provider.modelKey} ` +
-    `apiKey=${provider.apiKey.slice(0, 10)}...`,
+    `apiKey=${provider.apiKey.slice(0, 10)}... stream=forced`,
   );
 
-  const response = await fetch(`${provider.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(upstreamBody),
-    // Long timeout for reasoning models
-    signal: AbortSignal.timeout(120_000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${provider.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(upstreamBody),
+      // 110s — just under Cloudflare/Bunnyshell's ~100-120s idle timeout.
+      // Without this, a slow upstream (e.g. NVIDIA reasoning on glm-5.2)
+      // would silently get killed by the reverse proxy and the client
+      // would see "Gateway Timeout" with no useful diagnostic.
+      signal: AbortSignal.timeout(110_000),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isTimeout = msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('abort');
+    console.error(
+      `[upstream-client] fetch failed for ${provider.providerKey} ${provider.modelKey}: ${msg}`,
+    );
+    return {
+      response: new Response(
+        JSON.stringify({
+          error: isTimeout
+            ? `Upstream provider "${provider.providerKey}" timed out after 110s. ` +
+              `This usually means the model "${provider.modelKey}" is a reasoning model ` +
+              `that took too long to respond. Try a faster model or enable streaming on the client.`
+            : `Upstream provider "${provider.providerKey}" call failed: ${msg}`,
+          provider: provider.providerKey,
+          model: provider.modelKey,
+        }),
+        { status: 502, headers: { 'content-type': 'application/json' } },
+      ),
+      provider,
+    };
+  }
 
   return { response, provider };
 }
