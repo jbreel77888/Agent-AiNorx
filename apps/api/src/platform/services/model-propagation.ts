@@ -36,7 +36,10 @@ async function pushModelToSandbox(
     const { Sandbox } = await import('../../shared/tensorlake');
     const sandbox = await Sandbox.connect({ sandboxId: externalId });
 
-    // Try the new /kortix/model endpoint first (requires updated image)
+    // Try the new /kortix/model endpoint first (requires updated image).
+    // This endpoint updates process.env.KORTIX_DEFAULT_MODEL in memory —
+    // NO kill signals, NO daemon restart. The proxy reads the env var on
+    // every prompt, so the new model takes effect immediately.
     try {
       const { encodeKortixUserContext } = await import('../../shared/kortix-user-context');
       const { resolveServiceKey } = await import('../../sandbox-proxy/backend');
@@ -53,33 +56,34 @@ async function pushModelToSandbox(
         const result = await sandbox.run('bash', {
           args: ['-c',
             `curl -s -X POST -H "Content-Type: application/json" -H "X-Kortix-User-Context: ${header}" ` +
-            `-d '{"modelKey":"${modelKey}"}' http://127.0.0.1:8000/kortix/model 2>/dev/null || ` +
-            // Fallback for old images: update env file + signal daemon
-            `echo 'KORTIX_DEFAULT_MODEL=${modelKey}' >> /etc/pt-env && ` +
-            `kill -HUP $(pgrep kortix-agent) 2>/dev/null; echo done`
+            `-d '{"modelKey":"${modelKey}"}' http://127.0.0.1:8000/kortix/model`
           ],
           timeout: 10,
         });
 
-        // Check if the command succeeded
-        if (result.exitCode === 0) {
+        // Check if the /kortix/model endpoint responded with ok:true
+        const output = (result.stdout || '').trim();
+        if (output.includes('"ok":true')) {
           return { ok: true };
         }
       }
     } catch {
-      // /kortix/model not available — use fallback below
+      // /kortix/model not available — try fallback below
     }
 
-    // Fallback: directly update the env + signal the daemon
-    await sandbox.run('bash', {
-      args: ['-c',
-        `sed -i 's/^KORTIX_DEFAULT_MODEL=.*/KORTIX_DEFAULT_MODEL=${modelKey}/' /etc/pt-env 2>/dev/null || ` +
-        `echo 'KORTIX_DEFAULT_MODEL=${modelKey}' >> /etc/pt-env; ` +
-        `kill -HUP $(pgrep kortix-agent) 2>/dev/null; ` +
-        `kill -USR1 $(pgrep opencode) 2>/dev/null; echo done`
-      ],
-      timeout: 10,
-    });
+    // Fallback for OLD images (without /kortix/model endpoint):
+    // Update the env file ONLY — do NOT send kill signals (they crash the daemon).
+    // The model change will take effect on the next sandbox restart.
+    try {
+      await sandbox.run('bash', {
+        args: ['-c',
+          `sed -i 's/^KORTIX_DEFAULT_MODEL=.*/KORTIX_DEFAULT_MODEL=${modelKey}/' /etc/pt-env 2>/dev/null; ` +
+          `grep -q '^KORTIX_DEFAULT_MODEL=' /etc/pt-env || echo 'KORTIX_DEFAULT_MODEL=${modelKey}' >> /etc/pt-env; ` +
+          `echo done`
+        ],
+        timeout: 10,
+      });
+    } catch { /* best-effort */ }
 
     return { ok: true };
   } catch (err) {

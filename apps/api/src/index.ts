@@ -657,15 +657,10 @@ app.route('/v1/router', router);        // /v1/router/chat/completions, /v1/rout
           // Legacy per-member YOLO token (prod per-seat path) takes priority.
           const yolo = await attributeYoloToken(token);
           if (yolo) return yolo;
-          // YOLO is discontinued; sandboxes now present their account token
-          // (a kortix_pat_ minted at provision). Resolve it to {userId, accountId}
-          // so the managed gateway works for self-hosted / billing-off deploys.
+
+          // Try PAT (kortix_pat_...) first
           const acct = await validateAccountToken(token);
           if (acct.isValid && acct.userId && acct.accountId) {
-            // projectId/sessionId attribute LLM usage to the calling session
-            // (sandbox executor token is minted per-session with session_id =
-            // sandbox_id) — the reaper's reliable activity signal + precise
-            // per-session billing.
             return {
               userId: acct.userId,
               accountId: acct.accountId,
@@ -673,6 +668,29 @@ app.route('/v1/router', router);        // /v1/router/chat/completions, /v1/rout
               sessionId: acct.sessionId ?? null,
             };
           }
+
+          // Fall back to sandbox token (kortix_sb_...) — this is the token
+          // injected as KORTIX_LLM_API_KEY in session-only mode. The sandbox
+          // uses it to authenticate against /v1/llm.
+          const { validateSecretKey } = await import('./repositories/api-keys');
+          const sbKey = await validateSecretKey(token);
+          if (sbKey.isValid && sbKey.accountId) {
+            // Look up the sandbox's session to get userId
+            const { db } = await import('./shared/db');
+            const { sessionSandboxes } = await import('@kortix/db');
+            const { eq } = await import('drizzle-orm');
+            const [sb] = await db.select({ sessionId: sessionSandboxes.sessionId })
+              .from(sessionSandboxes)
+              .where(eq(sessionSandboxes.sandboxId, sbKey.sandboxId ?? ''))
+              .limit(1);
+            return {
+              userId: sbKey.sandboxId ?? 'sandbox', // sandbox-scoped identity
+              accountId: sbKey.accountId,
+              projectId: null,
+              sessionId: sb?.sessionId ?? sbKey.sandboxId ?? null,
+            };
+          }
+
           return null;
         },
         assertBillingActive,
