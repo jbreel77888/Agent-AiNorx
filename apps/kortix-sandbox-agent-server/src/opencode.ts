@@ -107,7 +107,7 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
     // that provider's internal catalog (from Models.dev) may not include every
     // model Zen actually serves (e.g. deepseek-v4-flash-free). OpenCode would
     // then say "Model is disabled" even though Zen's /models lists it.
-    const DEFAULT_VAELORX_MODEL = getDefaultVaelorxModel(env)
+    const DEFAULT_VAELORX_MODEL = await getDefaultVaelorxModel(env)
     const gatewayModels = await fetchGatewayModels(llmBaseUrl!, llmApiKey!)
     // Make absolutely sure the default model is in the catalog (the gateway
     // should already return it, but if the fetch fell back to MINIMAL_FALLBACK
@@ -170,7 +170,7 @@ export async function buildOpencodeConfigContent(env: NodeJS.ProcessEnv): Promis
     const agents = (out.agent && typeof out.agent === 'object' && !Array.isArray(out.agent))
       ? (out.agent as Record<string, unknown>)
       : {}
-    const DEFAULT_VAELORX_MODEL_FOR_AGENT = getDefaultVaelorxModel(env)
+    const DEFAULT_VAELORX_MODEL_FOR_AGENT = await getDefaultVaelorxModel(env)
     agents.vaelorx = {
       ...(agents.vaelorx as Record<string, unknown> | undefined),
       description: 'VaelorX AI agent — handles coding, research, content, and data tasks.',
@@ -305,20 +305,72 @@ async function fetchGatewayModels(
   return MINIMAL_FALLBACK_MODELS
 }
 
-// Default model — read from env var (set by API from platform_settings/platform_models).
-// The value should be a model id that exists in the gateway's /models response.
-// Falls back to "anthropic/claude-sonnet-4.6" if not set.
-// Note: NO "vaelorx/" prefix — the gateway proxies to OpenRouter which expects
-// provider/model format. The "vaelorx" prefix is only the opencode provider name,
-// not part of the model id sent to the upstream.
+// Default model — fetched DYNAMICALLY from the gateway's /models endpoint
+// (which returns is_default:true on the admin's current choice). This is
+// critical because the admin can change the default model at any time, but
+// KORTIX_DEFAULT_MODEL env var is set at sandbox boot time and may be stale.
 //
-// IMPORTANT: This is computed INSIDE buildOpencodeConfigContent() from the `env`
-// parameter, NOT at module load time. The previous module-level constant read
-// process.env at import time, which was fragile (if the env var wasn't set yet
-// when the module loaded, it fell back to the wrong default). The function below
-// reads from the `env` parameter which is the actual session env.
-function getDefaultVaelorxModel(env: NodeJS.ProcessEnv): string {
-  return env.KORTIX_DEFAULT_MODEL?.trim() || 'anthropic/claude-sonnet-4.6'
+// By fetching the current default from the gateway, we ensure that:
+//   - vaelorx.toml has the current default
+//   - opencode.jsonc has the current default
+//   - vaelorx.md agent frontmatter has the current default
+//   - OpenCode's session metadata shows the current default
+//
+// Falls back to KORTIX_DEFAULT_MODEL env var if the gateway is unreachable,
+// then to 'anthropic/claude-sonnet-4.6' as a last resort.
+//
+// IMPORTANT: This is ASYNC and must be awaited. It's called INSIDE
+// buildOpencodeConfigContent() from the `env` parameter.
+async function getDefaultVaelorxModel(env: NodeJS.ProcessEnv): Promise<string> {
+  const llmBaseUrl = env.KORTIX_LLM_BASE_URL?.trim()
+  const llmApiKey = env.KORTIX_LLM_API_KEY?.trim()
+
+  // Try to fetch the current default from the gateway's /models endpoint.
+  // The gateway (apps/api/src/llm-gateway/services/upstream-models.ts) returns
+  // is_default:true on the admin's current choice. This is the SOURCE OF TRUTH.
+  if (llmBaseUrl && llmApiKey) {
+    try {
+      const url = `${llmBaseUrl.replace(/\/+$/, '')}/models`
+      const res = await fetch(url, {
+        headers: {
+          authorization: `Bearer ${llmApiKey}`,
+          'user-agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          accept: 'application/json',
+        },
+        signal: AbortSignal.timeout(5_000),
+      })
+      if (res.ok) {
+        const body = (await res.json()) as {
+          data?: Array<{ id?: string; is_default?: boolean }>
+        }
+        if (Array.isArray(body.data)) {
+          const defaultEntry = body.data.find((m) => m?.is_default === true)
+          if (defaultEntry?.id) {
+            logger.info(`[opencode] fetched current default model from gateway: ${defaultEntry.id}`)
+            // Also update process.env so the rest of the daemon (proxy.ts,
+            // model-update route, etc.) uses the fresh value too.
+            process.env.KORTIX_DEFAULT_MODEL = defaultEntry.id
+            env.KORTIX_DEFAULT_MODEL = defaultEntry.id
+            return defaultEntry.id
+          }
+        }
+      }
+    } catch (err) {
+      logger.warn(`[opencode] failed to fetch default model from gateway: ${(err as Error).message}`)
+    }
+  }
+
+  // Fall back to env var (may be stale, but better than nothing)
+  const envModel = env.KORTIX_DEFAULT_MODEL?.trim()
+  if (envModel) {
+    logger.warn(`[opencode] using KORTIX_DEFAULT_MODEL env var (may be stale): ${envModel}`)
+    return envModel
+  }
+
+  // Last resort fallback
+  logger.warn(`[opencode] no default model available, falling back to anthropic/claude-sonnet-4.6`)
+  return 'anthropic/claude-sonnet-4.6'
 }
 
 type VaelorXGatewayModel = {

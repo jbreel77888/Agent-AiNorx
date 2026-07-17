@@ -132,6 +132,23 @@ async function main() {
           const { join } = await import('node:path')
           const ws = cfg.projectTarget
 
+          // Fetch the current default model from the gateway BEFORE writing
+          // any config files. This ensures vaelorx.toml, opencode.jsonc, and
+          // vaelorx.md all have the admin's CURRENT default model — not a
+          // stale KORTIX_DEFAULT_MODEL env var from boot time.
+          const { fetchCurrentDefaultModel } = await import('./proxy-helpers')
+          let defaultModel = process.env.KORTIX_DEFAULT_MODEL || 'claude-sonnet-4.6'
+          try {
+            const fetched = await fetchCurrentDefaultModel()
+            if (fetched) {
+              defaultModel = fetched
+              process.env.KORTIX_DEFAULT_MODEL = fetched
+              console.log(`[boot] fetched current default model from gateway: ${fetched}`)
+            }
+          } catch (err) {
+            console.warn(`[boot] failed to fetch default model from gateway, using env var: ${err}`)
+          }
+
           // Create .vaelorx directory structure
           mkdirSync(join(ws, '.vaelorx', 'memory'), { recursive: true })
           mkdirSync(join(ws, '.vaelorx', 'opencode', 'agents'), { recursive: true })
@@ -160,7 +177,7 @@ async function main() {
             '',
             '[[agents]]',
             'name = "vaelorx"',
-            `model = "${process.env.KORTIX_DEFAULT_MODEL || 'claude-sonnet-4.6'}"`,
+            `model = "${defaultModel}"`,
           ].join('\n'))
 
           // Write minimal README.md
@@ -176,13 +193,6 @@ async function main() {
           ].join('\n'))
 
           // Write minimal opencode.jsonc
-          // IMPORTANT: Include the model field here as a belt-and-suspenders fix.
-          // The daemon's spawnChild() will later overwrite this with the full
-          // generated config (including provider + models catalog). But if for
-          // any reason OPENCODE_CONFIG isn't read by OpenCode, the project
-          // config (which has HIGHER precedence per https://opencode.ai/docs/config/)
-          // will still have the correct model — preventing "Model not found" errors.
-          const defaultModel = process.env.KORTIX_DEFAULT_MODEL || 'claude-sonnet-4.6'
           writeFileSync(join(ws, '.vaelorx', 'opencode', 'opencode.jsonc'), JSON.stringify({
             '$schema': 'https://opencode.ai/config.json',
             'default_agent': 'vaelorx',
@@ -192,11 +202,6 @@ async function main() {
           }, null, 2))
 
           // Write minimal agent definition
-          // IMPORTANT: Include `model: vaelorx/<default>` in the frontmatter.
-          // OpenCode's agent model field OVERRIDES the global config model —
-          // if it's empty, OpenCode falls back to its built-in default which
-          // is 'big-pickle' from the 'opencode' provider (NOT in enabled_providers).
-          // This was the root cause of "Model not found: opencode/big-pickle".
           writeFileSync(join(ws, '.vaelorx', 'opencode', 'agents', 'vaelorx.md'), [
             '---',
             'description: VaelorX AI agent by Digital Planetx. Handles coding, research, content, and data tasks.',
