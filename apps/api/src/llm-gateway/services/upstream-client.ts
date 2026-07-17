@@ -129,6 +129,12 @@ export async function callUpstream(
 
   const headers = buildAuthHeaders(provider.providerKey, provider.apiKey);
 
+  console.info(
+    `[upstream-client] Calling provider: ${provider.providerKey} ` +
+    `baseUrl=${provider.baseUrl} model=${provider.modelKey} ` +
+    `apiKey=${provider.apiKey.slice(0, 10)}...`,
+  );
+
   const response = await fetch(`${provider.baseUrl}/chat/completions`, {
     method: 'POST',
     headers,
