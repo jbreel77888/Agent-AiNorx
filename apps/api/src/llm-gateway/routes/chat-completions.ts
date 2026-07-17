@@ -1,7 +1,7 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import type { LlmGatewayConfig, LlmGatewayHooks, UsageEvent } from '../types';
 import type { AppEnv } from '../../types';
-import { callOpenRouter } from '../services/openrouter-client';
+import { callUpstream } from '../services/upstream-client';
 import { calculateCost } from '../services/pricing';
 import { extractUsageFromJson, extractUsageFromSseBuffer, type ExtractedUsage } from '../services/usage-extractor';
 import { makeOpenApiApp, errors } from '../../openapi';
@@ -38,7 +38,7 @@ function supportsReasoning(model: string): boolean {
 }
 
 export function createChatCompletionsRoute(
-  config: LlmGatewayConfig,
+  _config: LlmGatewayConfig,
   hooks: LlmGatewayHooks,
 ) {
   const app = makeOpenApiApp<AppEnv>();
@@ -48,15 +48,9 @@ export function createChatCompletionsRoute(
       method: 'post',
       path: '/chat/completions',
       tags: ['llm'],
-      summary: 'OpenAI-compatible chat completions (proxied + metered via OpenRouter)',
+      summary: 'OpenAI-compatible chat completions (multi-provider gateway)',
       description:
-        'Accepts an OpenAI/OpenRouter-compatible chat-completions body (model, messages, stream, reasoning, …). ' +
-        'The body is parsed manually by the handler (which injects reasoning for capable models and toggles the ' +
-        'stream flag), so no request schema is attached and no currently-valid input is rejected. Returns a JSON ' +
-        'completion when stream=false, or an SSE stream (text/event-stream) when stream=true.',
-      // NOTE: intentionally NO `request.body` schema — attaching one would make the
-      // zod-openapi validator parse/validate the body before the handler and change
-      // the existing auth/JSON 401/400 error contract (rule: preserve behavior).
+        'Accepts an OpenAI-compatible chat-completions body. The gateway reads the default model + provider from the DB, calls the real upstream provider directly, and meters usage. The sandbox never sees the real API key.',
       responses: {
         200: {
           description:
@@ -98,7 +92,6 @@ export function createChatCompletionsRoute(
       return c.json({ error: 'Invalid JSON body' }, 400);
     }
     const streaming = body.stream === true;
-    const baseUrl = config.baseUrl ?? 'https://openrouter.ai/api/v1';
 
     const modelId = typeof body.model === 'string' ? body.model : '';
     const hasReasoning =
@@ -108,34 +101,29 @@ export function createChatCompletionsRoute(
     if (!hasReasoning && supportsReasoning(modelId)) {
       body.reasoning = { effort: 'medium' };
     }
-    console.info(
-      `[llm-gateway] ${requestId} model=${modelId} stream=${streaming} reasoning=${
-        hasReasoning ? 'forwarded' : supportsReasoning(modelId) ? 'injected' : 'n/a'
-      } keys=${Object.keys(body).join(',')}`,
-    );
 
-    const upstream = await callOpenRouter(
+    // Call the upstream provider (reads model + provider + key from DB)
+    const { response: upstream, provider } = await callUpstream(
       streaming ? { ...body, stream: true, stream_options: { include_usage: true } } : body,
-      {
-        baseUrl,
-        apiKey: config.openrouterApiKey,
-        appName: config.appName,
-        appReferer: config.appReferer,
-      },
     );
 
     if (!upstream.ok || !upstream.body) {
       const text = await upstream.text().catch(() => '');
+      console.warn(`[llm-gateway] ${requestId} upstream error ${upstream.status}: ${text.slice(0, 200)}`);
       return c.json(
-        { error: text || `OpenRouter upstream error ${upstream.status}` },
+        { error: text || `Upstream provider error ${upstream.status}` },
         upstream.status as any,
       );
     }
 
+    console.info(
+      `[llm-gateway] ${requestId} provider=${provider?.providerKey ?? '?'} model=${provider?.modelKey ?? modelId} stream=${streaming} status=${upstream.status}`,
+    );
+
     const finalize = async (usage: ExtractedUsage | null, modelHint?: string) => {
       if (!usage || usage.promptTokens + usage.completionTokens === 0) return;
 
-      const model = (usage.model ?? modelHint ?? (body.model as string) ?? 'unknown').toString();
+      const model = (usage.model ?? modelHint ?? provider?.modelKey ?? 'unknown').toString();
       const { upstreamCost, finalCost } = calculateCost(
         model,
         {
@@ -143,7 +131,7 @@ export function createChatCompletionsRoute(
           completionTokens: usage.completionTokens,
           cachedTokens: usage.cachedTokens,
         },
-        config.markup ?? 1,
+        _config.markup ?? 1,
         usage.upstreamCostHint,
       );
 
@@ -152,7 +140,7 @@ export function createChatCompletionsRoute(
         actorUserId: principal.userId,
         projectId: principal.projectId ?? null,
         sessionId: principal.sessionId ?? null,
-        provider: 'openrouter',
+        provider: provider?.providerKey ?? 'unknown',
         model,
         promptTokens: usage.promptTokens,
         completionTokens: usage.completionTokens,
@@ -172,23 +160,17 @@ export function createChatCompletionsRoute(
     if (!streaming) {
       const json = await upstream.json();
       const usage = extractUsageFromJson(json);
-      void finalize(usage, body.model as string | undefined);
+      void finalize(usage, provider?.modelKey);
       return c.json(json);
     }
 
     const passthrough = new TransformStream<Uint8Array, Uint8Array>();
     const writer = passthrough.writable.getWriter();
     const decoder = new TextDecoder();
-    const encoder = new TextEncoder();
     let sseBuffer = '';
 
     (async () => {
       const reader = upstream.body!.getReader();
-      // Once the downstream client disconnects, writer.write() throws. Stop
-      // trying to write (so we don't crash) but KEEP reading the upstream so
-      // we get OpenRouter's final usage chunk (which arrives at the end of the
-      // stream). Without this, an aborted stream charges $0 even though the
-      // tokens were generated and billed to us by OpenRouter.
       let downstreamAlive = true;
       try {
         while (true) {
@@ -213,11 +195,10 @@ export function createChatCompletionsRoute(
         } catch {
         }
         const usage = extractUsageFromSseBuffer(sseBuffer);
-        void finalize(usage, body.model as string | undefined);
+        void finalize(usage, provider?.modelKey);
       }
     })().catch(() => {});
 
-    void encoder;
     return new Response(passthrough.readable, {
       status: 200,
       headers: {

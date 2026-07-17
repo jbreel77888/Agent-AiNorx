@@ -647,8 +647,7 @@ app.route('/v1/router', router);        // /v1/router/chat/completions, /v1/rout
     '/v1/llm',
     createLlmGateway(
       {
-        enabled: config.LLM_GATEWAY_ENABLED,
-        openrouterApiKey: config.OPENROUTER_API_KEY,
+        enabled: true, // Always enabled — reads from DB, no OpenRouter dependency
         markup: llmPriceMarkup(),
         appName: 'Kortix',
         appReferer: config.KORTIX_URL,

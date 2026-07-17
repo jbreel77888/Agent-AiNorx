@@ -515,37 +515,14 @@ export async function provisionSessionSandbox(opts: {
             KORTIX_EXECUTOR_TOKEN: (executorToken ?? (isSimpleMode ? sandboxKey.secretKey : null))!,
           }
         : {}),
-      ...(gatewayLlmKey
-        ? {
-            KORTIX_LLM_API_KEY: gatewayLlmKey,
-            KORTIX_LLM_BASE_URL: llmBaseUrl,
-            KORTIX_YOLO_API_KEY: gatewayLlmKey,
-            KORTIX_YOLO_URL: llmBaseUrl,
-          }
-        : {}),
-      // Phase 5: Inject the default model + provider credentials directly.
-      // The admin connects providers (NVIDIA, OpenCode Zen, etc.) via the
-      // admin dashboard and sets a default model. The daemon connects
-      // directly to the provider — NOT through the OpenRouter gateway.
-      //
-      // IMPORTANT: getDefaultModelConfig() is async — we must await it BEFORE
-      // building the envVars object. The previous code used a spread on an
-      // async IIFE which silently produced an empty object (Promise can't be
-      // spread). This was THE bug — KORTIX_DEFAULT_MODEL was never injected.
-      ...(await getDefaultModelConfig().then((modelConfig) => {
-        const envVars: Record<string, string> = {
-          KORTIX_DEFAULT_MODEL: modelConfig.modelKey,
-        };
-        // If the admin configured a direct provider, override the gateway
-        // credentials with the provider's own API key + base URL.
-        if (modelConfig.apiKey && modelConfig.baseUrl) {
-          envVars.KORTIX_LLM_API_KEY = modelConfig.apiKey;
-          envVars.KORTIX_LLM_BASE_URL = modelConfig.baseUrl;
-          envVars.KORTIX_YOLO_API_KEY = modelConfig.apiKey;
-          envVars.KORTIX_YOLO_URL = modelConfig.baseUrl;
-        }
-        return envVars;
-      })),
+      // SECURITY: The sandbox NEVER receives the real provider API key.
+      // It only gets a sandbox token (kortix_sb_...) which authenticates
+      // against /v1/llm — the gateway reads the real key from DB server-side.
+      // This prevents users from stealing platform API keys.
+      KORTIX_LLM_API_KEY: sandboxKey.secretKey,
+      KORTIX_LLM_BASE_URL: llmBaseUrl,
+      KORTIX_YOLO_API_KEY: sandboxKey.secretKey,
+      KORTIX_YOLO_URL: llmBaseUrl,
     },
     // Idle lifecycle is owned by the provider-agnostic reaper (projects/
     // sandbox-reaper.ts), keyed off MEANINGFUL activity (real turns), with each

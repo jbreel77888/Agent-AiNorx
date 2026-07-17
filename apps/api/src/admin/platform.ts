@@ -271,7 +271,18 @@ platformAdminApp.post('/models/:id/default', async (c) => {
     .set({ value: JSON.stringify(row.modelKey), updatedAt: new Date() })
     .where(eq(platformSettings.key, 'default_model'));
 
-  return c.json({ model: row });
+  // Propagate the model change to all active sandboxes
+  let propagation = null;
+  try {
+    const { propagateDefaultModelToActiveSandboxes } = await import('../platform/services/model-propagation');
+    propagation = await propagateDefaultModelToActiveSandboxes(row.modelKey);
+    console.log(`[admin] Model "${row.modelKey}" set as default. Propagation:`, propagation);
+  } catch (err) {
+    console.warn('[admin] Model propagation failed:', err);
+    propagation = { total: 0, updated: 0, failed: 0, errors: [String(err)] };
+  }
+
+  return c.json({ model: row, propagation });
 });
 
 // ─── Subscription Plans ──────────────────────────────────────────────────────

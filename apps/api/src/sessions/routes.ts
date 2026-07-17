@@ -531,12 +531,9 @@ sessionFilesApp.post('/:sessionId/start', async (c) => {
 
   if (providerStatus !== 'running') {
     // Sandbox is suspended or stopped — resume it.
-    // For Tensorlake named sandboxes, suspend preserves full state (RAM + processes),
-    // so resume is near-instant and the daemon is already running.
     if (providerStatus === 'stopped') {
       try {
         const provider = getProvider(sandbox.provider as SandboxProviderName);
-        // For Tensorlake, use resume() which is faster than start()
         if (sandbox.provider === 'tensorlake' && typeof (provider as any).resume === 'function') {
           console.log(`[sessions/start] Resuming suspended sandbox ${sandbox.externalId}...`);
           await (provider as any).resume(sandbox.externalId);
@@ -548,14 +545,51 @@ sessionFilesApp.post('/:sessionId/start', async (c) => {
       } catch (err) {
         console.warn(`[sessions/start] failed to start provider:`, err);
       }
+
+      // Wait for the daemon to become healthy after resume.
+      // Tensorlake resume is near-instant (preserves RAM + processes), but
+      // the daemon may need a few seconds to re-bind its port.
+      if (sandbox.provider === 'tensorlake' && sandbox.externalId) {
+        const { Sandbox } = await import('../shared/tensorlake');
+        try {
+          const sb = await Sandbox.connect({ sandboxId: sandbox.externalId });
+          let daemonReady = false;
+          for (let attempt = 0; attempt < 10; attempt++) {
+            try {
+              const result = await sb.run('bash', {
+                args: ['-c', 'curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/kortix/health 2>/dev/null || echo 000'],
+                timeout: 3,
+              });
+              const code = result.stdout?.trim() || '';
+              if (code === '200') {
+                daemonReady = true;
+                console.log(`[sessions/start] Daemon ready after ${attempt + 1} attempts`);
+                break;
+              }
+            } catch { /* keep polling */ }
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+          if (daemonReady) {
+            // Daemon is ready — fall through to the opencode pin resolution below
+            providerStatus = 'running';
+          } else {
+            console.warn(`[sessions/start] Daemon not ready after 10s, returning 'starting'`);
+          }
+        } catch (err) {
+          console.warn(`[sessions/start] Health check poll failed:`, err);
+        }
+      }
     }
-    return c.json({
-      stage: 'starting',
-      retriable: true,
-      sandbox: null,
-      opencode_session_id: null,
-      reason: providerStatus === 'stopped' ? 'runtime_waking' : 'runtime_status_unknown',
-    });
+
+    if (providerStatus !== 'running') {
+      return c.json({
+        stage: 'starting',
+        retriable: true,
+        sandbox: null,
+        opencode_session_id: null,
+        reason: providerStatus === 'stopped' ? 'runtime_waking' : 'runtime_status_unknown',
+      });
+    }
   }
 
   // Box is provider-running. Resolve OpenCode readiness + the canonical pin

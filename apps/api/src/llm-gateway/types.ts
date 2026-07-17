@@ -32,7 +32,8 @@ export interface LlmGatewayHooks {
 
 export interface LlmGatewayConfig {
   enabled: boolean;
-  openrouterApiKey: string;
+  /** @deprecated No longer required — the gateway reads provider keys from the DB. Kept for backward compat. */
+  openrouterApiKey?: string;
   baseUrl?: string;
   markup?: number;
   appName?: string;

@@ -7,6 +7,7 @@ import { isRepoMaterialized } from './git'
 import { createHealthRouter, type SandboxBootState } from './routes/health'
 import { createRefreshRouter } from './routes/refresh'
 import { createAbortRouter } from './routes/abort'
+import { createModelUpdateRouter } from './routes/model-update'
 import { createEnvRouter } from './routes/env'
 import { createGitRouter } from './routes/git'
 import { createPortProxyRouter } from './routes/port-proxy'
@@ -57,6 +58,9 @@ export function buildOpencodeApp(
   kortixRouter.route('/refresh/', refreshRouter)
   kortixRouter.route('/abort', abortRouter)
   kortixRouter.route('/abort/', abortRouter)
+  const modelUpdateRouter = createModelUpdateRouter(cfg, opencode)
+  kortixRouter.route('/model', modelUpdateRouter)
+  kortixRouter.route('/model/', modelUpdateRouter)
   kortixRouter.route('/git', gitRouter)
   kortixRouter.route('/git/', gitRouter)
   if (envRouter) {
