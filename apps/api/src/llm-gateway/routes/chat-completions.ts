@@ -29,13 +29,54 @@ const REASONING_CAPABLE_MODELS = new Set<string>([
   'z-ai/glm-5.1',
   'z-ai/glm-5.2',
   'x-ai/grok-4.3',
+  // Bare-id variants (without provider prefix) — same logical models
+  'claude-opus-4.8',
+  'claude-sonnet-4.6',
+  'gpt-5.5',
+  'gemini-3.5-flash',
+  'gemini-3.1-pro-preview',
+  'deepseek-v4-flash',
+  'deepseek-v4-pro',
+  'minimax-m3',
+  'kimi-k2.6',
+  'glm-5.1',
+  'glm-5.2',
+  'grok-4.3',
+]);
+
+// Models that are KNOWN to NOT support reasoning. This is a denylist
+// because some providers (NVIDIA) list models like meta/llama-3.1-8b-
+// instruct which definitely don't support reasoning, but OpenCode's
+// internal catalog may still send `reasoning` for them.
+const NON_REASONING_MODELS = new Set<string>([
+  'meta/llama-3.1-8b-instruct',
+  'meta/llama-3.2-1b-instruct',
+  'meta/llama-3.2-3b-instruct',
+  'meta/llama-3.2-11b-vision-instruct',
+  'meta/llama-3.2-90b-vision-instruct',
+  'ibm/granite-34b-code-instruct',
+  'adept/fuyu-8b',
+  'poolside/laguna-xs-2.1',
+  'nvidia/nemotron-3-embed-1b',
+  // Bare-id variants
+  'llama-3.1-8b-instruct',
+  'llama-3.2-1b-instruct',
+  'llama-3.2-3b-instruct',
+  'llama-3.2-11b-vision-instruct',
+  'llama-3.2-90b-vision-instruct',
 ]);
 
 function supportsReasoning(model: string): boolean {
   if (!model) return false;
-  if (REASONING_CAPABLE_MODELS.has(model)) return true;
-  const stripped = model.replace(/^openrouter\//, '');
-  return REASONING_CAPABLE_MODELS.has(stripped);
+  // Strip vaelorx/ prefix (the daemon sends "vaelorx/<model>")
+  const stripped = model.replace(/^vaelorx\//, '').replace(/^openrouter\//, '');
+  // Check denylist first — if explicitly non-reasoning, return false
+  if (NON_REASONING_MODELS.has(model) || NON_REASONING_MODELS.has(stripped)) return false;
+  // Check allowlist
+  if (REASONING_CAPABLE_MODELS.has(model) || REASONING_CAPABLE_MODELS.has(stripped)) return true;
+  // Default: don't add reasoning for unknown models (safer — avoids
+  // "Unsupported parameter" errors on providers that reject it)
+  return false;
 }
 
 /**
@@ -198,6 +239,20 @@ export function createChatCompletionsRoute(
       body.thinking !== undefined;
     if (!hasReasoning && supportsReasoning(modelId)) {
       body.reasoning = { effort: 'medium' };
+    } else if (hasReasoning && !supportsReasoning(modelId)) {
+      // STRIP reasoning params for models that don't support them.
+      // OpenCode may send `reasoning: {effort: "medium"}` based on its
+      // internal catalog, but non-reasoning models (e.g. meta/llama-3.1-
+      // 8b-instruct, deepseek-v4-flash-free) will reject the request
+      // with "Validation: Unsupported parameter(s): `reasoning`".
+      // Removing these fields ensures the request is accepted by every
+      // provider regardless of what OpenCode thinks the model supports.
+      delete body.reasoning;
+      delete body.reasoning_effort;
+      delete body.thinking;
+      console.info(
+        `[llm-gateway] ${requestId} stripped reasoning params for non-reasoning model: ${modelId}`,
+      );
     }
 
     // Call the upstream provider (reads model + provider + key from DB)

@@ -264,12 +264,27 @@ async function fetchGatewayModels(
         for (const entry of body.data) {
           const id = typeof entry?.id === 'string' ? entry.id : undefined
           if (!id) continue
+          // Read context_length and max_tokens from the gateway response.
+          // The gateway (apps/api/src/llm-gateway/services/upstream-models.ts)
+          // includes these fields so the daemon can display accurate context
+          // limits in the UI without relying on its hardcoded MINIMAL_FALLBACK_MODELS.
+          const contextLength =
+            typeof entry.context_length === 'number' ? entry.context_length :
+            typeof entry.context_window === 'number' ? entry.context_window :
+            undefined
+          const maxOutput =
+            typeof entry.max_tokens === 'number' ? entry.max_tokens :
+            typeof entry.output_tokens === 'number' ? entry.output_tokens :
+            undefined
           models[id] = {
             name: typeof entry.name === 'string' ? entry.name : id,
             reasoning: typeof entry.reasoning === 'boolean' ? entry.reasoning : undefined,
             tool_call: typeof entry.tool_call === 'boolean' ? entry.tool_call : true,
             attachment: typeof entry.attachment === 'boolean' ? entry.attachment : true,
             temperature: typeof entry.temperature === 'boolean' ? entry.temperature : true,
+            ...(contextLength || maxOutput
+              ? { limit: { context: contextLength, output: maxOutput } }
+              : {}),
           }
         }
       }
