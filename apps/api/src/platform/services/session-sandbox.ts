@@ -475,6 +475,53 @@ export async function provisionSessionSandbox(opts: {
       ? (executorToken ?? (isSimpleMode ? sandboxKey?.secretKey : null))
       : null;
 
+  // ─── Resolve the admin-configured default model from DB ─────────────────
+  // The sandbox daemon reads `KORTIX_DEFAULT_MODEL` at boot to:
+  //   • write `model = "..."` to vaelorx.toml
+  //   • set `model: vaelorx/<m>` in opencode.jsonc
+  //   • set the `vaelorx` agent's frontmatter `model:` field
+  //   • strip stale `model` fields from incoming prompt requests in proxy.ts
+  // Previously this env var was NEVER injected at provision time, so the daemon
+  // fell back to hardcoded 'claude-sonnet-4.6' / 'anthropic/claude-sonnet-4.6'
+  // and the proxy couldn't strip the frontend's stale 'opencode/big-pickle'
+  // from localStorage → "Model not found: opencode/big-pickle".
+  //
+  // We resolve the SAME way `getDefaultModelConfig()` does: prefer
+  // `upstreamModelId` (the OpenRouter/z-ai style "z-ai/glm-5.2" id), then
+  // fall back to `modelKey`, then to `platform_settings.default_model`.
+  let resolvedDefaultModel: string | null = null;
+  try {
+    const [defaultModelRow] = await db
+      .select({
+        modelKey: platformModels.modelKey,
+        upstreamModelId: platformModels.upstreamModelId,
+      })
+      .from(platformModels)
+      .where(eq(platformModels.isDefault, true))
+      .limit(1);
+    if (defaultModelRow) {
+      resolvedDefaultModel = defaultModelRow.upstreamModelId || defaultModelRow.modelKey;
+    } else {
+      // Fall back to platform_settings
+      const [setting] = await db
+        .select({ value: platformSettings.value })
+        .from(platformSettings)
+        .where(eq(platformSettings.key, 'default_model'))
+        .limit(1);
+      if (setting?.value) {
+        const val = typeof setting.value === 'string' ? setting.value : JSON.stringify(setting.value);
+        resolvedDefaultModel = val.replace(/^"|"$/g, '') || null;
+      }
+    }
+  } catch (err) {
+    console.warn('[session-sandbox] failed to resolve default model from DB:', err);
+  }
+  if (!resolvedDefaultModel) {
+    console.warn('[session-sandbox] no default model in DB — daemon will use its built-in fallback');
+  } else {
+    console.log(`[session-sandbox] injecting KORTIX_DEFAULT_MODEL=${resolvedDefaultModel}`);
+  }
+
   const providerCreateInput: CreateSandboxOpts = {
     accountId,
     userId,
@@ -483,6 +530,9 @@ export async function provisionSessionSandbox(opts: {
     location,
     envVars: {
       ...(opts.extraEnvVars ?? {}),
+      // Inject the admin-configured default model so the daemon doesn't fall
+      // back to its hardcoded 'claude-sonnet-4.6' / 'anthropic/claude-sonnet-4.6'.
+      ...(resolvedDefaultModel ? { KORTIX_DEFAULT_MODEL: resolvedDefaultModel } : {}),
       // ── Sandbox token model — TWO credentials, two principals ──────────────
       // 1) The SANDBOX credential (`kortix_sb_…`): the daemon's identity. It is
       //    the HMAC key the API signs `X-Kortix-User-Context` with (the daemon

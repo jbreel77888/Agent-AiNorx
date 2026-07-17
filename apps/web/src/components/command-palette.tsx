@@ -1071,12 +1071,49 @@ export function CommandPalette() {
 
   const handleLogout = useCallback(async () => {
     close();
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    clearUserLocalStorage();
-    await clearSessionIDBCache();
-    router.push('/auth');
-  }, [close, router]);
+    // Comprehensive logout — see user-menu.tsx performLogout for the full
+    // rationale. Summary: (1) best-effort backend audit, (2) Supabase
+    // signOut, (3) resetClientState (clears React Query + account store +
+    // localStorage + IDB), (4) HARD RELOAD to /auth so the JS heap is
+    // torn down and no stale state survives.
+    try {
+      const supabase = createClient();
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          const backendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || '/v1').replace(/\/+$/, '');
+          await fetch(`${backendUrl}/auth/logout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: '{}',
+            signal: AbortSignal.timeout(3_000),
+          }).catch(() => void 0);
+        }
+      } catch {
+        /* swallow — backend audit is best-effort */
+      }
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.warn('[logout] supabase.auth.signOut failed:', e);
+      }
+      clearUserLocalStorage();
+      try {
+        await clearSessionIDBCache();
+      } catch (e) {
+        console.warn('[logout] clearSessionIDBCache failed:', e);
+      }
+    } catch (e) {
+      console.error('[logout] unexpected error during logout:', e);
+    } finally {
+      if (typeof window !== 'undefined') {
+        window.location.href = '/auth';
+      }
+    }
+  }, [close]);
 
   const handleSetTheme = useCallback(
     (newTheme: string) => {

@@ -111,10 +111,69 @@ export function UserMenu({
   const openLogoutConfirm = () => deferAfterClose(() => setLogoutConfirmOpen(true));
 
   const performLogout = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    await resetClientState();
-    router.push('/auth');
+    // Comprehensive logout flow:
+    //   1. Best-effort call the backend /v1/auth/logout so the session is
+    //      audited + marked revoked in account_session_activity. Without this,
+    //      the now-client-side-cleared access token stays valid until it
+    //      naturally expires (up to 1h).
+    //   2. Call supabase.auth.signOut() — this is the authoritative session
+    //      end. Fires SIGNED_OUT → AuthProvider clears React Query cache +
+    //      account store + IDB.
+    //   3. resetClientState() — explicit second sweep (idempotent with the
+    //      SIGNED_OUT listener, but safe in case the listener is mid-flight).
+    //   4. window.location.href = '/auth' — HARD RELOAD (not router.push).
+    //      This is critical: router.push() is a client-side navigation that
+    //      preserves the JS heap. A hard reload ensures ALL client state
+    //      (in-memory caches, React Query observers, the OpenCode WS
+    //      connection, sandbox iframe state) is torn down — the user gets a
+    //      fresh /auth page that can't accidentally reuse stale credentials.
+    //
+    // Every step is wrapped in try/catch so a failure in any one of them
+    // (network down, GoTrue 500, etc.) doesn't strand the user on a protected
+    // page with no way out — the final hard reload always runs.
+    try {
+      const supabase = createClient();
+      // (1) Best-effort backend audit — never blocks logout
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          const backendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || '/v1').replace(/\/+$/, '');
+          await fetch(`${backendUrl}/auth/logout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: '{}',
+            signal: AbortSignal.timeout(3_000),
+          }).catch(() => void 0);
+        }
+      } catch {
+        /* swallow — backend audit is best-effort */
+      }
+      // (2) Authoritative Supabase sign-out
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.warn('[logout] supabase.auth.signOut failed:', e);
+      }
+      // (3) Explicit client state reset (belt-and-suspenders with the
+      // SIGNED_OUT listener in auth-provider.tsx)
+      try {
+        await resetClientState();
+      } catch (e) {
+        console.warn('[logout] resetClientState failed:', e);
+      }
+    } catch (e) {
+      console.error('[logout] unexpected error during logout:', e);
+    } finally {
+      // (4) HARD RELOAD — always runs, even if everything above threw.
+      // This is what actually makes the UI "logout" visible to the user:
+      // the page tears down, the cookie is dropped, and /auth mounts fresh.
+      if (typeof window !== 'undefined') {
+        window.location.href = '/auth';
+      }
+    }
   };
 
   const trigger =

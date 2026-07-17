@@ -129,23 +129,82 @@ export function buildOpencodeApp(
     // ─── Model override for prompt requests ─────────────────────────────
     // The frontend may send a stale model from localStorage (e.g.
     // 'opencode/big-pickle') that doesn't match the admin-configured default.
-    // When the daemon has KORTIX_DEFAULT_MODEL set, strip the model field
-    // from prompt requests so OpenCode uses the config default instead.
-    // This fixes "Model not found: opencode/big-pickle" permanently.
+    // When the daemon has KORTIX_DEFAULT_MODEL set, REWRITE the model field
+    // to vaelorx/<default> so OpenCode uses the config default instead.
+    //
+    // When KORTIX_DEFAULT_MODEL is UNSET (legacy daemons or DB mis-config),
+    // at least STRIP the stale 'opencode/<anything>' / 'opencode' provider
+    // models from the body so OpenCode doesn't error with "Model not found:
+    // opencode/big-pickle" — it will then fall back to the vaelorx agent's
+    // configured model (which has a sensible default in opencode.jsonc).
     const url = new URL(c.req.url)
     const isPromptRequest =
       c.req.method.toUpperCase() === 'POST' &&
       /\/session\/[^/]+\/prompt(\/async)?$/.test(url.pathname)
     const defaultModel = process.env.KORTIX_DEFAULT_MODEL?.trim()
-    if (isPromptRequest && defaultModel) {
+    if (isPromptRequest) {
       try {
         const rawBody = await c.req.text()
         const body = JSON.parse(rawBody)
+        let shouldRewrite = false
         if (body.model) {
-          logger.info(`[proxy] overriding model in prompt: ${JSON.stringify(body.model)} → vaelorx/${defaultModel}`)
-          body.model = { providerID: 'vaelorx', modelID: defaultModel }
+          // Detect a stale 'opencode/<id>' model (e.g. 'opencode/big-pickle')
+          // — these are OpenCode Zen built-in models that are NOT in our
+          // enabled_providers list, so OpenCode will reject them.
+          const modelStr = typeof body.model === 'string'
+            ? body.model
+            : (body.model?.providerID && body.model?.modelID
+                ? `${body.model.providerID}/${body.model.modelID}`
+                : (body.model?.modelID || body.model?.providerID || ''))
+          const isStaleOpencodeModel =
+            modelStr === 'opencode' ||
+            modelStr.startsWith('opencode/') ||
+            modelStr === 'big-pickle'
+          if (defaultModel) {
+            // Always rewrite to the admin-configured default
+            shouldRewrite = true
+            logger.info(`[proxy] overriding model in prompt: ${JSON.stringify(body.model)} → vaelorx/${defaultModel}`)
+            body.model = { providerID: 'vaelorx', modelID: defaultModel }
+          } else if (isStaleOpencodeModel) {
+            // No admin default — but at least strip the stale opencode model
+            // so OpenCode falls back to the vaelorx agent's configured model
+            shouldRewrite = true
+            logger.warn(`[proxy] stripping stale OpenCode model "${modelStr}" from prompt (no KORTIX_DEFAULT_MODEL set)`)
+            delete body.model
+          }
         }
-        // Re-forward with the modified body
+        if (shouldRewrite) {
+          // Re-forward with the modified body
+          const upstreamUrl = `${opencode.getInternalUrl()}${url.pathname}${url.search}`
+          const headers = new Headers()
+          c.req.raw.headers.forEach((value, key) => {
+            if (!STRIP_REQUEST_HEADERS.has(key.toLowerCase()) && key.toLowerCase() !== 'content-length') headers.set(key, value)
+          })
+          headers.set('content-type', 'application/json')
+          if (opencode.getState() !== 'ok') {
+            return c.json({ error: 'opencode not ready', opencode: opencode.getState() }, 503)
+          }
+          try {
+            const upstream = await fetch(upstreamUrl, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(body),
+            })
+            const respHeaders = new Headers()
+            upstream.headers.forEach((value, key) => {
+              if (!STRIP_RESPONSE_HEADERS.has(key.toLowerCase())) respHeaders.set(key, value)
+            })
+            return new Response(upstream.body, {
+              status: upstream.status,
+              statusText: upstream.statusText,
+              headers: respHeaders,
+            })
+          } catch (err) {
+            logger.error('[proxy] prompt override upstream fetch failed', err)
+            return c.json({ error: 'upstream unreachable', details: (err as Error).message }, 502)
+          }
+        }
+        // No rewrite needed — re-forward the original body
         const upstreamUrl = `${opencode.getInternalUrl()}${url.pathname}${url.search}`
         const headers = new Headers()
         c.req.raw.headers.forEach((value, key) => {
@@ -159,7 +218,7 @@ export function buildOpencodeApp(
           const upstream = await fetch(upstreamUrl, {
             method: 'POST',
             headers,
-            body: JSON.stringify(body),
+            body: rawBody,
           })
           const respHeaders = new Headers()
           upstream.headers.forEach((value, key) => {
@@ -171,12 +230,14 @@ export function buildOpencodeApp(
             headers: respHeaders,
           })
         } catch (err) {
-          logger.error('[proxy] prompt override upstream fetch failed', err)
+          logger.error('[proxy] prompt forward failed', err)
           return c.json({ error: 'upstream unreachable', details: (err as Error).message }, 502)
         }
       } catch (err) {
         logger.warn('[proxy] failed to parse/override prompt body, forwarding as-is', { err: (err as Error).message })
-        // Fall through to normal proxy below
+        // Fall through to normal proxy below — but we already consumed the
+        // body, so just return a 400 to surface the parse error clearly.
+        return c.json({ error: 'invalid JSON in prompt body' }, 400)
       }
     }
     if (bootState.repoMaterializationError) {

@@ -407,6 +407,14 @@ const MINIMAL_FALLBACK_MODELS: Record<string, VaelorXGatewayModel> = {
     temperature: true,
     limit: { context: 202_752, output: 64_000 },
   },
+  'z-ai/glm-5.2': {
+    name: 'GLM 5.2',
+    reasoning: true,
+    tool_call: true,
+    attachment: true,
+    temperature: true,
+    limit: { context: 202_752, output: 64_000 },
+  },
   'x-ai/grok-4.3': {
     name: 'Grok 4.3',
     reasoning: true,
