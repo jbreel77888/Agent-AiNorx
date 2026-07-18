@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useModelStore, type ModelKey } from './use-model-store';
+import { usePlatformDefaultModel } from '@/hooks/platform/use-platform-default-model';
 
 export type { ModelKey };
 
@@ -185,6 +186,11 @@ export function useOpenCodeLocal({
   sessionId,
   connectedProviderIds: connectedProviderIdsProp,
 }: UseOpenCodeLocalOptions): OpenCodeLocal {
+  // Fetch the admin-configured default model from the API. This OVERRIDES
+  // any stale localStorage selection — when the admin changes the default,
+  // the UI must reflect it immediately, not keep showing the old choice.
+  const platformDefaultModel = usePlatformDefaultModel();
+
   // Derive connected providers from project secrets if not passed explicitly
   const projectSecretProviderIds = useConnectedProviderIds();
 
@@ -344,13 +350,23 @@ export function useOpenCodeLocal({
   }, [config?.model, modelStore.recent, providers, isModelValid]);
 
   // ---- Current model resolution ----
-  // Priority: per-session > per-agent > globalDefault > agent.model > fallback
-  // Per-session and per-agent overrides take priority over globalDefault so that
-  // explicit per-conversation choices are respected. globalDefault is the user's
-  // chosen default for NEW conversations (set during onboarding or settings).
+  // Priority: platform default > per-session > per-agent > globalDefault > agent.model > fallback
+  // The platform default (admin-configured) takes HIGHEST priority so that
+  // when the admin changes the default model in the dashboard, the UI
+  // reflects it immediately — overriding any stale localStorage selection
+  // from a previous session.
   const currentModelKey = useMemo<ModelKey | undefined>(() => {
     if (!currentAgent) return undefined;
     return getFirstValidModel(
+      // 0. Platform default (admin-configured — HIGHEST priority)
+      //    This overrides localStorage so admin changes take effect immediately.
+      () => {
+        if (!platformDefaultModel.data?.id) return undefined;
+        return {
+          providerID: 'vaelorx',
+          modelID: platformDefaultModel.data.id,
+        } as ModelKey;
+      },
       // 1. Per-session model (user's explicit choice in this session — survives reload)
       () => (sessionId ? modelStore.getSessionModel(sessionId) : undefined),
       // 2. Per-agent model (persisted across sessions for this agent)
@@ -362,7 +378,7 @@ export function useOpenCodeLocal({
       // 5. Global fallback (config.model > recent > first connected)
       () => fallbackModel,
     );
-  }, [currentAgent, sessionId, modelStore, getFirstValidModel, fallbackModel]);
+  }, [currentAgent, sessionId, modelStore, getFirstValidModel, fallbackModel, platformDefaultModel.data]);
 
   const currentModel = useMemo<FlatModel | undefined>(
     () => (currentModelKey ? findModel(currentModelKey) : undefined),

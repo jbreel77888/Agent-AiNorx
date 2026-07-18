@@ -31,5 +31,51 @@ export function createModelsRoute(_config: LlmGatewayConfig) {
     },
   );
 
+  // Lightweight endpoint that returns ONLY the current default model.
+  // Used by the frontend to display the admin's current choice in the UI
+  // (overriding any stale localStorage selection from a previous session).
+  // Also used by the daemon at boot to write the correct model into
+  // vaelorx.toml / opencode.jsonc / vaelorx.md.
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/models/default',
+      tags: ['llm'],
+      summary: 'Get the current default model (admin-configured)',
+      responses: {
+        200: json(
+          z.object({
+            id: z.string(),
+            name: z.string().optional(),
+            provider: z.string().optional(),
+            context_length: z.number().optional(),
+            reasoning: z.boolean().optional(),
+          }),
+          'The admin-configured default model',
+        ),
+        ...errors(404, 500),
+      },
+    }),
+    async (c) => {
+      const response = await listUpstreamModels();
+      const data = (await response.json()) as {
+        data?: Array<Record<string, unknown>>;
+      };
+      const defaultEntry = Array.isArray(data.data)
+        ? data.data.find((m) => m?.is_default === true)
+        : undefined;
+      if (!defaultEntry?.id) {
+        return c.json({ error: 'No default model configured' }, 404);
+      }
+      return c.json({
+        id: defaultEntry.id,
+        name: typeof defaultEntry.name === 'string' ? defaultEntry.name : defaultEntry.id,
+        provider: typeof defaultEntry.owned_by === 'string' ? defaultEntry.owned_by : 'vaelorx',
+        context_length: typeof defaultEntry.context_length === 'number' ? defaultEntry.context_length : undefined,
+        reasoning: typeof defaultEntry.reasoning === 'boolean' ? defaultEntry.reasoning : undefined,
+      });
+    },
+  );
+
   return app;
 }

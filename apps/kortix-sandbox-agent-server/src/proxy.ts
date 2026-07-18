@@ -12,6 +12,7 @@ import { createGitRouter } from './routes/git'
 import { createPortProxyRouter } from './routes/port-proxy'
 import { createFilesRouter } from './routes/files'
 import { createFindRouter } from './routes/find'
+import { createModelUpdateRouter } from './routes/model-update'
 import webProxyRouter from './routes/web-proxy'
 import type { ProjectEnvStore } from './project-env'
 import {
@@ -63,6 +64,9 @@ export function buildOpencodeApp(
     kortixRouter.route('/env', envRouter)
     kortixRouter.route('/env/', envRouter)
   }
+  const modelUpdateRouter = createModelUpdateRouter(cfg, opencode)
+  kortixRouter.route('/model', modelUpdateRouter)
+  kortixRouter.route('/model/', modelUpdateRouter)
 
   app.route('/kortix', kortixRouter)
 
