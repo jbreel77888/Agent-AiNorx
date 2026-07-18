@@ -150,33 +150,12 @@ function GeneralSection({
         />
       </div>
 
-      {/* Default Model */}
-      <div className="space-y-2">
-        <label className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-          {tHardcodedUi.raw('componentsSessionOpencodeSettingsDialog.line174JsxTextDefaultModel')}
-        </label>
-        <div className="flex items-center gap-2">
-          <ModelSelector
-            models={allModels}
-            selectedModel={selectedModel}
-            onSelect={handleModelSelect}
-          />
-          {selectedModel && (
-            <Button
-              type="button"
-              onClick={() => onDraft('model', undefined)}
-              variant="link"
-              size="sm"
-              className="text-muted-foreground h-auto p-0 text-xs"
-            >
-              {tHardcodedUi.raw(
-                'componentsSessionOpencodeSettingsDialog.line190JsxTextResetToAuto',
-              )}
-            </Button>
-          )}
-          {!selectedModel && <span className="text-muted-foreground/60 text-xs">Auto-detect</span>}
-        </div>
-      </div>
+      {/* Default Model — REMOVED
+          The platform uses a single default model set by the admin via the
+          dashboard. Users cannot see or switch models (Phase 5 requirement).
+          The ModelSelector import and related state/handlers are kept for
+          backward compatibility with the draft schema, but the UI is hidden. */}
+      {/* hide — admin-only setting now */}
 
       {/* Snapshots */}
       <div className="space-y-2">

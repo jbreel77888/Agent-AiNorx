@@ -456,29 +456,71 @@ platformAdminApp.post('/providers/:id/refresh-models', async (c) => {
     }
 
     const data = await res.json();
-    // Normalize to {id, name}[]
-    let models: Array<{ id: string; name: string }> = [];
+    // Normalize to {id, name, context_length, max_tokens}[]
+    // Most OpenAI-compatible providers (NVIDIA, OpenRouter, Groq, etc.) return
+    // context_length / max_tokens per model in their /models response. We capture
+    // them so the gateway can display REAL limits (not hardcoded guesses).
+    let models: Array<{ id: string; name: string; context_length?: number; max_tokens?: number }> = [];
     if (Array.isArray(data?.data)) {
-      models = data.data.map((m: any) => ({ id: m.id || m.model, name: m.id || m.model }));
+      models = data.data.map((m: any) => ({
+        id: m.id || m.model,
+        name: m.id || m.model,
+        context_length: typeof m.context_length === 'number' ? m.context_length :
+                        typeof m.context_window === 'number' ? m.context_window :
+                        typeof m.max_context_length === 'number' ? m.max_context_length : undefined,
+        max_tokens: typeof m.max_tokens === 'number' ? m.max_tokens :
+                    typeof m.output_tokens === 'number' ? m.output_tokens :
+                    typeof m.max_output_tokens === 'number' ? m.max_output_tokens : undefined,
+      }));
     } else if (Array.isArray(data?.models)) {
-      models = data.models.map((m: any) => ({ id: m.id || m.model, name: m.id || m.model }));
+      models = data.models.map((m: any) => ({
+        id: m.id || m.model,
+        name: m.id || m.model,
+        context_length: typeof m.context_length === 'number' ? m.context_length :
+                        typeof m.context_window === 'number' ? m.context_window : undefined,
+        max_tokens: typeof m.max_tokens === 'number' ? m.max_tokens :
+                    typeof m.output_tokens === 'number' ? m.output_tokens : undefined,
+      }));
     } else if (Array.isArray(data)) {
-      models = data.map((m: any) => ({ id: typeof m === 'string' ? m : (m.id || m.model), name: typeof m === 'string' ? m : (m.id || m.model) }));
+      models = data.map((m: any) => ({
+        id: typeof m === 'string' ? m : (m.id || m.model),
+        name: typeof m === 'string' ? m : (m.id || m.model),
+        context_length: typeof m?.context_length === 'number' ? m.context_length : undefined,
+        max_tokens: typeof m?.max_tokens === 'number' ? m.max_tokens : undefined,
+      }));
     }
 
-    // Upsert models into platform_models
+    // Upsert models into platform_models — store context_length + max_tokens
+    // in the metadata JSONB column so the gateway can return REAL provider-
+    // reported limits instead of hardcoded guesses from MODEL_CATALOG.
     let imported = 0;
     let updated = 0;
     for (const model of models) {
+      const modelMetadata: Record<string, unknown> = {};
+      if (typeof model.context_length === 'number' && model.context_length > 0) {
+        modelMetadata.context_length = model.context_length;
+      }
+      if (typeof model.max_tokens === 'number' && model.max_tokens > 0) {
+        modelMetadata.max_tokens = model.max_tokens;
+      }
+
       const [existing] = await db.select().from(platformModels)
         .where(eq(platformModels.modelKey, model.id))
         .limit(1);
 
       if (existing) {
-        // Update upstream ID + provider if changed
-        if (existing.upstreamModelId !== model.id || existing.provider !== provider.providerKey) {
+        // Update upstream ID + provider + metadata if changed
+        const newMetadata = { ...((existing.metadata as Record<string, unknown>) ?? {}), ...modelMetadata };
+        if (existing.upstreamModelId !== model.id ||
+            existing.provider !== provider.providerKey ||
+            JSON.stringify(existing.metadata) !== JSON.stringify(newMetadata)) {
           await db.update(platformModels)
-            .set({ upstreamModelId: model.id, provider: provider.providerKey, updatedAt: new Date() })
+            .set({
+              upstreamModelId: model.id,
+              provider: provider.providerKey,
+              metadata: newMetadata,
+              updatedAt: new Date(),
+            })
             .where(eq(platformModels.modelId, existing.modelId));
           updated++;
         }
@@ -491,12 +533,21 @@ platformAdminApp.post('/providers/:id/refresh-models', async (c) => {
           isActive: true,
           isDefault: false,
           sortOrder: 0,
+          metadata: Object.keys(modelMetadata).length > 0 ? modelMetadata : {},
         });
         imported++;
       }
     }
 
-    return c.json({ ok: true, total: models.length, imported, updated, skipped: models.length - imported - updated });
+    const withLimits = models.filter((m) => m.context_length).length;
+    return c.json({
+      ok: true,
+      total: models.length,
+      imported,
+      updated,
+      skipped: models.length - imported - updated,
+      with_context_limits: withLimits,
+    });
   } catch (err: any) {
     return c.json({ error: `Failed to refresh models: ${err.message}` }, 500);
   }
@@ -624,6 +675,7 @@ const PROVIDER_CATALOG: Record<string, {
   'palmai':         { displayName: 'Palmy',               baseUrl: 'https://api.pal.ai/v1',                                     docs: 'https://pal.ai',                                        envVar: 'PALM_API_KEY',           category: 'specialized' },
   // ── Aggregators & Gateways ──
   'opencode':       { displayName: 'OpenCode Zen',        baseUrl: 'https://opencode.ai/zen/v1',                                docs: 'https://opencode.ai',                                   envVar: 'OPENCODE_API_KEY',       category: 'aggregator' },
+  'tokenrouter':    { displayName: 'TokenRouter',         baseUrl: 'https://api.tokenrouter.com/v1',                            docs: 'https://www.tokenrouter.com',                           envVar: 'TOKENROUTER_API_KEY',    category: 'aggregator' },
   'huggingface':    { displayName: 'Hugging Face',        baseUrl: 'https://router.huggingface.co/v1',                          docs: 'https://huggingface.co/settings/tokens',                envVar: 'HF_API_KEY',             category: 'aggregator' },
   'nvidia':         { displayName: 'Nvidia',              baseUrl: 'https://integrate.api.nvidia.com/v1',                       docs: 'https://build.nvidia.com',                              envVar: 'NVIDIA_API_KEY',         category: 'aggregator' },
   'nebius':         { displayName: 'Nebius',              baseUrl: 'https://api.studio.nebius.ai/v1',                           docs: 'https://studio.nebius.ai',                              envVar: 'NEBIUS_API_KEY',         category: 'aggregator' },

@@ -101,26 +101,47 @@ export async function listUpstreamModels(): Promise<Response> {
         upstreamModelId: platformModels.upstreamModelId,
         isActive: platformModels.isActive,
         isDefault: platformModels.isDefault,
+        metadata: platformModels.metadata,
       })
       .from(platformModels)
       .where(eq(platformModels.isActive, true));
 
     const data = models.map((m) => {
       const id = m.upstreamModelId || m.modelKey;
-      const limits = lookupModelLimits(id);
+      // PRIORITY: provider-reported limits (from refresh-models, stored in
+      // metadata.context_length) take precedence over MODEL_CATALOG
+      // (hardcoded guesses). This ensures the UI shows REAL limits that
+      // the provider actually enforces, not our approximations.
+      const meta = (m.metadata as Record<string, unknown>) ?? {};
+      const providerContextLength =
+        typeof meta.context_length === 'number' ? meta.context_length :
+        typeof meta.context_window === 'number' ? meta.context_window : undefined;
+      const providerMaxTokens =
+        typeof meta.max_tokens === 'number' ? meta.max_tokens :
+        typeof meta.output_tokens === 'number' ? meta.output_tokens : undefined;
+
+      // Fall back to MODEL_CATALOG only if the provider didn't report limits
+      const catalogLimits = lookupModelLimits(id);
+      const contextLength = providerContextLength ?? catalogLimits.context_length;
+      const maxTokens = providerMaxTokens ?? catalogLimits.output;
+
       return {
         id,
         name: m.displayName,
         object: 'model' as const,
         created: 0,
         owned_by: 'vaelorx',
-        context_length: limits.context_length,
-        max_tokens: limits.output,
-        reasoning: limits.reasoning ?? false,
-        tool_call: limits.tool_call ?? true,
-        attachment: limits.attachment ?? true,
-        temperature: limits.temperature ?? true,
+        context_length: contextLength,
+        max_tokens: maxTokens,
+        reasoning: catalogLimits.reasoning ?? false,
+        tool_call: catalogLimits.tool_call ?? true,
+        attachment: catalogLimits.attachment ?? true,
+        temperature: catalogLimits.temperature ?? true,
         is_default: m.isDefault ?? false,
+        // Source flag for debugging: 'provider' = real limits from provider's
+        // /models endpoint, 'catalog' = our hardcoded guess, 'default' = fallback
+        limit_source: providerContextLength ? 'provider' :
+                      catalogLimits.context_length ? 'catalog' : 'default',
       };
     });
 
