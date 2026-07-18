@@ -1,24 +1,16 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
-
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Cable, Plus, Monitor, Trash2, Search, X, Terminal, Copy, Check } from 'lucide-react';
+import { Plus, Monitor, Trash2, Search, X, Copy, Check, Cable } from 'lucide-react';
 import { getEnv } from '@/lib/env-config';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { PageSearchBar } from '@/components/ui/page-search-bar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { SpotlightCard } from '@/components/ui/spotlight-card';
-import { Ripple } from '@/components/ui/ripple';
-import { PageHeader } from '@/components/ui/page-header';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -31,416 +23,283 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useTunnelConnections, useDeleteTunnelConnection, type TunnelConnection } from '@/hooks/tunnel/use-tunnel';
-import { useTunnelRealtimeSync } from '@/hooks/tunnel/use-tunnel-realtime';
-import { TunnelSettingsDialog } from './tunnel-settings-dialog';
-import { TunnelPermissionRequestDialog } from './tunnel-permission-request-dialog';
 import { toast } from '@/lib/toast';
 
-// ─── Connection card ─────────────────────────────────────────────────────────
+/**
+ * Simplified TunnelOverview — no next-intl translation dependencies.
+ *
+ * The original TunnelOverview used tHardcodedUi.raw('componentsTunnelTunnelOverview.*')
+ * for every string, but those keys don't exist in translations/en.json →
+ * React error #130 (Element type is invalid: got undefined).
+ *
+ * This version uses hardcoded English strings and inline management
+ * (no TunnelSettingsDialog — that also has missing translation keys).
+ */
+export function TunnelOverview() {
+  const { data: connections, isLoading } = useTunnelConnections();
+  const deleteMutation = useDeleteTunnelConnection();
+  const [search, setSearch] = useState('');
+  const [showConnect, setShowConnect] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<TunnelConnection | null>(null);
 
-function ConnectionItem({
-  connection,
-  onClick,
-  onDelete,
-  index,
-}: {
-  connection: TunnelConnection;
-  onClick: () => void;
-  onDelete: () => void;
-  index: number;
-}) {
-  const tHardcodedUi = useTranslations('hardcodedUi');
-  const isOnline = connection.isLive;
-  const machineInfo = connection.machineInfo as Record<string, string> | undefined;
-  const [deleteOpen, setDeleteOpen] = useState(false);
+  const filtered = (connections ?? []).filter((c) =>
+    !search || c.name.toLowerCase().includes(search.toLowerCase()),
+  );
 
   return (
-    <>
-      <motion.div
-        layout
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -8, scale: 0.95 }}
-        transition={{ duration: 0.3, delay: Math.min(index * 0.03, 0.6) }}
-      >
-        <SpotlightCard className="bg-card border border-border/50">
-          <div
-            onClick={onClick}
-            onKeyDown={(e) => {
-              // Only act when the card itself is focused — nested action buttons
-              // (Delete / Manage) keep their own keyboard behaviour.
-              if (e.target !== e.currentTarget) return;
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onClick();
-              }
-            }}
-            role="button"
-            tabIndex={0}
-            aria-label={`Manage connection ${connection.name}`}
-            className="p-4 sm:p-5 flex flex-col h-full cursor-pointer group rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50"
-          >
-            <div className="flex items-center gap-3 mb-3">
-              <div className="relative">
-                <div className="flex items-center justify-center w-9 h-9 rounded-[10px] bg-muted border border-border/50 shrink-0">
-                  <Monitor className="h-4.5 w-4.5 text-foreground" />
-                </div>
-                {isOnline && (
-                  <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-background" />
-                  </span>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <h3 className="text-sm font-semibold text-foreground truncate">{connection.name}</h3>
-                  <Badge
-                    variant={isOnline ? 'highlight' : 'secondary'}
-                    className="text-xs shrink-0"
-                  >
-                    {isOnline ? 'Online' : 'Offline'}
-                  </Badge>
-                </div>
-                {machineInfo?.hostname && (
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">
-                    {machineInfo.hostname}
-                    {machineInfo.platform && ` · ${machineInfo.platform} ${machineInfo.arch || ''}`}
-                  </p>
-                )}
-              </div>
-            </div>
+    <div className="mx-auto w-full max-w-4xl space-y-4">
+      {/* Header row */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Monitor className="text-muted-foreground size-5" />
+          <h2 className="text-lg font-semibold">Connected Machines</h2>
+          {connections && connections.length > 0 && (
+            <Badge variant="secondary">{connections.length}</Badge>
+          )}
+        </div>
+        <Button onClick={() => setShowConnect(true)} size="sm">
+          <Plus className="size-4" />
+          <span className="hidden xs:inline">Connect a machine</span>
+          <span className="xs:hidden">Connect</span>
+        </Button>
+      </div>
 
-            <div className="h-[34px] mb-3">
-              <p className="text-xs text-muted-foreground/80 leading-relaxed line-clamp-2">
-                {connection.lastHeartbeatAt
-                  ? `Last seen ${formatRelative(connection.lastHeartbeatAt)}`
-                  : 'Never connected'}
-              </p>
-            </div>
+      {/* Search */}
+      {connections && connections.length > 0 && (
+        <div className="relative">
+          <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search connections..."
+            className="bg-background border-border focus:border-primary w-full rounded-md border py-2 pl-9 pr-3 text-sm outline-none transition-colors"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="text-muted-foreground hover:text-foreground absolute right-2 top-1/2 -translate-y-1/2 rounded p-1"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
+        </div>
+      )}
 
-            <div className="flex justify-end gap-1">
-              <Button
-                variant="ghost"
-                className="text-muted-foreground hover:text-destructive h-8 px-2 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDeleteOpen(true);
-                }}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="ghost" size="sm" className="px-2.5 text-xs">
-                Manage
-              </Button>
-            </div>
-          </div>
-        </SpotlightCard>
-      </motion.div>
+      {/* Loading */}
+      {isLoading && (
+        <div className="space-y-2">
+          {[1, 2].map((i) => (
+            <Skeleton key={i} className="h-20 w-full rounded-lg" />
+          ))}
+        </div>
+      )}
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      {/* Empty state */}
+      {!isLoading && (!connections || connections.length === 0) && (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16 text-center">
+          <Cable className="text-muted-foreground mb-3 size-10" />
+          <h3 className="text-base font-medium">No machines connected</h3>
+          <p className="text-muted-foreground mt-1 max-w-sm text-sm">
+            Connect your laptop or desktop so the agent can securely reach your files, shell, and desktop.
+          </p>
+          <Button onClick={() => setShowConnect(true)} className="mt-4" size="sm">
+            <Plus className="size-4" />
+            Connect your first machine
+          </Button>
+        </div>
+      )}
+
+      {/* Connections list */}
+      {!isLoading && filtered.length > 0 && (
+        <div className="space-y-2">
+          {filtered.map((conn) => (
+            <ConnectionRow
+              key={conn.tunnelId}
+              conn={conn}
+              onDelete={() => setDeleteTarget(conn)}
+            />
+          ))}
+          {filtered.length === 0 && search && (
+            <div className="text-muted-foreground py-8 text-center text-sm">
+              No connections matching &ldquo;{search}&rdquo;
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Connect dialog */}
+      <ConnectDialog open={showConnect} onOpenChange={setShowConnect} />
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{tHardcodedUi.raw('componentsTunnelTunnelOverview.line126JsxTextDeleteConnection')}</AlertDialogTitle>
-            <AlertDialogDescription>{tHardcodedUi.raw('componentsTunnelTunnelOverview.line128JsxTextThisWillPermanentlyDelete')}<span className="font-medium text-foreground">{connection.name}</span>{tHardcodedUi.raw('componentsTunnelTunnelOverview.line128JsxTextAndRemoveAllItsPermissionsAndAuditLogs')}</AlertDialogDescription>
+            <AlertDialogTitle>Delete connection</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <span className="text-foreground font-medium">{deleteTarget?.name}</span> and remove all its permissions and audit logs. The agent will no longer be able to reach this machine.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-white hover:bg-destructive/90"
-              onClick={onDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!deleteTarget) return;
+                try {
+                  await deleteMutation.mutateAsync(deleteTarget.tunnelId);
+                  toast.success('Connection deleted');
+                  setDeleteTarget(null);
+                } catch (err) {
+                  toast.error('Failed to delete connection');
+                }
+              }}
             >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   );
 }
 
-// ─── Empty state ─────────────────────────────────────────────────────────────
+// ─── Connection Row ───────────────────────────────────────────────────────
 
-function ConnectButton() {
-  const tHardcodedUi = useTranslations('hardcodedUi');
-  const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const command = getConnectCommand();
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(command);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <>
-      <Button
-        variant="default"
-        className="px-3 sm:px-4 gap-1.5 sm:gap-2"
-        onClick={() => setOpen(true)}
-      >
-        <Plus className="h-4 w-4" />
-        <span className="hidden xs:inline">{tHardcodedUi.raw('componentsTunnelTunnelOverview.line169JsxTextAddConnection')}</span>
-        <span className="xs:hidden">Add</span>
-      </Button>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center justify-center w-9 h-9 rounded-[10px] bg-muted border border-border/50">
-                <Terminal className="h-4.5 w-4.5 text-foreground" />
-              </div>
-              <div>
-                <DialogTitle>{tHardcodedUi.raw('componentsTunnelTunnelOverview.line181JsxTextConnectAMachine')}</DialogTitle>
-                <DialogDescription>{tHardcodedUi.raw('componentsTunnelTunnelOverview.line183JsxTextRunThisCommandOnTheMachineYouWant')}</DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <button
-              onClick={handleCopy}
-              className="group flex items-center gap-2 w-full bg-foreground/[0.04] hover:bg-foreground/[0.07] border border-foreground/[0.08] rounded-2xl px-3 py-2.5 transition-colors cursor-pointer"
-            >
-              <code className="text-xs font-mono text-foreground/80 flex-1 text-left break-all">
-                {command}
-              </code>
-              {copied ? (
-                <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-              ) : (
-                <Copy className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              )}
-            </button>
-            <div className="flex items-center justify-center gap-6 text-xs text-muted-foreground/60">
-              <span>{tHardcodedUi.raw('componentsTunnelTunnelOverview.line203JsxTextText1RunTheCommand')}</span>
-              <span className="text-foreground/10">|</span>
-              <span>{tHardcodedUi.raw('componentsTunnelTunnelOverview.line205JsxTextText2ApproveInBrowser')}</span>
-              <span className="text-foreground/10">|</span>
-              <span>{tHardcodedUi.raw('componentsTunnelTunnelOverview.line207JsxTextText3Connected')}</span>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
-function ConnectGuide() {
-  const tHardcodedUi = useTranslations('hardcodedUi');
-  const [copied, setCopied] = useState(false);
-  const command = getConnectCommand();
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(command);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+function ConnectionRow({
+  conn,
+  onDelete,
+}: {
+  conn: TunnelConnection;
+  onDelete: () => void;
+}) {
+  const isOnline = conn.status === 'online';
+  const lastSeen = conn.lastHeartbeatAt
+    ? new Date(conn.lastHeartbeatAt).toLocaleString()
+    : 'never';
 
   return (
-    <div className="relative bg-muted/20 rounded-3xl border border-dashed border-border/50 flex flex-col items-center justify-center py-16 px-4 overflow-hidden">
-      <Ripple mainCircleSize={160} mainCircleOpacity={0.12} numCircles={6} />
-      <div className="relative z-10 flex flex-col items-center max-w-lg">
-        <div className="w-16 h-16 bg-muted border rounded-2xl flex items-center justify-center mb-4">
-          <Cable className="h-7 w-7 text-muted-foreground" />
+    <div className="hover:bg-accent/50 group flex items-center gap-3 rounded-lg border p-3 transition-colors">
+      {/* Status dot */}
+      <div className="relative flex-shrink-0">
+        <Monitor className="text-muted-foreground size-5" />
+        <span
+          className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-background ${
+            isOnline ? 'bg-emerald-500' : 'bg-muted-foreground/40'
+          }`}
+        />
+      </div>
+
+      {/* Info */}
+      <div className="flex flex-1 flex-col items-start text-left">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">{conn.name}</span>
+          {isOnline ? (
+            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 gap-1 text-[10px]">
+              <span className="bg-emerald-500 size-1.5 rounded-full" />
+              Online
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-muted-foreground text-[10px]">
+              Offline
+            </Badge>
+          )}
         </div>
-        <h3 className="text-lg font-semibold text-foreground mb-2">{tHardcodedUi.raw('componentsTunnelTunnelOverview.line234JsxTextConnectYourMachine')}</h3>
-        <p className="text-sm text-muted-foreground text-center leading-relaxed mb-6">{tHardcodedUi.raw('componentsTunnelTunnelOverview.line236JsxTextRunThisCommandOnAnyMachineToConnect')}</p>
+        <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
+          {conn.machineInfo?.platform && <span>{conn.machineInfo.platform}</span>}
+          {conn.machineInfo?.hostname && <span>· {conn.machineInfo.hostname}</span>}
+          <span>· Last seen: {lastSeen}</span>
+        </div>
+        {conn.capabilities && conn.capabilities.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {conn.capabilities.map((cap) => (
+              <span
+                key={cap}
+                className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium"
+              >
+                {cap}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
 
-        <button
-          onClick={handleCopy}
-          className="group flex items-center gap-3 bg-foreground/[0.04] hover:bg-foreground/[0.07] border border-foreground/[0.08] rounded-2xl px-5 py-3.5 transition-colors w-full max-w-sm"
+      {/* Actions */}
+      <div className="flex flex-shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <Button
+          onClick={onDelete}
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground hover:text-destructive size-8"
+          title="Delete connection"
         >
-          <Terminal className="h-4 w-4 text-muted-foreground shrink-0" />
-          <code className="text-sm font-mono text-foreground/80 flex-1 text-left truncate">
-            {command}
-          </code>
-          {copied ? (
-            <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-          ) : (
-            <Copy className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-          )}
-        </button>
-
-        <div className="flex items-center gap-6 mt-6 text-xs text-muted-foreground/60">
-          <span>{tHardcodedUi.raw('componentsTunnelTunnelOverview.line255JsxTextText1RunTheCommand')}</span>
-          <span className="text-foreground/10">|</span>
-          <span>{tHardcodedUi.raw('componentsTunnelTunnelOverview.line257JsxTextText2ApproveInBrowser')}</span>
-          <span className="text-foreground/10">|</span>
-          <span>{tHardcodedUi.raw('componentsTunnelTunnelOverview.line259JsxTextText3Connected')}</span>
-        </div>
+          <Trash2 className="size-4" />
+        </Button>
       </div>
     </div>
   );
 }
 
-// ─── Loading skeleton ────────────────────────────────────────────────────────
+// ─── Connect Dialog ───────────────────────────────────────────────────────
 
-function LoadingSkeleton() {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-      {[1, 2, 3, 4].map((i) => (
-        <div key={i} className="rounded-2xl border dark:bg-card p-4 sm:p-5">
-          <div className="flex items-center gap-3 mb-3">
-            <Skeleton className="h-9 w-9 rounded-[10px]" />
-            <div className="flex-1 space-y-2">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-3 w-32" />
-            </div>
-          </div>
-          <Skeleton className="h-3 w-full mb-1" />
-          <Skeleton className="h-3 w-4/5 mb-3" />
-          <div className="flex justify-end">
-            <Skeleton className="h-8 w-16" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+function ConnectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [copied, setCopied] = useState(false);
 
-// ─── Main overview ───────────────────────────────────────────────────────────
-
-export function TunnelOverview() {
-  const tHardcodedUi = useTranslations('hardcodedUi');
-  const { data: connections = [], isLoading } = useTunnelConnections();
-  const deleteMutation = useDeleteTunnelConnection();
-  useTunnelRealtimeSync();
-
-  const [selectedTunnel, setSelectedTunnel] = useState<TunnelConnection | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const hasConnections = connections.length > 0;
-
-  const filtered = searchQuery
-    ? connections.filter((c) =>
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (c.machineInfo as Record<string, string>)?.hostname?.toLowerCase()?.includes(searchQuery.toLowerCase()),
-      )
-    : connections;
-
-  const handleDelete = async (tunnelId: string) => {
-    try {
-      await deleteMutation.mutateAsync(tunnelId);
-      toast.success('Tunnel deleted');
-      if (selectedTunnel?.tunnelId === tunnelId) {
-        setSelectedTunnel(null);
-        setSettingsOpen(false);
-      }
-    } catch {
-      toast.error('Failed to delete tunnel');
-    }
-  };
-
-  const handleSelect = (conn: TunnelConnection) => {
-    setSelectedTunnel(conn);
-    setSettingsOpen(true);
-  };
-
-  return (
-    <div className="min-h-[100dvh]">
-      {/* Page header */}
-      <div className="container mx-auto max-w-7xl px-3 sm:px-4 py-3 sm:py-4 animate-in fade-in-0 slide-in-from-bottom-4 duration-500 fill-mode-both">
-        <PageHeader icon={Cable}>
-          <div className="space-y-2 sm:space-y-4">
-            <div className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight">
-              <span className="text-primary">Tunnel</span>
-            </div>
-          </div>
-        </PageHeader>
-      </div>
-
-      <div className="container mx-auto max-w-7xl px-3 sm:px-4">
-        {/* Search + action bar */}
-        <div className="flex items-center justify-between gap-2 sm:gap-4 pb-3 sm:pb-4 pt-2 sm:pt-3 animate-in fade-in-0 slide-in-from-bottom-4 duration-500 fill-mode-both delay-75">
-          <PageSearchBar
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder={tHardcodedUi.raw('componentsTunnelTunnelOverview.line348JsxAttrPlaceholderSearchConnections')}
-            className="max-w-md"
-          />
-          <ConnectButton />
-        </div>
-
-        {/* Content */}
-        <div className="pb-6 sm:pb-8 animate-in fade-in-0 slide-in-from-bottom-4 duration-500 fill-mode-both delay-150">
-          {isLoading ? (
-            <LoadingSkeleton />
-          ) : !hasConnections ? (
-            <ConnectGuide />
-          ) : filtered.length === 0 && searchQuery ? (
-            <div className="text-center py-12 text-muted-foreground text-sm">{tHardcodedUi.raw('componentsTunnelTunnelOverview.line362JsxTextNoConnectionsMatchingLdquo')}{searchQuery}{tHardcodedUi.raw('componentsTunnelTunnelOverview.line362JsxTextRdquo')}</div>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Connections
-                </span>
-                <Badge variant="secondary" className="text-xs tabular-nums">
-                  {filtered.length}
-                </Badge>
-              </div>
-
-              <AnimatePresence mode="popLayout">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {filtered.map((conn, i) => (
-                    <ConnectionItem
-                      key={conn.tunnelId}
-                      connection={conn}
-                      onClick={() => handleSelect(conn)}
-                      onDelete={() => handleDelete(conn.tunnelId)}
-                      index={i}
-                    />
-                  ))}
-                </div>
-              </AnimatePresence>
-            </>
-          )}
-        </div>
-      </div>
-
-      <TunnelSettingsDialog
-        tunnel={selectedTunnel}
-        open={settingsOpen}
-        onOpenChange={(open) => {
-          setSettingsOpen(open);
-          if (!open) setSelectedTunnel(null);
-        }}
-      />
-
-      <TunnelPermissionRequestDialog />
-    </div>
-  );
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * The `npx @kortix/agent-tunnel connect` command we show the user to run on the
- * machine they want to connect. The local agent appends its own paths to
- * `--api-url`, so this must be an ABSOLUTE `…/v1/tunnel` URL. BACKEND_URL is
- * often root-relative in the browser (same-origin proxy / sandbox preview), so
- * resolve it against the current origin before handing it to a process that
- * runs off-host.
- */
-function getConnectCommand(): string {
+  // Build the connect command using the runtime BACKEND_URL
   const backend = (getEnv().BACKEND_URL || '').replace(/\/+$/, '');
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const absolute = /^https?:\/\//i.test(backend) ? backend : `${origin}${backend}`;
-  return `npx @kortix/agent-tunnel connect --api-url ${absolute}/tunnel`;
-}
+  // For the CLI we want the absolute API origin (not the root-relative proxy
+  // path used in-sandbox). BACKEND_URL may be root-relative in the sandbox
+  // preview — resolve against the current origin.
+  const absolute =
+    backend.startsWith('http') || backend.startsWith('https')
+      ? backend
+      : `${typeof window !== 'undefined' ? window.location.origin : ''}${backend}`;
+  const command = `npx @kortix/agent-tunnel connect --api-url ${absolute}/tunnel`;
 
-function formatRelative(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diffMs = now - then;
-  const diffSec = Math.floor(diffMs / 1000);
-  if (diffSec < 60) return 'just now';
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDays = Math.floor(diffHr / 24);
-  return `${diffDays}d ago`;
+  const copy = () => {
+    navigator.clipboard.writeText(command);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Connect a machine</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-muted-foreground text-sm">
+            Run this command on the machine you want to connect (your laptop, desktop, or any computer with Node.js installed):
+          </p>
+
+          <div className="bg-muted relative rounded-md p-3 pr-10">
+            <pre className="overflow-x-auto text-xs">
+              <code>{command}</code>
+            </pre>
+            <button
+              onClick={copy}
+              className="text-muted-foreground hover:text-foreground absolute right-2 top-2 rounded p-1"
+              title="Copy"
+            >
+              {copied ? <Check className="size-4 text-emerald-500" /> : <Copy className="size-4" />}
+            </button>
+          </div>
+
+          <div className="bg-muted/50 rounded-md p-3 text-sm">
+            <p className="mb-1 font-medium">What happens next:</p>
+            <ol className="text-muted-foreground list-decimal space-y-1 pl-4 text-xs">
+              <li>The CLI opens your browser to an approval page</li>
+              <li>You pick which capabilities to grant (files, shell, desktop)</li>
+              <li>The machine appears here as &ldquo;Online&rdquo;</li>
+              <li>The agent can then reach it from any session</li>
+            </ol>
+          </div>
+
+          <p className="text-muted-foreground text-xs">
+            Requires Node.js 18+. The CLI installs <code className="bg-muted rounded px-1">@kortix/agent-tunnel</code> via npx (no global install needed).
+          </p>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
