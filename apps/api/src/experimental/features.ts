@@ -82,8 +82,11 @@ const FEATURES: readonly ExperimentalFeatureDef[] = [
     stability: 'experimental',
     // The backend service must be running platform-wide for the surface to work.
     available: () => config.TUNNEL_ENABLED,
-    // Explicit opt-in: off by default even where the service is available.
-    platformDefault: () => false,
+    // Default ON in session-only mode — every user with a connected machine
+    // gets the `computer` connector automatically. The flag is still available
+    // as an emergency switch (set platformDefault to false to hide the feature
+    // globally without redeploying).
+    platformDefault: () => true,
   },
 ];
 

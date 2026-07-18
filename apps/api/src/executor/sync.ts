@@ -35,7 +35,7 @@ import { synthesizeChannelConnectors } from './channel-materialize';
 import { ensureChannelConnectorDeclared, removeChannelConnectorDeclared } from './channel-manifest';
 import { loadSlackInstall } from '../channels/install-store';
 import { computerCatalog } from './computers';
-import { synthesizeComputerConnectors } from './computer-materialize';
+import { synthesizeComputerConnectorsForProject as synthesizeComputerConnectors } from './computer-materialize';
 import { parseSpecDocument } from './spec-doc';
 import type { NormalizedAction, HttpRouteSpec } from './types';
 import { parseResponseBody } from './execute';

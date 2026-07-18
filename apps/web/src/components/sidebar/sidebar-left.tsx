@@ -25,6 +25,7 @@ import {
   Trash2,
   X,
   Zap,
+  Monitor,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -78,6 +79,7 @@ import { useAdminRole } from '@/hooks/admin';
 import { useIsMobile } from '@/hooks/utils';
 import { cn } from '@/lib/utils';
 import { bulkDeleteSessions, listSessions as listKortixSessions, type SimpleSession } from '@/lib/sessions-client';
+import { useTunnelConnections } from '@/hooks/tunnel/use-tunnel';
 import { useDocumentModalStore } from '@/stores/use-document-modal-store';
 
 import {
@@ -754,6 +756,47 @@ function UserProfileSection({
 }
 
 // ============================================================================
+// Computers (Agent Tunnel) — sidebar entry
+// ============================================================================
+
+function ComputersNavItem() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { data: connections } = useTunnelConnections();
+  const isActive = pathname === '/sessions/computers';
+
+  const online = (connections ?? []).filter((c) => c.status === 'online').length;
+  const total = connections?.length ?? 0;
+
+  return (
+    <div className="flex-shrink-0 px-3 pt-0.5">
+      <button
+        onClick={() => router.push('/sessions/computers')}
+        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors duration-150 ${
+          isActive
+            ? 'bg-sidebar-accent text-sidebar-foreground'
+            : 'text-sidebar-foreground hover:bg-sidebar-accent/60'
+        }`}
+        title="My Computers — connect your local machine so the agent can reach your files, shell, and desktop"
+      >
+        <Monitor className="size-4 flex-shrink-0" />
+        <span className="flex-1 text-left">My Computers</span>
+        {online > 0 ? (
+          <span className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none">
+            <span className="bg-emerald-500 size-1.5 rounded-full" />
+            {online}
+          </span>
+        ) : total > 0 ? (
+          <span className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none">
+            {total}
+          </span>
+        ) : null}
+      </button>
+    </div>
+  );
+}
+
+// ============================================================================
 // Sessions + Legacy Threads Accordion
 // ============================================================================
 
@@ -816,6 +859,10 @@ function SidebarSections() {
           {isSimpleMode ? <SimpleSessionList /> : <SessionList projectId={null} />}
         </CollapsibleContent>
       </Collapsible>
+
+      {/* My Computers — link to the computer-control management page.
+          Shows a badge with the count of connected machines when > 0. */}
+      <ComputersNavItem />
 
       {hasLegacy && (
         // mt-auto pins this block to the bottom of the SidebarSections column.

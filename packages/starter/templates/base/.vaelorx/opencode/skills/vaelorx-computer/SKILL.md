@@ -42,8 +42,8 @@ task is explicitly about the user's own machine.
 ```
 
 If `connectors` doesn't list a `computer` connector at all, the user hasn't
-connected a machine — tell them to connect one in **Customize → Computers** (or
-`kortix tunnel`). If it's listed but `list_computers` shows the target `online:
+connected a machine — tell them to connect one from the **My Computers** page
+(`My Computers` in the sidebar, or `npx @kortix/agent-tunnel connect --api-url <api>/tunnel` on their machine). If it's listed but `list_computers` shows the target `online:
 false`, ask them to bring it online.
 
 **2. Call a tool, picking the machine.** Pass `computer` (name or id). Omit it
@@ -77,8 +77,8 @@ when only one machine is online.
 
 <permissions>
 The machine's owner grants access **per capability** (filesystem / shell /
-desktop), scoped (allowed paths, allowed commands, allowed desktop features), in
-**Customize → Computers**. The tunnel layer enforces this on every call — the
+desktop), scoped (allowed paths, allowed commands, allowed desktop features), from the
+**My Computers** page in the sidebar. The tunnel layer enforces this on every call — the
 Executor does not bypass it.
 
 If you call something that isn't yet granted, the call comes back as

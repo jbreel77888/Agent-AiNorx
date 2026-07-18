@@ -3,19 +3,24 @@
  *
  * Like the `channel` connector, `computer` needs no `[[connectors]]` entry —
  * connecting a machine over the Agent Computer Tunnel IS the registration. When
- * a project's account has at least one tunnel (and the project has opted into the
- * `agent_tunnel` experimental flag), we synthesize a SINGLE `computer`
+ * an account has at least one tunnel (and the platform has the `agent_tunnel`
+ * flag ON — default in session-only mode), we synthesize a SINGLE `computer`
  * ConnectorSpec here so the materializer treats it like any other connector (DB
  * rows, the fixed action catalog, sharing, policies, and the Executor/Connectors
  * surface). One connector fronts ALL the account's machines — the machine is a
  * call argument, resolved at call time. There is no credential: the live WS
  * relay is the credential, and per-machine auth/scope is the tunnel permission
  * layer. See docs/specs/computer-connector.md.
+ *
+ * Session-only mode: this function is now account-scoped (no projectId needed).
+ * The `agent_tunnel` flag is checked at platform level (TUNNEL_ENABLED env var
+ * + platformDefault=true in experimental/features.ts). Per-account overrides
+ * can be added later via an `account_settings` table if needed.
  */
 import { eq } from 'drizzle-orm';
-import { projects, tunnelConnections } from '@kortix/db';
+import { tunnelConnections } from '@kortix/db';
 import { db } from '../shared/db';
-import { resolveExperimentalFeature } from '../experimental/features';
+import { config } from '../config';
 import { COMPUTER_SLUG, computerLabel } from './computers';
 import type { ConnectorSpec } from '../shared';
 import { MANIFEST_FILENAME } from '../shared';
@@ -47,33 +52,54 @@ function alreadyDeclared(declared: ConnectorSpec[]): boolean {
 }
 
 /**
- * A single synthetic `computer` ConnectorSpec when this project's account has a
- * connected machine and the project has the `agent_tunnel` flag — never written
- * to git, never shadowing an explicit declaration. Returns `[]` otherwise.
+ * A single synthetic `computer` ConnectorSpec when this account has a
+ * connected machine — never written to git, never shadowing an explicit
+ * declaration. Returns `[]` otherwise.
+ *
+ * Session-only mode: account-scoped (no projectId required).
  */
 export async function synthesizeComputerConnectors(
-  projectId: string,
+  accountId: string,
   declared: ConnectorSpec[],
 ): Promise<ConnectorSpec[]> {
   if (alreadyDeclared(declared)) return [];
 
+  // Platform-level gate — if the operator disabled the tunnel service,
+  // don't surface the connector. The `agent_tunnel` experimental flag
+  // defaults to ON (see experimental/features.ts); flipping it to false
+  // hides the feature globally without redeploying.
+  if (!config.TUNNEL_ENABLED) return [];
+
+  const [tunnel] = await db
+    .select({ tunnelId: tunnelConnections.tunnelId })
+    .from(tunnelConnections)
+    .where(eq(tunnelConnections.accountId, accountId))
+    .limit(1);
+  if (!tunnel) return [];
+
+  return [computerSpec()];
+}
+
+/**
+ * Back-compat wrapper for callers that still pass a projectId.
+ * Resolves the projectId → accountId, then delegates to the account-scoped
+ * version. Used by legacy code paths that haven't been migrated yet.
+ */
+export async function synthesizeComputerConnectorsForProject(
+  projectId: string,
+  declared: ConnectorSpec[],
+): Promise<ConnectorSpec[]> {
+  if (alreadyDeclared(declared)) return [];
+  if (!config.TUNNEL_ENABLED) return [];
+
+  // Import here to avoid a circular dep at module load time
+  const { projects } = await import('@kortix/db');
   const [proj] = await db
-    .select({ accountId: projects.accountId, metadata: projects.metadata })
+    .select({ accountId: projects.accountId })
     .from(projects)
     .where(eq(projects.projectId, projectId))
     .limit(1);
   if (!proj) return [];
 
-  // Gated by the experimental flag — computers only surface as connectors for
-  // projects opted into the tunnel.
-  if (!resolveExperimentalFeature(proj.metadata, 'agent_tunnel')) return [];
-
-  const [tunnel] = await db
-    .select({ tunnelId: tunnelConnections.tunnelId })
-    .from(tunnelConnections)
-    .where(eq(tunnelConnections.accountId, proj.accountId))
-    .limit(1);
-  if (!tunnel) return [];
-
-  return [computerSpec()];
+  return synthesizeComputerConnectors(proj.accountId, declared);
 }

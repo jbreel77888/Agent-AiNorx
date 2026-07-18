@@ -573,6 +573,16 @@ export async function provisionSessionSandbox(opts: {
       KORTIX_LLM_BASE_URL: llmBaseUrl,
       KORTIX_YOLO_API_KEY: sandboxKey.secretKey,
       KORTIX_YOLO_URL: llmBaseUrl,
+      // ─── Computer Control (Agent Tunnel) ────────────────────────────────
+      // The in-sandbox `agent-tunnel-cli` skill reads these env vars to reach
+      // the user's connected machines via the tunnel RPC route. The sandbox
+      // token (kortix_sb_...) is accepted by /v1/tunnel/rpc/:tunnelId because
+      // the tunnel auth model allows sandbox apiKey for RPC (gated by
+      // per-machine permissions). TUNNEL_ID is left empty — the CLI's
+      // `status` command lists all account tunnels and picks the first
+      // online one if not set.
+      TUNNEL_API_URL: kortixOrigin,
+      TUNNEL_TOKEN: sandboxKey.secretKey,
     },
     // Idle lifecycle is owned by the provider-agnostic reaper (projects/
     // sandbox-reaper.ts), keyed off MEANINGFUL activity (real turns), with each
