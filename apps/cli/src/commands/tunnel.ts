@@ -33,7 +33,7 @@ permissioned reverse tunnel from cloud agents to a local machine (files,
 shell, desktop). Connections are account-scoped (shared across your projects).
 
 To connect a NEW computer, run this ON that machine:
-  ${C.cyan}npx @kortix/agent-tunnel connect --api-url <api-base>/v1/tunnel${C.reset}
+  ${C.cyan}npx @vaelonx/agent-tunnel connect --api-url <api-base>/v1/tunnel${C.reset}
 
 Subcommands:
   ls [--json]                        List registered computers + live status.
@@ -93,7 +93,7 @@ function connectHint(): string {
   return (
     `${status.info('No computers connected yet.')}\n` +
     `     Run on the machine you want to connect:\n` +
-    `       ${C.cyan}npx @kortix/agent-tunnel connect --api-url <api-base>/v1/tunnel${C.reset}\n`
+    `       ${C.cyan}npx @vaelonx/agent-tunnel connect --api-url <api-base>/v1/tunnel${C.reset}\n`
   );
 }
 

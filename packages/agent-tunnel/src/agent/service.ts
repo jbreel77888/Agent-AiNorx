@@ -54,7 +54,7 @@ function currentRunnerCommand(): string {
   if (script && existsSync(script)) {
     return `${shellQuote(exec)} ${shellQuote(script)} run --service`;
   }
-  return 'npx --yes @kortix/agent-tunnel run --service';
+  return 'npx --yes @vaelonx/agent-tunnel run --service';
 }
 
 export function buildServiceShellCommand(options: ServiceInstallOptions = {}): string {

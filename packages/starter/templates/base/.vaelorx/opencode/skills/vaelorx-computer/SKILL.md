@@ -43,7 +43,7 @@ task is explicitly about the user's own machine.
 
 If `connectors` doesn't list a `computer` connector at all, the user hasn't
 connected a machine — tell them to connect one from the **My Computers** page
-(`My Computers` in the sidebar, or `npx @kortix/agent-tunnel connect --api-url <api>/tunnel` on their machine). If it's listed but `list_computers` shows the target `online:
+(`My Computers` in the sidebar, or `npx @vaelonx/agent-tunnel connect --api-url <api>/tunnel` on their machine). If it's listed but `list_computers` shows the target `online:
 false`, ask them to bring it online.
 
 **2. Call a tool, picking the machine.** Pass `computer` (name or id). Omit it

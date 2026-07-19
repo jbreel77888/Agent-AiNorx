@@ -253,7 +253,7 @@ function ConnectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
     backend.startsWith('http') || backend.startsWith('https')
       ? backend
       : `${typeof window !== 'undefined' ? window.location.origin : ''}${backend}`;
-  const command = `npx @kortix/agent-tunnel connect --api-url ${absolute}/tunnel`;
+  const command = `npx @vaelonx/agent-tunnel connect --api-url ${absolute}/tunnel`;
 
   const copy = () => {
     navigator.clipboard.writeText(command);
@@ -296,7 +296,7 @@ function ConnectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
           </div>
 
           <p className="text-muted-foreground text-xs">
-            Requires Node.js 18+. The CLI installs <code className="bg-muted rounded px-1">@kortix/agent-tunnel</code> via npx (no global install needed).
+            Requires Node.js 18+. The CLI installs <code className="bg-muted rounded px-1">@vaelonx/agent-tunnel</code> via npx (no global install needed).
           </p>
         </div>
       </DialogContent>

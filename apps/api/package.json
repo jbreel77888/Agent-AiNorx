@@ -33,7 +33,7 @@
     "@scalar/hono-api-reference": "^0.10.20",
     "@sentry/bun": "^10.47.0",
     "@supabase/supabase-js": "^2.95.3",
-    "agent-tunnel": "workspace:@kortix/agent-tunnel@*",
+    "agent-tunnel": "workspace:@vaelonx/agent-tunnel@*",
     "croner": "^9.0.0",
     "dockerode": "^4.0.4",
     "drizzle-kit": "^0.31.10",

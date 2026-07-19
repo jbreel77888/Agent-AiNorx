@@ -126,7 +126,7 @@ async function status() {
     hasOnline,
     message: hasOnline
       ? undefined
-      : 'No tunnel is currently online. Ask the user to run `npx @kortix/agent-tunnel connect` on their local machine.',
+      : 'No tunnel is currently online. Ask the user to run `npx @vaelonx/agent-tunnel connect` on their local machine.',
   });
 }
 
