@@ -1,6 +1,6 @@
 {
   "name": "@vaelonx/agent-tunnel",
-  "version": "0.1.2",
+  "version": "0.2.1",
   "private": false,
   "type": "module",
   "description": "VaelonX Tunnel — relay between cloud AI agents and local machines (files, shell, desktop control) over a permissioned reverse tunnel with HMAC signing",
@@ -15,15 +15,20 @@
     "./agent": "./src/agent/index.ts"
   },
   "bin": {
-    "agent-tunnel": "src/agent/cli.ts",
-    "agent-tunnel-cli": "src/client/cli.ts"
+    "agent-tunnel": "dist/agent-tunnel.js",
+    "agent-tunnel-cli": "dist/agent-tunnel-cli.js"
   },
   "files": [
-    "src/"
+    "src/",
+    "dist/",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx"
   ],
   "scripts": {
+    "build": "bun build src/agent/cli.ts --outfile dist/agent-tunnel.js --target node && bun build src/client/cli.ts --outfile dist/agent-tunnel-cli.js --target node && sed -i '1s|^|#!/usr/bin/env node\\n|' dist/agent-tunnel.js dist/agent-tunnel-cli.js",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "hono": "^4.4.0"

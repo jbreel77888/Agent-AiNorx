@@ -86,6 +86,11 @@ export async function reconcileChannelConnectors(projectId: string): Promise<voi
  * `list_computers` is always live.)
  */
 export async function reconcileComputerConnectors(accountId: string): Promise<void> {
+  // First, reconcile the account-scoped connector (session-only mode — no project needed)
+  const { reconcileAccountComputerConnector } = await import('./computer-materialize');
+  await reconcileAccountComputerConnector(accountId);
+
+  // Then, fan out to any projects the account still has (legacy/backward-compat)
   try {
     const rows = await db
       .select({ projectId: projects.projectId })
@@ -95,7 +100,7 @@ export async function reconcileComputerConnectors(accountId: string): Promise<vo
       await syncProjectConnectors(r.projectId, accountId);
     }
   } catch (e) {
-    console.warn('[executor] computer connector reconcile failed', { accountId, err: (e as Error).message });
+    console.warn('[executor] computer connector project reconcile failed', { accountId, err: (e as Error).message });
   }
 }
 

@@ -103,3 +103,149 @@ export async function synthesizeComputerConnectorsForProject(
 
   return synthesizeComputerConnectors(proj.accountId, declared);
 }
+
+/**
+ * Reconcile the `computer` connector for an account — works in session-only
+ * mode (no projectId required). Called by:
+ *   - tunnel/routes/connections.ts (POST /connections, DELETE /:id)
+ *   - tunnel/routes/device-auth.ts (POST /:code/approve)
+ *   - tunnel/index.ts (on agent:connect / agent:disconnect events)
+ *
+ * In session-only mode, there's no project to fan out to. We upsert/delete
+ * the `computer` connector directly on the account. The connector row has
+ * projectId = null (account-scoped).
+ *
+ * Behavior:
+ *   - If the account has ≥1 tunnel_connection → upsert the `computer` connector
+ *     (with the full computer catalog from computers.ts).
+ *   - If the account has 0 tunnels → delete the `computer` connector.
+ *
+ * Idempotent: safe to call on every connect/disconnect event.
+ */
+export async function reconcileAccountComputerConnector(accountId: string): Promise<void> {
+  try {
+    if (!config.TUNNEL_ENABLED) return;
+
+    // Check if the account has any tunnels
+    const [tunnel] = await db
+      .select({ tunnelId: tunnelConnections.tunnelId })
+      .from(tunnelConnections)
+      .where(eq(tunnelConnections.accountId, accountId))
+      .limit(1);
+
+    // Import here to avoid circular deps at module load
+    const { executorConnectors, executorConnectorActions } = await import('@kortix/db');
+    const { computerCatalog } = await import('./computers');
+    const { manifestHashForConnector } = await import('../shared');
+    const { and, isNull } = await import('drizzle-orm');
+
+    // Find existing computer connector for this account (projectId IS NULL)
+    const [existingConnector] = await db
+      .select({
+        connectorId: executorConnectors.connectorId,
+      })
+      .from(executorConnectors)
+      .where(
+        and(
+          eq(executorConnectors.accountId, accountId),
+          eq(executorConnectors.slug, COMPUTER_SLUG),
+          isNull(executorConnectors.projectId),
+        ),
+      )
+      .limit(1);
+
+    if (tunnel) {
+      // Account has ≥1 tunnel → ensure the computer connector exists
+      const spec = computerSpec();
+      const actions = computerCatalog();
+      const manifestHash = manifestHashForConnector(spec);
+
+      if (existingConnector) {
+        // Update existing connector + refresh actions
+        await db
+          .update(executorConnectors)
+          .set({
+            name: spec.name,
+            enabled: true,
+            manifestHash,
+            status: 'active',
+            lastError: null,
+            lastSyncedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(executorConnectors.connectorId, existingConnector.connectorId));
+
+        // Refresh actions (delete + reinsert)
+        await db
+          .delete(executorConnectorActions)
+          .where(eq(executorConnectorActions.connectorId, existingConnector.connectorId));
+        if (actions.length > 0) {
+          await db.insert(executorConnectorActions).values(
+            actions.map((a) => ({
+              connectorId: existingConnector.connectorId,
+              path: a.path,
+              name: a.name,
+              description: a.description,
+              risk: a.risk as any,
+              inputSchema: a.inputSchema as any,
+              outputSchema: a.outputSchema as any,
+            })),
+          );
+        }
+      } else {
+        // Insert new (account-scoped, projectId = null)
+        const [created] = await db
+          .insert(executorConnectors)
+          .values({
+            accountId,
+            projectId: null,
+            slug: spec.slug,
+            name: spec.name,
+            providerType: 'computer' as any,
+            enabled: true,
+            credentialMode: 'shared' as any,
+            manifestHash,
+            status: 'active',
+            config: {
+              auth: { type: 'none', in: 'header', name: null, prefix: null, secret: null },
+              baseUrl: null,
+            } as any,
+            shareScope: 'project' as any,
+          })
+          .returning({ connectorId: executorConnectors.connectorId });
+
+        // Insert actions
+        if (created && actions.length > 0) {
+          await db.insert(executorConnectorActions).values(
+            actions.map((a) => ({
+              connectorId: created.connectorId,
+              path: a.path,
+              name: a.name,
+              description: a.description,
+              risk: a.risk as any,
+              inputSchema: a.inputSchema as any,
+              outputSchema: a.outputSchema as any,
+            })),
+          );
+        }
+      }
+      console.log(`[executor] computer connector reconciled for account ${accountId} (tunnel online)`);
+    } else {
+      // Account has 0 tunnels → delete the computer connector
+      if (existingConnector) {
+        await db
+          .delete(executorConnectorActions)
+          .where(eq(executorConnectorActions.connectorId, existingConnector.connectorId));
+        await db
+          .delete(executorConnectors)
+          .where(eq(executorConnectors.connectorId, existingConnector.connectorId));
+        console.log(`[executor] computer connector removed for account ${accountId} (no tunnels)`);
+      }
+    }
+  } catch (e) {
+    console.warn('[executor] account computer connector reconcile failed', {
+      accountId,
+      err: (e as Error).message,
+    });
+  }
+}
