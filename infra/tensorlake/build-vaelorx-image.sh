@@ -69,7 +69,7 @@ echo "  Agent binary: $(du -h "$BUILD_DIR/kortix-agent.gz" | cut -f1)"
 
 # ── 3. Build/gzip the kortix CLI binary ──────────────────────────────────────
 echo "[3/6] Preparing kortix CLI binary..."
-CLI_BIN="$REPO_ROOT/apps/kortix-sandbox-cli/dist/kortix"
+CLI_BIN="$REPO_ROOT/apps/cli/dist/kortix"
 if [ ! -f "$CLI_BIN" ]; then
     echo "  WARN: kortix CLI binary not found at $CLI_BIN"
     echo "  Creating placeholder..."
