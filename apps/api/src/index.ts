@@ -1018,12 +1018,18 @@ async function startSingletonWorkers() {
   // of authorize() so correctness doesn't depend on this — it's the audit trail.
   const { startGrantExpirySweeper } = await import('./iam/expiry-sweeper');
   startGrantExpirySweeper();
+  // Session triggers cron scheduler: tick every 60s, fire due triggers in
+  // active sandboxes. Leader-elected so only one replica fires triggers.
+  const { startTriggerScheduler } = await import('./sessions/trigger-scheduler');
+  startTriggerScheduler();
 }
 async function stopSingletonWorkers() {
   if (!singletonWorkersRunning) return;
   singletonWorkersRunning = false;
   const { stopGrantExpirySweeper } = await import('./iam/expiry-sweeper');
   stopGrantExpirySweeper();
+  const { stopTriggerScheduler } = await import('./sessions/trigger-scheduler');
+  stopTriggerScheduler();
 }
 
 // Boot the per-node services, then begin leader election. The leader runs the
