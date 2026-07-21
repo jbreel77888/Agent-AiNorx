@@ -38,6 +38,7 @@ import { SessionDeleteModal } from '@/features/session/modals/session-delete-mod
 import { ShareSessionModal } from '@/features/session/modals/share-session-modal';
 import { CompactModal } from '@/features/session/header/compact-modal';
 import { ExportTranscriptModal } from '@/features/session/header/export-transcript-modal';
+import { PublicShareLinkButton } from '@/components/common/public-share-link-button';
 import { SessionChangesIndicator } from '@/features/session/header/session-changes-indicator';
 import { listProjectSessions, restartProjectSession } from '@/lib/projects-client';
 import { deleteSession, renameSession, restartSession } from '@/lib/sessions-client';
@@ -211,6 +212,17 @@ export function SessionSiteHeader({
                           'autoFeaturesSessionHeaderSessionSiteHeaderJsxTextShared7d34d4f',
                         )}
                       </DropdownMenuItem>
+                    )}
+                    {isSimpleSession && simpleSessionId && (
+                      <div className="flex items-center px-2 py-1.5">
+                        <PublicShareLinkButton
+                          sessionId={simpleSessionId}
+                          input={{ mode: 'view', label: sessionTitle || 'Session' }}
+                          tooltip="Copy a public view-only link to this session"
+                          className="h-7 w-7"
+                        />
+                        <span className="text-sm">Share public link</span>
+                      </div>
                     )}
                     <DropdownMenuItem
                       className="cursor-pointer"

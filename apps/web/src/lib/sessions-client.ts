@@ -204,3 +204,50 @@ export async function restartSession(sessionId: string): Promise<void> {
   const headers = await authHeaders();
   await backendApi.post(`/sessions/${sessionId}/restart`, {}, { headers });
 }
+
+// ─── Session Public Shares ─────────────────────────────────────────────────
+// Uses the session-scoped /v1/sessions/:id/shares endpoints (no projectId needed).
+
+export interface SessionShareInput {
+  preview_id?: string;
+  preview?: { label: string; url: string; port: number; path?: string };
+  file?: { label: string; path: string };
+  mode?: 'view' | 'interactive';
+  label?: string;
+  expires_at?: string;
+}
+
+export interface SessionShare {
+  id: string;
+  session_id: string;
+  public_path: string;
+  token: string;
+  mode: string;
+  label?: string;
+  expires_at?: string;
+  created_at: string;
+}
+
+export async function createSessionShare(
+  sessionId: string,
+  input: SessionShareInput,
+): Promise<{ share: SessionShare }> {
+  const headers = await authHeaders();
+  return unwrap(
+    await backendApi.post<{ share: SessionShare }>(`/sessions/${sessionId}/shares`, input, { headers }),
+  );
+}
+
+export async function listSessionShares(sessionId: string): Promise<{ shares: SessionShare[] }> {
+  const headers = await authHeaders();
+  return unwrap(
+    await backendApi.get<{ shares: SessionShare[] }>(`/sessions/${sessionId}/shares`, { headers }),
+  );
+}
+
+function unwrap<T>(res: { success: boolean; data?: T; error?: { message?: string } }): T {
+  if (!res.success) {
+    throw new Error(res.error?.message || 'Request failed');
+  }
+  return res.data as T;
+}

@@ -34,8 +34,31 @@ export function createRefreshRouter(cfg: Config, opencode: Opencode): Hono {
     const syncBase = c.req.query('base') === '1'
     const skipRestart = c.req.query('restart') === '0'
 
+    // In session-only mode (simple mode), there is no git remote to pull from.
+    // The scaffold was injected locally via materializeScaffoldSeed — there's
+    // no `origin` to fetch. Skip git operations entirely and just restart
+    // opencode so it rescans its config directory for updated agents/skills.
+    //
+    // This is triggered by the admin "Publish" button (live-update.ts) which
+    // writes new agent/skill files to /workspace/.vaelorx/opencode/ via the
+    // Tensorlake SDK, then calls /kortix/refresh to make opencode pick them up.
+    const isSimpleMode = cfg.sessionMode === 'simple' || !cfg.repoUrl
+
     refreshInFlight = (async () => {
       try {
+        if (isSimpleMode) {
+          // Session-only mode: no git operations, just restart opencode
+          logger.info('[refresh] simple mode — skipping git, restarting opencode only')
+          if (!skipRestart) await opencode.restart()
+          return c.json({
+            ok: true,
+            repo: { skipped: true, reason: 'simple_mode' },
+            opencode: opencode.getState(),
+            opencode_pid: opencode.getPid(),
+          })
+        }
+
+        // Project mode: full git refresh
         const repo = syncBase ? await syncWorkspaceToBase(cfg) : await refreshRepo(cfg)
         if (!skipRestart) await opencode.restart()
         return c.json({

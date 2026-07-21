@@ -9,34 +9,37 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import {
-  createSessionPublicShare,
-  type CreateSessionPublicShareInput,
-} from '@/lib/projects-client';
+import { createSessionShare, type SessionShareInput } from '@/lib/sessions-client';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
+/**
+ * PublicShareLinkButton — creates a public share link for a session.
+ *
+ * Uses the session-scoped /v1/sessions/:id/shares endpoint (no projectId needed).
+ * Works in both project-mode and session-only mode.
+ */
 export function PublicShareLinkButton({
-  projectId,
   sessionId,
   input,
   tooltip = 'Copy a public view-only link',
   title = 'Copy public link',
   className,
 }: {
+  /** Legacy prop — ignored in session-only mode. */
   projectId?: string;
   sessionId?: string;
-  input: CreateSessionPublicShareInput | null;
+  input: SessionShareInput | null;
   tooltip?: string;
   title?: string;
   className?: string;
 }) {
   const share = useMutation({
     mutationFn: async () => {
-      if (!projectId || !sessionId || !input) {
+      if (!sessionId || !input) {
         throw new Error('Nothing is selected to share');
       }
-      const result = await createSessionPublicShare(projectId, sessionId, input);
+      const result = await createSessionShare(sessionId, input);
       if (!result.share.public_path) {
         throw new Error('Share link was not returned');
       }
@@ -52,7 +55,7 @@ export function PublicShareLinkButton({
     },
   });
 
-  const disabled = !projectId || !sessionId || !input || share.isPending;
+  const disabled = !sessionId || !input || share.isPending;
 
   return (
     <Tooltip>

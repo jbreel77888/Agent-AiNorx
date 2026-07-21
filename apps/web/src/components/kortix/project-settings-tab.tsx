@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 import { TeamTab } from './team-tab';
 import { CredentialsTab } from './credentials-tab';
 import { TriggersTab } from './triggers-tab';
-import { TicketSettingsTab } from './ticket-settings-tab';
+// import { TicketSettingsTab } from './ticket-settings-tab'; // Removed — session-only mode
 
 export type SettingsSection = 'team' | 'credentials' | 'triggers' | 'board';
 
@@ -61,7 +61,11 @@ export function ProjectSettingsTab({
         {section === 'triggers' && (
           <TriggersTab projectId={projectId} projectPath={projectPath ?? ''} />
         )}
-        {section === 'board' && <TicketSettingsTab projectId={projectId} />}
+        {section === 'board' && (
+          <div className="text-muted-foreground p-8 text-center text-sm">
+            Ticket board is no longer available in session-only mode.
+          </div>
+        )}
       </div>
     </div>
   );

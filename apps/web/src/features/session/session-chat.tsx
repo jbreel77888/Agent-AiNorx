@@ -126,6 +126,7 @@ import { usePendingFilesStore } from '@/stores/pending-files-store';
 import { getActiveOpenCodeUrl, useServerStore } from '@/stores/server-store';
 import { useSessionBrowserStore } from '@/stores/session-browser-store';
 import { openTabAndNavigate, useTabStore } from '@/stores/tab-store';
+import { useOpenCodeMessages } from '@/hooks/opencode/use-opencode-sessions';
 // Shared UI primitives (framework-agnostic, reusable on mobile)
 import {
   type AgentPart,
@@ -144,6 +145,7 @@ import {
   getTurnCost,
   getTurnError,
   getTurnStatus,
+  getChildSessionId,
   getWorkingState,
   groupMessagesIntoTurns,
   isAgentPart,
@@ -2886,7 +2888,25 @@ function SessionTurn({
   // ---- Status throttling (2.5s) ----
   const lastStatusChangeRef = useRef(Date.now());
   const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const childMessages = undefined as MessageWithParts[] | undefined; // placeholder for child session delegation
+
+  // Find the last child session ID from tool parts (task/agent_spawn/session_spawn)
+  // so we can surface the child's activity in the parent's turn status bar.
+  const lastChildSessionId = useMemo(() => {
+    for (let i = allParts.length - 1; i >= 0; i--) {
+      const part = allParts[i];
+      if (part && part.type === 'tool') {
+        const childId = getChildSessionId(part as any);
+        if (childId) return childId;
+      }
+    }
+    return undefined;
+  }, [allParts]);
+
+  // Fetch the child session's messages so getTurnStatus can walk them
+  // for a real-time status ("Reading file…", "Running bash…") instead
+  // of the generic "Delegating to agent…".
+  const { data: childMessages } = useOpenCodeMessages(lastChildSessionId ?? '');
+
   const rawStatus = useMemo(
     () => getTurnStatus(allParts, childMessages),
     [allParts, childMessages],
@@ -3097,7 +3117,7 @@ function SessionTurn({
             commands={commands}
           />
           {userMessageText && (
-            <div className="mt-1 flex justify-end opacity-0 transition-opacity duration-150 group-hover/turn:opacity-100">
+            <div className="mt-1 flex justify-end opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover/turn:opacity-100">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon-xs" onClick={handleCopyUser}>
@@ -3557,7 +3577,7 @@ function SessionTurn({
 
       {/* ── Action bar (copy + duration/cost only — fork & revert live on user messages) ── */}
       {!working && response && (
-        <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/turn:opacity-100">
+        <div className="flex items-center gap-0.5 opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover/turn:opacity-100">
           {/* Duration & cost */}
           {duration && (
             <span className="text-muted-foreground/50 mr-1 text-xs">
