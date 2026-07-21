@@ -64,6 +64,48 @@ export function decryptProjectSecret(projectId: string, valueEnc: string): strin
   ]).toString('utf8');
 }
 
+// ─── Account-scoped encryption (session-only mode) ──────────────────────────
+// Same HKDF pattern as projectSecretKey but uses accountId as salt and a
+// different info string to avoid key collision with project-scoped secrets.
+
+function accountSecretKey(accountId: string): Buffer {
+  if (!config.API_KEY_SECRET) {
+    throw new Error('API_KEY_SECRET not configured; cannot encrypt account secrets');
+  }
+  const key = hkdfSync(
+    'sha256',
+    Buffer.from(config.API_KEY_SECRET, 'utf8'),
+    Buffer.from(accountId, 'utf8'),
+    Buffer.from('kortix-account-secret-v1', 'utf8'),
+    32,
+  );
+  return Buffer.from(key);
+}
+
+export function encryptAccountSecret(accountId: string, value: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', accountSecretKey(accountId), iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(value, 'utf8'),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+  return `${ENVELOPE_VERSION}:${b64url(iv)}:${b64url(tag)}:${b64url(ciphertext)}`;
+}
+
+export function decryptAccountSecret(accountId: string, valueEnc: string): string {
+  const [version, ivB64, tagB64, ciphertextB64] = valueEnc.split(':');
+  if (version !== ENVELOPE_VERSION || !ivB64 || !tagB64 || !ciphertextB64) {
+    throw new Error('Unsupported account secret envelope');
+  }
+  const decipher = createDecipheriv('aes-256-gcm', accountSecretKey(accountId), fromB64url(ivB64));
+  decipher.setAuthTag(fromB64url(tagB64));
+  return Buffer.concat([
+    decipher.update(fromB64url(ciphertextB64)),
+    decipher.final(),
+  ]).toString('utf8');
+}
+
 /**
  * Upsert the SHARED (owner_user_id IS NULL) row for a project secret to a new
  * value. Mirrors the POST /secrets handler's insert/onConflict, factored out so

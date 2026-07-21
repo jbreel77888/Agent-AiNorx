@@ -1068,3 +1068,229 @@ sessionFilesApp.post('/:sessionId/shares', async (c) => {
   }
   return c.json({ share: created.share }, 201);
 });
+
+// ─── Setup Links (session-only mode) ────────────────────────────────────────
+// The agent calls these endpoints (via the vaelorx-executor MCP server) to
+// mint short-lived setup links. The link is then surfaced to the user, who
+// fills it in at /v1/setup-links/secret/:token (public, no auth).
+
+sessionFilesApp.post('/:sessionId/secret-requests', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const userId = c.get('userId') as string;
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
+
+  const body = await c.req.json().catch(() => ({}));
+  const { names, scope, expires_in_minutes, labels, descriptions } = body;
+
+  if (!Array.isArray(names) || names.length === 0) {
+    return c.json({ error: 'names array is required' }, 400);
+  }
+
+  // Build field specs
+  const fields = names.map((name: string, i: number) => ({
+    name: String(name).toUpperCase(),
+    label: labels?.[i] ?? null,
+    description: descriptions?.[i] ?? null,
+  }));
+
+  const { mintAccountSetupLink } = await import('../setup-links/token');
+  const { token, expiresAt } = mintAccountSetupLink(
+    accountId,
+    {
+      kind: 'secret',
+      fields,
+      scope: scope === 'connector' ? 'connector' : 'runtime',
+      uid: userId,
+    },
+    { expiresInMinutes: expires_in_minutes },
+  );
+
+  const frontendUrl = process.env.KORTIX_URL || process.env.FRONTEND_URL || '';
+  const url = `${frontendUrl}/secret-intake/${token}`;
+
+  return c.json({
+    url,
+    names: fields.map((f: any) => f.name),
+    scope: scope === 'connector' ? 'connector' : 'runtime',
+    expires_at: new Date(expiresAt).toISOString(),
+  });
+});
+
+sessionFilesApp.post('/:sessionId/connect-requests', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const userId = c.get('userId') as string;
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
+
+  const body = await c.req.json().catch(() => ({}));
+  const { slug, app, mode, expires_in_minutes } = body;
+
+  if (!slug) {
+    return c.json({ error: 'slug is required' }, 400);
+  }
+
+  const { mintAccountSetupLink } = await import('../setup-links/token');
+  const { token, expiresAt } = mintAccountSetupLink(
+    accountId,
+    {
+      kind: 'connector',
+      slug,
+      app: app ?? null,
+      mode: mode === 'per_user' ? 'per_user' : 'shared',
+      uid: userId,
+    },
+    { expiresInMinutes: expires_in_minutes },
+  );
+
+  const frontendUrl = process.env.KORTIX_URL || process.env.FRONTEND_URL || '';
+  const url = `${frontendUrl}/connect/${token}`;
+
+  return c.json({
+    url,
+    slug,
+    app: app ?? null,
+    expires_at: new Date(expiresAt).toISOString(),
+  });
+});
+
+// ─── Session Triggers (Scheduled Tasks) ─────────────────────────────────────
+// Proxies trigger CRUD operations to the sandbox daemon's /kortix/triggers.
+// The daemon stores triggers in the sandbox filesystem and executes them.
+// The API's cron scheduler (leader-elected) polls due triggers and calls
+// /kortix/triggers/:id/run on the daemon.
+
+sessionFilesApp.get('/:sessionId/triggers', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
+
+  // Proxy to the sandbox daemon
+  const sandbox = await resolveSandboxForSession(sessionId);
+  if (!sandbox) return c.json({ error: 'Sandbox not found or not ready' }, 404);
+
+  try {
+    const response = await fetch(`${sandbox.baseUrl}/kortix/triggers`, {
+      headers: {
+        'X-Kortix-User-Context': sandbox.serviceKey,
+        'Content-Type': 'application/json',
+      },
+    });
+    const data = await response.json();
+    return c.json(data);
+  } catch (err) {
+    return c.json({ error: 'Failed to reach sandbox daemon' }, 502);
+  }
+});
+
+sessionFilesApp.post('/:sessionId/triggers', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
+
+  const body = await c.req.json().catch(() => ({}));
+  const sandbox = await resolveSandboxForSession(sessionId);
+  if (!sandbox) return c.json({ error: 'Sandbox not found or not ready' }, 404);
+
+  try {
+    const response = await fetch(`${sandbox.baseUrl}/kortix/triggers`, {
+      method: 'POST',
+      headers: {
+        'X-Kortix-User-Context': sandbox.serviceKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json();
+    return c.json(data, response.status as any);
+  } catch (err) {
+    return c.json({ error: 'Failed to reach sandbox daemon' }, 502);
+  }
+});
+
+sessionFilesApp.delete('/:sessionId/triggers/:triggerId', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const triggerId = c.req.param('triggerId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
+
+  const sandbox = await resolveSandboxForSession(sessionId);
+  if (!sandbox) return c.json({ error: 'Sandbox not found or not ready' }, 404);
+
+  try {
+    const response = await fetch(`${sandbox.baseUrl}/kortix/triggers/${triggerId}`, {
+      method: 'DELETE',
+      headers: {
+        'X-Kortix-User-Context': sandbox.serviceKey,
+        'Content-Type': 'application/json',
+      },
+    });
+    const data = await response.json();
+    return c.json(data, response.status as any);
+  } catch (err) {
+    return c.json({ error: 'Failed to reach sandbox daemon' }, 502);
+  }
+});
+
+sessionFilesApp.post('/:sessionId/triggers/:triggerId/run', async (c) => {
+  const sessionId = c.req.param('sessionId');
+  const triggerId = c.req.param('triggerId');
+  const accountId = await resolveAccountIdFromContext(c);
+  if (!accountId) return c.json({ error: 'Account ID required' }, 400);
+  const ownershipError = await assertSessionOwnership(c, sessionId, accountId);
+  if (ownershipError) return ownershipError;
+
+  const sandbox = await resolveSandboxForSession(sessionId);
+  if (!sandbox) return c.json({ error: 'Sandbox not found or not ready' }, 404);
+
+  try {
+    const response = await fetch(`${sandbox.baseUrl}/kortix/triggers/${triggerId}/run`, {
+      method: 'POST',
+      headers: {
+        'X-Kortix-User-Context': sandbox.serviceKey,
+        'Content-Type': 'application/json',
+      },
+    });
+    const data = await response.json();
+    return c.json(data, response.status as any);
+  } catch (err) {
+    return c.json({ error: 'Failed to reach sandbox daemon' }, 502);
+  }
+});
+
+// Helper: resolve sandbox for a session
+async function resolveSandboxForSession(sessionId: string): Promise<{ baseUrl: string; serviceKey: string } | null> {
+  try {
+    const { sessionSandboxes } = await import('@kortix/db');
+    const { db } = await import('../shared/db');
+    const { eq } = await import('drizzle-orm');
+    const [sandbox] = await db
+      .select({
+        externalId: sessionSandboxes.externalId,
+        status: sessionSandboxes.status,
+      })
+      .from(sessionSandboxes)
+      .where(eq(sessionSandboxes.sessionId, sessionId))
+      .limit(1);
+    if (!sandbox || sandbox.status !== 'active' || !sandbox.externalId) return null;
+
+    // Resolve the sandbox's preview URL + service key
+    const { resolvePreviewLink, resolveServiceKey } = await import('../sandbox-proxy/backend');
+    const preview = await resolvePreviewLink(sandbox.externalId);
+    const serviceKey = await resolveServiceKey(sandbox.externalId);
+    if (!preview?.url) return null;
+    return { baseUrl: preview.url, serviceKey: serviceKey || '' };
+  } catch {
+    return null;
+  }
+}

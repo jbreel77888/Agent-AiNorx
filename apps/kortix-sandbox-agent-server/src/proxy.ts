@@ -13,6 +13,7 @@ import { createPortProxyRouter } from './routes/port-proxy'
 import { createFilesRouter } from './routes/files'
 import { createFindRouter } from './routes/find'
 import { createModelUpdateRouter } from './routes/model-update'
+import { createTriggersRouter } from './routes/triggers'
 import webProxyRouter from './routes/web-proxy'
 import type { ProjectEnvStore } from './project-env'
 import {
@@ -67,6 +68,9 @@ export function buildOpencodeApp(
   const modelUpdateRouter = createModelUpdateRouter(cfg, opencode)
   kortixRouter.route('/model', modelUpdateRouter)
   kortixRouter.route('/model/', modelUpdateRouter)
+  const triggersRouter = createTriggersRouter(cfg, opencode)
+  kortixRouter.route('/triggers', triggersRouter)
+  kortixRouter.route('/triggers/', triggersRouter)
 
   app.route('/kortix', kortixRouter)
 

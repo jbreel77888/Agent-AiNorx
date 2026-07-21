@@ -91,6 +91,20 @@ export async function mintConnectLink(opts: {
   projectOverride?: string;
 }): Promise<ConnectLinkResult> {
   if (!opts.slug) throw new CliError('connector slug is required', 'USAGE');
+
+  // Session-only mode: use session-scoped endpoint (no projectId needed)
+  const sessionId = process.env.KORTIX_SESSION_ID;
+  if (sessionId && !opts.projectOverride) {
+    const auth = loadAuth();
+    if (!auth?.token) throw new CliError('not authenticated', 'MISSING_ENV');
+    const client = createExecutorClient({ apiUrl: auth.api_base, token: auth.token });
+    return client.post<ConnectLinkResult>(`/sessions/${sessionId}/connect-requests`, {
+      slug: opts.slug,
+      ...(opts.expiresInMinutes ? { expires_in_minutes: opts.expiresInMinutes } : {}),
+    });
+  }
+
+  // Project mode (legacy)
   const { client, projectId } = executorProjectContext(opts.projectOverride);
   return client.post<ConnectLinkResult>(`/projects/${projectId}/connect-requests`, {
     slug: opts.slug,
@@ -98,7 +112,7 @@ export async function mintConnectLink(opts: {
   });
 }
 
-/** Mint a short-lived link a human opens to enter project secret value(s). */
+/** Mint a short-lived link a human opens to enter secret value(s). */
 export async function mintSecretLink(opts: {
   names: string[];
   scope?: 'runtime' | 'connector';
@@ -108,6 +122,25 @@ export async function mintSecretLink(opts: {
   projectOverride?: string;
 }): Promise<SecretLinkResult> {
   if (opts.names.length === 0) throw new CliError('at least one secret name is required', 'USAGE');
+
+  // Session-only mode: use session-scoped endpoint (no projectId needed)
+  const sessionId = process.env.KORTIX_SESSION_ID;
+  if (sessionId && !opts.projectOverride) {
+    const auth = loadAuth();
+    if (!auth?.token) throw new CliError('not authenticated', 'MISSING_ENV');
+    const client = createExecutorClient({ apiUrl: auth.api_base, token: auth.token });
+    return client.post<SecretLinkResult>(`/sessions/${sessionId}/secret-requests`, {
+      names: opts.names,
+      ...(opts.scope ? { scope: opts.scope } : {}),
+      ...(opts.expiresInMinutes ? { expires_in_minutes: opts.expiresInMinutes } : {}),
+      ...(opts.labels && Object.keys(opts.labels).length ? { labels: opts.labels } : {}),
+      ...(opts.descriptions && Object.keys(opts.descriptions).length
+        ? { descriptions: opts.descriptions }
+        : {}),
+    });
+  }
+
+  // Project mode (legacy)
   const { client, projectId } = executorProjectContext(opts.projectOverride);
   return client.post<SecretLinkResult>(`/projects/${projectId}/secret-requests`, {
     names: opts.names,

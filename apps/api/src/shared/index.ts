@@ -40,6 +40,8 @@ export {
 export {
   encryptProjectSecret,
   decryptProjectSecret,
+  encryptAccountSecret,
+  decryptAccountSecret,
   getProjectSecretValue,
   isValidSecretName,
   writeSharedProjectSecret,

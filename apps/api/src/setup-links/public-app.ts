@@ -1,32 +1,93 @@
 /**
  * Setup-link PUBLIC app — the unauthenticated half, mounted at /v1/setup-links.
  *
+ * Handles BOTH token formats:
+ *   • ksl_ (legacy project-scoped) — writes to project_secrets
+ *   • ksa_ (new account-scoped) — writes to account_secrets
+ *
  * The agent-minted link's bearer capability IS the (encrypted, short-lived,
- * value-only) token, so these routes deliberately require no login: a teammate
- * who taps the link from a Slack message on their phone must be able to fill it
- * in. Resolve returns NO secret values — only the requested field names. Submit
- * can only write the names sealed into the token, into the one project the token
- * is for. Same trust model as a magic link / a Pipedream connect URL.
+ * value-only) token, so these routes deliberately require no login.
  */
 import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
-import { projects } from '@kortix/db';
+import { projects, accounts } from '@kortix/db';
 import { db } from '../shared/db';
-import { isValidSecretName, writeSharedProjectSecret } from '../shared';
-import { propagateProjectSecretsToActiveSandboxes } from '../shared';
+import {
+  isValidSecretName,
+  writeSharedProjectSecret,
+  encryptAccountSecret,
+  propagateProjectSecretsToActiveSandboxes,
+} from '../shared';
 import { pipedreamConfigured, pipedreamConnectUrl } from '../executor/pipedream';
 import { resolveSetupLink } from './token';
 
 const setupLinksPublicApp = new Hono();
 
-async function projectName(projectId: string): Promise<string> {
+async function resolveScopeName(scope: 'project' | 'account', scopeId: string): Promise<string> {
+  if (scope === 'project') {
+    const [row] = await db
+      .select({ name: projects.name })
+      .from(projects)
+      .where(eq(projects.projectId, scopeId))
+      .limit(1);
+    return row?.name ?? 'this project';
+  }
+  // Account-scoped — show account name or a generic label
   const [row] = await db
-    .select({ name: projects.name })
-    .from(projects)
-    .where(eq(projects.projectId, projectId))
-    .limit(1);
-  return row?.name ?? 'this project';
+    .select({ name: accounts.name })
+    .from(accounts)
+    .where(eq(accounts.accountId, scopeId))
+    .limit(1)
+    .catch(() => [{ name: null }]);
+  return (row as any)?.name ?? 'your account';
 }
+
+// ─── Write helpers for both scopes ──────────────────────────────────────────
+
+async function writeSecret(
+  scope: 'project' | 'account',
+  scopeId: string,
+  name: string,
+  value: string,
+  scopeType: 'runtime' | 'connector',
+  createdBy: string | null,
+): Promise<void> {
+  if (scope === 'project') {
+    await writeSharedProjectSecret({
+      projectId: scopeId,
+      name,
+      value,
+      scope: scopeType,
+      createdBy,
+    });
+  } else {
+    // Account-scoped: write to account_secrets via raw SQL (no Drizzle schema yet)
+    const encrypted = encryptAccountSecret(scopeId, value);
+    await db.execute(
+      // Upsert: insert or update the shared row (owner_user_id IS NULL)
+      `INSERT INTO kortix.account_secrets (account_id, name, value_enc, scope, share_scope, created_by)
+       VALUES (${scopeId}, ${name}, ${encrypted}, ${scopeType}, 'project', ${createdBy ?? null})
+       ON CONFLICT (account_id, name) WHERE owner_user_id IS NULL
+       DO UPDATE SET value_enc = ${encrypted}, updated_at = NOW()`,
+    );
+  }
+}
+
+async function propagateToActiveSandboxes(
+  scope: 'project' | 'account',
+  scopeId: string,
+): Promise<void> {
+  if (scope === 'project') {
+    void propagateProjectSecretsToActiveSandboxes(scopeId);
+  } else {
+    // Account-scoped: propagate to all active sandboxes for this account
+    // For now, this is a no-op — the sandbox will pick up new secrets on next env sync.
+    // TODO: implement propagateAccountSecretsToActiveSandboxes
+    console.log(`[setup-links] account-scoped secret saved for ${scopeId} — sandbox will pick up on next env sync`);
+  }
+}
+
+// ─── Routes ─────────────────────────────────────────────────────────────────
 
 // GET /v1/setup-links/secret/:token — what fields does this link ask for?
 setupLinksPublicApp.get('/secret/:token', async (c) => {
@@ -34,9 +95,11 @@ setupLinksPublicApp.get('/secret/:token', async (c) => {
   if (!resolved.ok) return c.json({ error: resolved.error }, resolved.status);
   if (resolved.payload.kind !== 'secret') return c.json({ error: 'Wrong link type' }, 400);
 
+  const scopeName = await resolveScopeName(resolved.scope, resolved.scopeId);
   return c.json({
     kind: 'secret',
-    project_name: await projectName(resolved.projectId),
+    scope: resolved.scope,
+    scope_name: scopeName,
     fields: resolved.payload.fields.map((f) => ({
       name: f.name,
       label: f.label ?? null,
@@ -65,18 +128,17 @@ setupLinksPublicApp.post('/secret/:token', async (c) => {
   const saved: string[] = [];
   for (const [rawName, rawValue] of Object.entries(values)) {
     const name = rawName.toUpperCase();
-    // Value-only: silently ignore anything the token didn't ask for, and never
-    // let a leaked token write to a key it doesn't name.
     if (!allowed.has(name) || !isValidSecretName(name)) continue;
     const value = typeof rawValue === 'string' ? rawValue : '';
     if (!value) continue;
-    await writeSharedProjectSecret({
-      projectId: resolved.projectId,
+    await writeSecret(
+      resolved.scope,
+      resolved.scopeId,
       name,
       value,
-      scope: resolved.payload.scope,
-      createdBy: resolved.payload.uid,
-    });
+      resolved.payload.scope,
+      resolved.payload.uid,
+    );
     saved.push(name);
   }
 
@@ -84,9 +146,7 @@ setupLinksPublicApp.post('/secret/:token', async (c) => {
     return c.json({ error: 'No values provided for the requested keys' }, 400);
   }
 
-  // Live-propagate so an active session sees the new value without a restart.
-  void propagateProjectSecretsToActiveSandboxes(resolved.projectId);
-
+  void propagateToActiveSandboxes(resolved.scope, resolved.scopeId);
   return c.json({ ok: true, saved });
 });
 
@@ -96,9 +156,11 @@ setupLinksPublicApp.get('/connector/:token', async (c) => {
   if (!resolved.ok) return c.json({ error: resolved.error }, resolved.status);
   if (resolved.payload.kind !== 'connector') return c.json({ error: 'Wrong link type' }, 400);
 
+  const scopeName = await resolveScopeName(resolved.scope, resolved.scopeId);
   return c.json({
     kind: 'connector',
-    project_name: await projectName(resolved.projectId),
+    scope: resolved.scope,
+    scope_name: scopeName,
     slug: resolved.payload.slug,
     app: resolved.payload.app,
     expires_at: new Date(resolved.payload.exp).toISOString(),
@@ -106,9 +168,8 @@ setupLinksPublicApp.get('/connector/:token', async (c) => {
 });
 
 // POST /v1/setup-links/connector/:token/start — mint a FRESH Pipedream Quick
-// Connect URL. Completing on Pipedream's hosted page fires the connect webhook,
-// which persists the credential (see executor/pipedream.ts createConnectToken
-// webhook_uri + db-deps pipedreamWebhook), so no explicit finalize is needed.
+// Connect URL. The scopeId (projectId or accountId) is passed to Pipedream's
+// external_user_id for credential routing.
 setupLinksPublicApp.post('/connector/:token/start', async (c) => {
   const resolved = resolveSetupLink(c.req.param('token'));
   if (!resolved.ok) return c.json({ error: resolved.error }, resolved.status);
@@ -118,8 +179,10 @@ setupLinksPublicApp.post('/connector/:token/start', async (c) => {
 
   const effectiveUser = resolved.payload.mode === 'per_user' ? resolved.payload.uid : null;
   try {
+    // pipedreamConnectUrl accepts a scopeId — works for both project and account
+    // because Pipedream just uses it as an opaque external_user_id.
     const { connectUrl } = await pipedreamConnectUrl(
-      resolved.projectId,
+      resolved.scopeId,
       resolved.payload.slug,
       resolved.payload.app,
       effectiveUser,
