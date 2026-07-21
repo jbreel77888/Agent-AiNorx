@@ -26,6 +26,7 @@ import {
   X,
   Zap,
   Monitor,
+  Wrench,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -756,6 +757,33 @@ function UserProfileSection({
 }
 
 // ============================================================================
+// Tools (unified dashboard) — sidebar entry
+// ============================================================================
+
+function ToolsNavItem() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const isActive = pathname === '/sessions/tools';
+
+  return (
+    <div className="flex-shrink-0 px-3 pt-0.5">
+      <button
+        onClick={() => router.push('/sessions/tools')}
+        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors duration-150 ${
+          isActive
+            ? 'bg-sidebar-accent text-sidebar-foreground'
+            : 'text-sidebar-foreground hover:bg-sidebar-accent/60'
+        }`}
+        title="أدواتي — كل ميزات المنصة في مكان واحد"
+      >
+        <Wrench className="size-4 flex-shrink-0" />
+        <span className="flex-1 text-left">أدواتي</span>
+      </button>
+    </div>
+  );
+}
+
+// ============================================================================
 // Computers (Agent Tunnel) — sidebar entry
 // ============================================================================
 
@@ -859,6 +887,9 @@ function SidebarSections() {
           {isSimpleMode ? <SimpleSessionList /> : <SessionList projectId={null} />}
         </CollapsibleContent>
       </Collapsible>
+
+      {/* My Tools — unified dashboard for all platform features */}
+      <ToolsNavItem />
 
       {/* My Computers — link to the computer-control management page.
           Shows a badge with the count of connected machines when > 0. */}

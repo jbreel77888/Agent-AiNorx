@@ -254,9 +254,9 @@ export function UserMenu({
           </>
         )}
 
-        <DropdownMenuItem onClick={() => deferAfterClose(() => router.push('/projects'))}>
+        <DropdownMenuItem onClick={() => deferAfterClose(() => router.push('/sessions/tools'))}>
           <HomeSolid />
-          Home
+          أدواتي
         </DropdownMenuItem>
 
         <DropdownMenuItem onClick={() => deferAfterClose(() => router.push('/marketplace'))}>
