@@ -53,7 +53,7 @@ function ToolCard({ icon, title, description, href, badge, badgeVariant = 'secon
         )}
         {comingSoon && (
           <Badge variant="outline" className="text-xs">
-            قريباً
+            Coming Soon
           </Badge>
         )}
       </div>
@@ -86,122 +86,106 @@ export default function ToolsPage() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
       <div className="border-b px-4 py-4 md:px-6 md:py-5">
-        <h1 className="text-xl font-semibold">أدواتي</h1>
+        <h1 className="text-xl font-semibold">Tools</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          كل أدوات وميزات المنصة في مكان واحد
+          All platform features in one place
         </p>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        {/* Stats row */}
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-lg border p-3">
             <div className="text-2xl font-bold">{activeSessions}</div>
-            <div className="text-muted-foreground text-xs">جلسات نشطة</div>
+            <div className="text-muted-foreground text-xs">Active Sessions</div>
           </div>
           <div className="rounded-lg border p-3">
             <div className="text-2xl font-bold">{onlineComputers}</div>
-            <div className="text-muted-foreground text-xs">أجهزة متصلة</div>
+            <div className="text-muted-foreground text-xs">Online Computers</div>
           </div>
           <div className="rounded-lg border p-3">
             <div className="text-2xl font-bold">{totalComputers}</div>
-            <div className="text-muted-foreground text-xs">إجمالي الأجهزة</div>
+            <div className="text-muted-foreground text-xs">Total Computers</div>
           </div>
           <div className="rounded-lg border p-3">
             <div className="text-2xl font-bold">—</div>
-            <div className="text-muted-foreground text-xs">مهام مجدولة</div>
+            <div className="text-muted-foreground text-xs">Scheduled Tasks</div>
           </div>
         </div>
 
-        {/* Tools grid */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <ToolCard
             icon={<Clock className="h-5 w-5" />}
-            title="المهام المجدولة"
-            description="جدولة مهام تلقائية تنطلق في أوقات محددة — تقارير يومية، تنظيف، تحديثات"
+            title="Scheduled Tasks"
+            description="Schedule automated tasks that run at specific times — daily reports, cleanup, updates"
             href="/sessions/scheduled-tasks"
           />
-
           <ToolCard
             icon={<Link2 className="h-5 w-5" />}
-            title="روابط الإعداد"
-            description="إدارة روابط الإعداد التي أنشأها الـ agent لمفاتيح API والاتصالات"
+            title="Setup Links"
+            description="Manage setup links created by the agent for API keys and connections"
             href="/sessions/setup-links"
-            comingSoon
           />
-
           <ToolCard
             icon={<Monitor className="h-5 w-5" />}
-            title="أجهزتي"
-            description="ربط وإدارة أجهزتك الشخصية — الوصول للملفات، الأوامر، وسطح المكتب"
+            title="My Computers"
+            description="Connect and manage your local machines — file access, shell, and desktop control"
             href="/sessions/computers"
-            badge={onlineComputers > 0 ? `${onlineComputers} متصل` : undefined}
+            badge={onlineComputers > 0 ? `${onlineComputers} online` : undefined}
             badgeVariant={onlineComputers > 0 ? 'default' : 'secondary'}
           />
-
           <ToolCard
             icon={<Plug className="h-5 w-5" />}
-            title="الموصلات"
-            description="إدارة الاتصالات الخارجية — Gmail، Slack، GitHub، وأكثر"
+            title="Connectors"
+            description="Manage external connections — Gmail, Slack, GitHub, and more"
             href="/connectors"
           />
-
           <ToolCard
             icon={<Store className="h-5 w-5" />}
-            title="سوق المهارات"
-            description="تصفح وتثبيت مهارات جاهزة لتوسيع قدرات الـ agent"
+            title="Marketplace"
+            description="Browse and install ready-made skills to extend agent capabilities"
             href="/marketplace"
-            comingSoon
           />
-
           <ToolCard
             icon={<Bell className="h-5 w-5" />}
-            title="الإشعارات"
-            description="إشعارات اكتمال المهام، تحديثات المنصة، وأحداث الجلسات"
+            title="Notifications"
+            description="Task completion, platform updates, and session events"
             href="/sessions/notifications"
-            comingSoon
           />
-
           <ToolCard
             icon={<Rocket className="h-5 w-5" />}
-            title="نشر التطبيقات"
-            description="انشر تطبيقات الويب من الجلسة مباشرة على رابط عام"
+            title="Deployments"
+            description="Deploy web apps from your session to a public URL instantly"
             href="/sessions/deployments"
-            comingSoon
           />
-
           <ToolCard
             icon={<Settings className="h-5 w-5" />}
-            title="الإعدادات"
-            description="إعدادات الحساب، المفاتيح، الأمان، والتفضيلات"
+            title="Settings"
+            description="Account settings, API keys, security, and preferences"
             href="/sessions/settings"
           />
         </div>
 
-        {/* Quick links */}
         <div className="mt-8">
-          <h2 className="mb-3 text-sm font-medium text-muted-foreground">روابط سريعة</h2>
+          <h2 className="mb-3 text-sm font-medium text-muted-foreground">Quick Links</h2>
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => window.location.href = '/sessions'}
               className="hover:bg-accent rounded-lg border px-3 py-1.5 text-xs transition-colors"
             >
-              كل الجلسات
+              All Sessions
             </button>
             <button
               onClick={() => window.location.href = '/sessions/computers'}
               className="hover:bg-accent rounded-lg border px-3 py-1.5 text-xs transition-colors"
             >
-              ربط جهاز جديد
+              Connect New Computer
             </button>
             <button
               onClick={() => window.location.href = '/connectors'}
               className="hover:bg-accent rounded-lg border px-3 py-1.5 text-xs transition-colors"
             >
-              إضافة موصل
+              Add Connector
             </button>
           </div>
         </div>

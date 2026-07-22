@@ -10,7 +10,6 @@ export default function SessionSettingsPage() {
   const { user } = useAuth();
   const { selectedAccountId } = useCurrentAccountStore();
 
-  // Navigate to the accounts page for full settings
   const goToAccountSettings = (tab?: string) => {
     if (!selectedAccountId) return;
     const params = tab ? `?tab=${tab}` : '';
@@ -20,34 +19,32 @@ export default function SessionSettingsPage() {
   return (
     <div className="flex h-full flex-col">
       <div className="border-b px-4 py-3 md:px-6 md:py-4">
-        <h1 className="text-lg font-semibold">الإعدادات</h1>
+        <h1 className="text-lg font-semibold">Settings</h1>
         <p className="text-muted-foreground text-sm">
-          إعدادات الحساب، المفاتيح، الأمان، والتفضيلات
+          Account settings, API keys, security, and preferences
         </p>
       </div>
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
         <div className="mx-auto max-w-2xl space-y-4">
-          {/* Account info */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <User className="h-4 w-4" />
-                معلومات الحساب
+                Account Info
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">البريد:</span>
+                <span className="text-muted-foreground">Email:</span>
                 <span>{user?.email || '—'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">معرف الحساب:</span>
+                <span className="text-muted-foreground">Account ID:</span>
                 <span className="font-mono text-xs">{selectedAccountId || '—'}</span>
               </div>
             </CardContent>
           </Card>
 
-          {/* Quick settings */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Button
               variant="outline"
@@ -55,7 +52,7 @@ export default function SessionSettingsPage() {
               onClick={() => goToAccountSettings('general')}
             >
               <Settings className="h-4 w-4" />
-              الإعدادات العامة
+              General Settings
             </Button>
             <Button
               variant="outline"
@@ -63,7 +60,7 @@ export default function SessionSettingsPage() {
               onClick={() => goToAccountSettings('tokens')}
             >
               <Key className="h-4 w-4" />
-              مفاتيح API
+              API Keys
             </Button>
             <Button
               variant="outline"
@@ -71,7 +68,7 @@ export default function SessionSettingsPage() {
               onClick={() => goToAccountSettings('general')}
             >
               <Shield className="h-4 w-4" />
-              الأمان
+              Security
             </Button>
           </div>
         </div>

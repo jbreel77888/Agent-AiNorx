@@ -774,10 +774,10 @@ function ToolsNavItem() {
             ? 'bg-sidebar-accent text-sidebar-foreground'
             : 'text-sidebar-foreground hover:bg-sidebar-accent/60'
         }`}
-        title="أدواتي — كل ميزات المنصة في مكان واحد"
+        title="Tools — all platform features in one place"
       >
         <Wrench className="size-4 flex-shrink-0" />
-        <span className="flex-1 text-left">أدواتي</span>
+        <span className="flex-1 text-left">Tools</span>
       </button>
     </div>
   );
@@ -888,7 +888,7 @@ function SidebarSections() {
         </CollapsibleContent>
       </Collapsible>
 
-      {/* My Tools — unified dashboard for all platform features */}
+      {/* Tools — unified dashboard for all platform features */}
       <ToolsNavItem />
 
       {/* My Computers — link to the computer-control management page.
