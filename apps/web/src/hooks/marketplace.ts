@@ -67,20 +67,20 @@ export function useMarketplaceItemFile(id: string | null, target: string | null)
   });
 }
 
-export function useInstalledItems(projectId: string | null) {
+export function useInstalledItems(accountId: string | null) {
   return useQuery({
-    queryKey: ['marketplace-installed', projectId],
-    queryFn: () => listInstalledItems(projectId!),
-    enabled: !!projectId,
+    queryKey: ['marketplace-installed', accountId],
+    queryFn: () => listInstalledItems(accountId!),
+    enabled: !!accountId,
     staleTime: 30_000,
   });
 }
 
-export function useRegistryUpdates(projectId: string | null) {
+export function useRegistryUpdates(accountId: string | null) {
   return useQuery({
-    queryKey: ['marketplace-updates', projectId],
-    queryFn: () => listRegistryUpdates(projectId!),
-    enabled: !!projectId,
+    queryKey: ['marketplace-updates', accountId],
+    queryFn: () => listRegistryUpdates(accountId!),
+    enabled: !!accountId,
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
@@ -89,12 +89,12 @@ export function useRegistryUpdates(projectId: string | null) {
 export function useUpdateMarketplaceItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, name }: { projectId: string; name: string }) =>
-      updateMarketplaceItem(projectId, name),
-    onSuccess: (_data, { projectId }) => {
-      qc.invalidateQueries({ queryKey: ['marketplace-installed', projectId] });
-      qc.invalidateQueries({ queryKey: ['marketplace-updates', projectId] });
-      qc.invalidateQueries({ queryKey: ['project-detail', projectId] });
+    mutationFn: ({ accountId, name }: { accountId: string; name: string }) =>
+      updateMarketplaceItem(accountId, name),
+    onSuccess: (_data, { accountId }) => {
+      qc.invalidateQueries({ queryKey: ['marketplace-installed', accountId] });
+      qc.invalidateQueries({ queryKey: ['marketplace-updates', accountId] });
+      qc.invalidateQueries({ queryKey: ['account-detail', accountId] });
     },
   });
 }
@@ -102,12 +102,12 @@ export function useUpdateMarketplaceItem() {
 export function useInstallMarketplaceItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, id }: { projectId: string; id: string }) =>
-      installMarketplaceItem(projectId, id),
-    onSuccess: (_data, { projectId }) => {
-      qc.invalidateQueries({ queryKey: ['marketplace-installed', projectId] });
-      qc.invalidateQueries({ queryKey: ['marketplace-updates', projectId] });
-      qc.invalidateQueries({ queryKey: ['project-detail', projectId] });
+    mutationFn: ({ accountId, id }: { accountId: string; id: string }) =>
+      installMarketplaceItem(accountId, id),
+    onSuccess: (_data, { accountId }) => {
+      qc.invalidateQueries({ queryKey: ['marketplace-installed', accountId] });
+      qc.invalidateQueries({ queryKey: ['marketplace-updates', accountId] });
+      qc.invalidateQueries({ queryKey: ['account-detail', accountId] });
     },
   });
 }
@@ -115,12 +115,12 @@ export function useInstallMarketplaceItem() {
 export function useUninstallMarketplaceItem() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, name }: { projectId: string; name: string }) =>
-      uninstallMarketplaceItem(projectId, name),
-    onSuccess: (_data, { projectId }) => {
-      qc.invalidateQueries({ queryKey: ['marketplace-installed', projectId] });
-      qc.invalidateQueries({ queryKey: ['marketplace-updates', projectId] });
-      qc.invalidateQueries({ queryKey: ['project-detail', projectId] });
+    mutationFn: ({ accountId, name }: { accountId: string; name: string }) =>
+      uninstallMarketplaceItem(accountId, name),
+    onSuccess: (_data, { accountId }) => {
+      qc.invalidateQueries({ queryKey: ['marketplace-installed', accountId] });
+      qc.invalidateQueries({ queryKey: ['marketplace-updates', accountId] });
+      qc.invalidateQueries({ queryKey: ['account-detail', accountId] });
     },
   });
 }

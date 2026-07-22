@@ -175,13 +175,13 @@ export async function getMarketplaceItemFile(id: string, target: string): Promis
   );
 }
 
-export async function installMarketplaceItem(projectId: string, id: string): Promise<InstallResult> {
-  return unwrap(await backendApi.post<InstallResult>(`/projects/${projectId}/registry/install`, { id }));
+export async function installMarketplaceItem(accountId: string, id: string): Promise<InstallResult> {
+  return unwrap(await backendApi.post<InstallResult>(`/accounts/${accountId}/registry/install`, { id }));
 }
 
-export async function listInstalledItems(projectId: string): Promise<InstalledItem[]> {
-  const res = unwrap(await backendApi.get<{ installed: InstalledItem[] }>(`/projects/${projectId}/registry`));
-  return res.installed ?? [];
+export async function listInstalledItems(accountId: string): Promise<InstalledItem[]> {
+  const res = unwrap(await backendApi.get<{ items: InstalledItem[] }>(`/accounts/${accountId}/registry`));
+  return res.items ?? [];
 }
 
 export type RegistryItemStatus = 'up-to-date' | 'update-available' | 'orphaned';
@@ -195,34 +195,34 @@ export interface RegistryUpdate {
 }
 
 export async function listRegistryUpdates(
-  projectId: string,
+  accountId: string,
 ): Promise<{ updates: RegistryUpdate[]; update_available: string[] }> {
   return unwrap(
     await backendApi.get<{ updates: RegistryUpdate[]; update_available: string[] }>(
-      `/projects/${projectId}/registry/updates`,
+      `/accounts/${accountId}/registry/updates`,
     ),
   );
 }
 
 export async function updateMarketplaceItem(
-  projectId: string,
+  accountId: string,
   name: string,
-): Promise<{ ok: boolean; updated: string; commit_sha: string; file_count: number }> {
+): Promise<{ ok: boolean; updated: string }> {
   return unwrap(
-    await backendApi.post<{ ok: boolean; updated: string; commit_sha: string; file_count: number }>(
-      `/projects/${projectId}/registry/update`,
+    await backendApi.post<{ ok: boolean; updated: string }>(
+      `/accounts/${accountId}/registry/update`,
       { name },
     ),
   );
 }
 
 export async function uninstallMarketplaceItem(
-  projectId: string,
+  accountId: string,
   name: string,
-): Promise<{ ok: boolean; removed: string; commit_sha: string; file_count: number }> {
+): Promise<{ ok: boolean }> {
   return unwrap(
-    await backendApi.delete<{ ok: boolean; removed: string; commit_sha: string; file_count: number }>(
-      `/projects/${projectId}/registry/${encodeURIComponent(name)}`,
+    await backendApi.delete<{ ok: boolean }>(
+      `/accounts/${accountId}/registry/${encodeURIComponent(name)}`,
     ),
   );
 }

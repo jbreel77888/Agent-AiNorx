@@ -24,51 +24,51 @@ import { errorToast, successToast } from '@/components/ui/toast';
 import { useAuth } from '@/features/providers/auth-provider';
 import { useInstallMarketplaceItem } from '@/hooks/marketplace';
 import type { MarketplaceItem } from '@/lib/marketplace-client';
-import { listProjectsForAccount } from '@/lib/projects-client';
+import { listAccounts } from '@/lib/projects-client';
 import { typeMeta } from './marketplace-meta';
 
 export function AddToProjectDialog({
   item,
   open,
   onOpenChange,
-  fixedProjectId,
-  fixedProjectName,
+  fixedAccountId,
+  fixedAccountName,
 }: {
   item: MarketplaceItem | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** When set, install straight into this project (no picker). */
-  fixedProjectId?: string;
-  fixedProjectName?: string;
+  fixedAccountId?: string;
+  fixedAccountName?: string;
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const { user } = useAuth();
-  const usePicker = !fixedProjectId;
-  const [pickedProjectId, setPickedProjectId] = useState('');
+  const usePicker = !fixedAccountId;
+  const [pickedAccountId, setPickedProjectId] = useState('');
   const install = useInstallMarketplaceItem();
 
   const projectsQuery = useQuery({
     queryKey: ['projects', 'all-for-marketplace'],
-    queryFn: () => listProjectsForAccount(),
+    queryFn: () => listAccounts(),
     enabled: !!user && open && usePicker,
     staleTime: 30_000,
   });
   const projects = projectsQuery.data ?? [];
 
   useEffect(() => {
-    if (open && usePicker && !pickedProjectId && projects.length > 0) {
+    if (open && usePicker && !pickedAccountId && projects.length > 0) {
       setPickedProjectId(projects[0].project_id);
     }
-  }, [open, usePicker, projects, pickedProjectId]);
+  }, [open, usePicker, projects, pickedAccountId]);
 
-  const targetProjectId = fixedProjectId ?? pickedProjectId;
+  const targetAccountId = fixedAccountId ?? pickedAccountId;
   const caps = item?.capabilities;
   const hasCaps = !!caps && caps.secrets.length + caps.connectors.length + caps.tools.length > 0;
 
   const onInstall = async () => {
-    if (!item || !targetProjectId) return;
+    if (!item || !targetAccountId) return;
     try {
-      const res = await install.mutateAsync({ projectId: targetProjectId, id: item.id });
+      const res = await install.mutateAsync({ accountId: targetAccountId, id: item.id });
       successToast(`Added ${item.title}`, {
         description: `Committed ${res.file_count} file${res.file_count === 1 ? '' : 's'} — live in the next session.`,
       });
@@ -84,7 +84,7 @@ export function AddToProjectDialog({
         <DialogHeader className="border-border/60 border-b px-6 pt-6 pb-4">
           <DialogTitle>
             Add {item?.title}
-            {fixedProjectName ? ` to ${fixedProjectName}` : ''}
+            {fixedAccountName ? ` to ${fixedAccountName}` : ''}
           </DialogTitle>
           <DialogDescription>
             {tI18nHardcoded.raw(
@@ -101,7 +101,7 @@ export function AddToProjectDialog({
           {usePicker && (
             <div className="space-y-1.5">
               <span className="text-foreground text-sm font-medium">Project</span>
-              <Select value={pickedProjectId} onValueChange={setPickedProjectId}>
+              <Select value={pickedAccountId} onValueChange={setPickedProjectId}>
                 <SelectTrigger>
                   <SelectValue
                     placeholder={projectsQuery.isLoading ? 'Loading…' : 'Choose a project'}
@@ -175,7 +175,7 @@ export function AddToProjectDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={onInstall} disabled={!targetProjectId || install.isPending}>
+          <Button onClick={onInstall} disabled={!targetAccountId || install.isPending}>
             {install.isPending ? 'Adding…' : 'Add'}
           </Button>
         </div>

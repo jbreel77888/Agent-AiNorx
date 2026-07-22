@@ -774,6 +774,10 @@ app.route('/v1/account', accountDeletionApp); // account deletion status/request
 app.route('/v1/platform', platformApp); // /v1/platform, /v1/platform/sandbox/version
 app.route('/v1/sessions', sessionFilesApp); // /v1/sessions/:id/files — simple-mode file API
 app.route('/v1/marketplace', marketplaceApp); // /v1/marketplace — browse the registry catalog
+import { registryApp } from './marketplace/registry-routes';
+app.route('/v1/accounts', registryApp); // /v1/accounts/:id/registry/* — install/uninstall/list
+import { notificationsApp } from './notifications';
+app.route('/v1/notifications', notificationsApp); // /v1/notifications — list, read, SSE stream
 
 // Universal git smart-HTTP proxy — REMOVED in Phase 7.1.
 // The git-proxy module was project-only and is no longer used in session-only mode.

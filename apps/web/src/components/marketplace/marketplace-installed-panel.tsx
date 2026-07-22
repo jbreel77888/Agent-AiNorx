@@ -37,15 +37,15 @@ function relativeDate(iso: string | null): string {
 }
 
 export function MarketplaceInstalledPanel({
-  projectId,
+  accountId,
   onBrowse,
 }: {
-  projectId: string;
+  accountId: string;
   onBrowse: () => void;
 }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
-  const installed = useInstalledItems(projectId);
-  const updates = useRegistryUpdates(projectId);
+  const installed = useInstalledItems(accountId);
+  const updates = useRegistryUpdates(accountId);
   const catalog = useMarketplaceItems({});
   const updateMut = useUpdateMarketplaceItem();
   const uninstallMut = useUninstallMarketplaceItem();
@@ -58,7 +58,7 @@ export function MarketplaceInstalledPanel({
 
   const onUpdate = async (it: InstalledItem) => {
     try {
-      const res = await updateMut.mutateAsync({ projectId, name: it.name });
+      const res = await updateMut.mutateAsync({ accountId, name: it.name });
       successToast(`Updated ${it.name}`, {
         description: `Re-committed ${res.file_count} file${res.file_count === 1 ? '' : 's'} — live next session.`,
       });
@@ -69,7 +69,7 @@ export function MarketplaceInstalledPanel({
 
   const onRemove = async (it: InstalledItem) => {
     try {
-      const res = await uninstallMut.mutateAsync({ projectId, name: it.name });
+      const res = await uninstallMut.mutateAsync({ accountId, name: it.name });
       successToast(`Removed ${it.name}`, {
         description: `Removed ${res.file_count} file${res.file_count === 1 ? '' : 's'} from the repo.`,
       });

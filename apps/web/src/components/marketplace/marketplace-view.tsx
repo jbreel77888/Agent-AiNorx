@@ -21,7 +21,7 @@ import {
   useUninstallMarketplaceItem,
 } from '@/hooks/marketplace';
 import type { MarketplaceItem } from '@/lib/marketplace-client';
-import { getProjectDetail } from '@/lib/projects-client';
+import { getAccountDetail } from '@/lib/projects-client';
 import { useMarketplaceDetailStore } from '@/stores/marketplace-detail-store';
 import { AddToProjectDialog } from './add-to-project-dialog';
 import { MarketplaceBrowser } from './marketplace-browser';
@@ -29,7 +29,7 @@ import { MarketplaceDiscover } from './marketplace-discover';
 import { MarketplaceInstalledPanel } from './marketplace-installed-panel';
 import { MarketplaceItemDetail } from './marketplace-item-detail';
 
-export function MarketplaceView({ projectId }: { projectId: string }) {
+export function MarketplaceView({ accountId }: { accountId: string }) {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const openId = useMarketplaceDetailStore((s) => s.openId);
   const closeDetail = useMarketplaceDetailStore((s) => s.close);
@@ -42,24 +42,24 @@ export function MarketplaceView({ projectId }: { projectId: string }) {
   const [source, setSource] = useState('all');
 
   const detail = useQuery({
-    queryKey: ['project-detail', projectId],
-    queryFn: () => getProjectDetail(projectId),
+    queryKey: ['account-detail', accountId],
+    queryFn: () => getAccountDetail(accountId),
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
   const projectName = detail.data?.project?.name ?? 'project';
 
-  const installed = useInstalledItems(projectId);
+  const installed = useInstalledItems(accountId);
   const installedNames = new Set((installed.data ?? []).map((i) => i.name));
   const installedCount = installed.data?.length ?? 0;
 
-  const updates = useRegistryUpdates(projectId);
+  const updates = useRegistryUpdates(accountId);
   const updateCount = updates.data?.update_available.length ?? 0;
 
   const uninstall = useUninstallMarketplaceItem();
   const onRemove = async (item: MarketplaceItem) => {
     try {
-      const res = await uninstall.mutateAsync({ projectId, name: item.name });
+      const res = await uninstall.mutateAsync({ accountId, name: item.name });
       successToast(`Removed ${item.name}`, {
         description: `Removed ${res.file_count} file${res.file_count === 1 ? '' : 's'} from the repo.`,
       });
@@ -88,7 +88,7 @@ export function MarketplaceView({ projectId }: { projectId: string }) {
           item={addItem}
           open={!!addItem}
           onOpenChange={(o) => !o && setAddItem(null)}
-          fixedProjectId={projectId}
+          fixedAccountId={accountId}
           fixedProjectName={projectName}
         />
       </div>
@@ -162,7 +162,7 @@ export function MarketplaceView({ projectId }: { projectId: string }) {
             />
           </>
         ) : (
-          <MarketplaceInstalledPanel projectId={projectId} onBrowse={() => setTab('explore')} />
+          <MarketplaceInstalledPanel accountId={accountId} onBrowse={() => setTab('explore')} />
         )}
       </div>
 
@@ -170,7 +170,7 @@ export function MarketplaceView({ projectId }: { projectId: string }) {
         item={addItem}
         open={!!addItem}
         onOpenChange={(o) => !o && setAddItem(null)}
-        fixedProjectId={projectId}
+        fixedAccountId={accountId}
         fixedProjectName={projectName}
       />
     </div>
