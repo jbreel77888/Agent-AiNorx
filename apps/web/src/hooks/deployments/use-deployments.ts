@@ -103,7 +103,7 @@ const fetchDeployments = async (
   params.set('limit', String(limit));
   params.set('offset', String(offset));
   const qs = params.toString() ? `?${params.toString()}` : '';
-  const response = await backendApi.get<ApiListResponse>(`/deployments${qs}`);
+  const response = await backendApi.get<ApiListResponse>(`/v1/deployments${qs}`);
   if (!response.success) {
     throw new Error(response.error?.message || 'Failed to fetch deployments');
   }
@@ -114,7 +114,7 @@ const fetchDeployments = async (
 };
 
 const fetchDeployment = async (id: string): Promise<Deployment> => {
-  const response = await backendApi.get<ApiSingleResponse>(`/deployments/${id}`);
+  const response = await backendApi.get<ApiSingleResponse>(`/v1/deployments/${id}`);
   if (!response.success) {
     throw new Error(response.error?.message || 'Failed to fetch deployment');
   }
@@ -122,7 +122,7 @@ const fetchDeployment = async (id: string): Promise<Deployment> => {
 };
 
 const createDeployment = async (data: CreateDeploymentData): Promise<Deployment> => {
-  const response = await backendApi.post<ApiSingleResponse>('/deployments', data, {
+  const response = await backendApi.post<ApiSingleResponse>('/v1/deployments', data, {
     timeout: 330_000, // 5.5 min — builds (Go, Rust, etc.) can take a while
   });
   if (!response.success) {
@@ -132,7 +132,7 @@ const createDeployment = async (data: CreateDeploymentData): Promise<Deployment>
 };
 
 const stopDeployment = async (id: string): Promise<Deployment> => {
-  const response = await backendApi.post<ApiSingleResponse>(`/deployments/${id}/stop`);
+  const response = await backendApi.post<ApiSingleResponse>(`/v1/deployments/${id}/stop`);
   if (!response.success) {
     throw new Error(response.error?.message || 'Failed to stop deployment');
   }
@@ -140,7 +140,7 @@ const stopDeployment = async (id: string): Promise<Deployment> => {
 };
 
 const redeployDeployment = async (id: string): Promise<Deployment> => {
-  const response = await backendApi.post<ApiSingleResponse>(`/deployments/${id}/redeploy`, {}, {
+  const response = await backendApi.post<ApiSingleResponse>(`/v1/deployments/${id}/redeploy`, {}, {
     timeout: 330_000,
   });
   if (!response.success) {
@@ -150,14 +150,14 @@ const redeployDeployment = async (id: string): Promise<Deployment> => {
 };
 
 const deleteDeployment = async (id: string): Promise<void> => {
-  const response = await backendApi.delete<ApiDeleteResponse>(`/deployments/${id}`);
+  const response = await backendApi.delete<ApiDeleteResponse>(`/v1/deployments/${id}`);
   if (!response.success) {
     throw new Error(response.error?.message || 'Failed to delete deployment');
   }
 };
 
 const fetchDeploymentLogs = async (id: string): Promise<ApiLogsResponse['data']> => {
-  const response = await backendApi.get<ApiLogsResponse>(`/deployments/${id}/logs`);
+  const response = await backendApi.get<ApiLogsResponse>(`/v1/deployments/${id}/logs`);
   if (!response.success) {
     throw new Error(response.error?.message || 'Failed to fetch deployment logs');
   }

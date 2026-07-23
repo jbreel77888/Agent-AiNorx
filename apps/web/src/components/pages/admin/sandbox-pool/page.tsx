@@ -101,6 +101,7 @@ export default function SandboxPoolAdminPage() {
 
   const isLoading = healthLoading || statsLoading;
   const isAnyMutating = replenishMutation.isPending || forceCreateMutation.isPending || cleanupMutation.isPending || restartMutation.isPending;
+  const isDisabled = health?.status === 'disabled';
   const poolUtilization = useMemo(() => {
     if (!stats?.pool_size || !stats?.config?.max_size) return 0;
     return (stats.pool_size / stats.config.max_size) * 100;
@@ -138,6 +139,32 @@ export default function SandboxPoolAdminPage() {
       <div className="max-w-7xl mx-auto px-6 pt-6 w-full">
         <LegacyBanner feature={tHardcodedUi.raw('componentsPagesAdminSandboxPoolPage.line136JsxAttrFeatureSandboxPool')} />
       </div>
+
+      {/* Disabled-feature banner — account_warm_pool flag is OFF. */}
+      {health?.status === 'disabled' && (
+        <div className="max-w-7xl mx-auto px-6 pt-4 w-full">
+          <Card className="border-blue-500/30 bg-blue-500/5 backdrop-blur">
+            <CardContent className="py-4">
+              <div className="flex items-start gap-3">
+                <Settings className="w-5 h-5 text-blue-400 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-medium text-blue-400">Account Warm Pool is disabled</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    The session-only-mode warm pool subsystem is built but dormant. Flip the
+                    <code className="mx-1 px-1.5 py-0.5 rounded bg-muted text-xs">account_warm_pool</code>
+                    feature flag on via <code className="mx-1 px-1.5 py-0.5 rounded bg-muted text-xs">PUT /v1/admin/sandbox-pool/config</code>
+                    to start pre-warming session-less spare sandboxes per account.
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Cost note: warm spares run 24/7 — review provider billing before enabling.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex-none border-b border-border/50 bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-5">
@@ -269,7 +296,7 @@ export default function SandboxPoolAdminPage() {
                 <div className="grid grid-cols-3 gap-3">
                   <button
                     onClick={handleReplenish}
-                    disabled={isAnyMutating}
+                    disabled={isAnyMutating || isDisabled}
                     className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-border bg-card hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center">
@@ -284,7 +311,7 @@ export default function SandboxPoolAdminPage() {
 
                   <button
                     onClick={handleCleanup}
-                    disabled={isAnyMutating}
+                    disabled={isAnyMutating || isDisabled}
                     className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-border bg-card hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
@@ -299,7 +326,7 @@ export default function SandboxPoolAdminPage() {
 
                   <button
                     onClick={handleRestart}
-                    disabled={isAnyMutating}
+                    disabled={isAnyMutating || isDisabled}
                     className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-border bg-card hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
@@ -326,7 +353,7 @@ export default function SandboxPoolAdminPage() {
                     />
                     <Button
                       onClick={handleForceCreate}
-                      disabled={isAnyMutating}
+                      disabled={isAnyMutating || isDisabled}
                     >
                       {forceCreateMutation.isPending ? (
                         <Loader2 className="w-4 h-4 animate-spin" />

@@ -898,6 +898,26 @@ export const warmPoolPresence = kortixSchema.table(
 );
 
 /**
+ * Session-only-mode warm pool presence — one row per account that has an
+ * active warm pool. The leader reconcile (warm-pool-account.ts) reads this
+ * to know which accounts to refill, and reaps rows whose lastSeenAt is
+ * older than the presence TTL (i.e. no sessions were opened recently for
+ * that account, so we can stop holding spare sandboxes for it).
+ *
+ * Ships dormant: account_warm_pool setting defaults OFF, so no rows are
+ * written until an operator enables the feature from the admin panel.
+ */
+export const accountWarmPoolPresence = kortixSchema.table(
+  'account_warm_pool_presence',
+  {
+    accountId: uuid('account_id').primaryKey(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
+    targetSize: integer('target_size').notNull().default(3),
+  },
+  (table) => [index('idx_account_warm_pool_presence_seen').on(table.lastSeenAt)],
+);
+
+/**
  * Provider analytics — an append-only telemetry log, one row per terminal
  * provisioning/migration outcome. Written fire-and-forget from the provision
  * path (the `provisionTimeline` is already computed, so capture is ~free) and

@@ -110,7 +110,7 @@ export const useSandboxPoolHealth = () => {
   return useQuery<PoolHealth>({
     queryKey: QUERY_KEYS.health,
     queryFn: async () => {
-      const response = await backendApi.get<PoolHealth>('/admin/sandbox-pool/health');
+      const response = await backendApi.get<PoolHealth>('/v1/admin/sandbox-pool/health');
       if (response.error) throw response.error;
       return response.data!;
     },
@@ -123,7 +123,7 @@ export const useSandboxPoolStats = () => {
   return useQuery<PoolStats>({
     queryKey: QUERY_KEYS.stats,
     queryFn: async () => {
-      const response = await backendApi.get<PoolStats>('/admin/sandbox-pool/stats');
+      const response = await backendApi.get<PoolStats>('/v1/admin/sandbox-pool/stats');
       if (response.error) throw response.error;
       return response.data!;
     },
@@ -136,7 +136,7 @@ export const useSandboxPoolList = (limit: number = 50) => {
   return useQuery<PooledSandboxList>({
     queryKey: [...QUERY_KEYS.list, limit],
     queryFn: async () => {
-      const response = await backendApi.get<PooledSandboxList>(`/admin/sandbox-pool/list?limit=${limit}`);
+      const response = await backendApi.get<PooledSandboxList>(`/v1/admin/sandbox-pool/list?limit=${limit}`);
       if (response.error) throw response.error;
       return response.data!;
     },
@@ -150,7 +150,7 @@ export const useSandboxPoolReplenish = () => {
 
   return useMutation<ReplenishResponse>({
     mutationFn: async () => {
-      const response = await backendApi.post<ReplenishResponse>('/admin/sandbox-pool/replenish');
+      const response = await backendApi.post<ReplenishResponse>('/v1/admin/sandbox-pool/replenish');
       if (response.error) throw response.error;
       return response.data!;
     },
@@ -167,7 +167,7 @@ export const useSandboxPoolForceCreate = () => {
 
   return useMutation<ForceCreateResponse, Error, { count: number; resource_id?: string }>({
     mutationFn: async ({ count, resource_id }) => {
-      const response = await backendApi.post<ForceCreateResponse>('/admin/sandbox-pool/force-create', { count, resource_id });
+      const response = await backendApi.post<ForceCreateResponse>('/v1/admin/sandbox-pool/force-create', { count, resource_id });
       if (response.error) throw response.error;
       return response.data!;
     },
@@ -184,7 +184,7 @@ export const useSandboxPoolCleanup = () => {
 
   return useMutation<CleanupResponse>({
     mutationFn: async () => {
-      const response = await backendApi.post<CleanupResponse>('/admin/sandbox-pool/cleanup');
+      const response = await backendApi.post<CleanupResponse>('/v1/admin/sandbox-pool/cleanup');
       if (response.error) throw response.error;
       return response.data!;
     },
@@ -201,7 +201,7 @@ export const useSandboxPoolRestart = () => {
 
   return useMutation<RestartResponse>({
     mutationFn: async () => {
-      const response = await backendApi.post<RestartResponse>('/admin/sandbox-pool/restart-service');
+      const response = await backendApi.post<RestartResponse>('/v1/admin/sandbox-pool/restart-service');
       if (response.error) throw response.error;
       return response.data!;
     },
@@ -215,7 +215,7 @@ export const usePoolResources = () => {
   return useQuery<{ resources: PoolResource[] }>({
     queryKey: QUERY_KEYS.resources,
     queryFn: async () => {
-      const response = await backendApi.get<{ resources: PoolResource[] }>('/admin/sandbox-pool/resources');
+      const response = await backendApi.get<{ resources: PoolResource[] }>('/v1/admin/sandbox-pool/resources');
       if (response.error) throw response.error;
       return response.data!;
     },
@@ -227,7 +227,7 @@ export const useCreatePoolResource = () => {
   const queryClient = useQueryClient();
   return useMutation<{ resource: PoolResource }, Error, { provider: string; server_type: string; location: string; desired_count: number }>({
     mutationFn: async (data) => {
-      const response = await backendApi.post<{ resource: PoolResource }>('/admin/sandbox-pool/resources', data);
+      const response = await backendApi.post<{ resource: PoolResource }>('/v1/admin/sandbox-pool/resources', data);
       if (response.error) throw response.error;
       return response.data!;
     },
@@ -243,7 +243,7 @@ export const useUpdatePoolResource = () => {
   const queryClient = useQueryClient();
   return useMutation<{ resource: PoolResource }, Error, { id: string; desired_count?: number; enabled?: boolean }>({
     mutationFn: async ({ id, ...data }) => {
-      const response = await backendApi.patch<{ resource: PoolResource }>(`/admin/sandbox-pool/resources/${id}`, data);
+      const response = await backendApi.patch<{ resource: PoolResource }>(`/v1/admin/sandbox-pool/resources/${id}`, data);
       if (response.error) throw response.error;
       return response.data!;
     },
@@ -258,7 +258,7 @@ export const useDeletePoolResource = () => {
   const queryClient = useQueryClient();
   return useMutation<{ success: boolean }, Error, string>({
     mutationFn: async (id) => {
-      const response = await backendApi.delete<{ success: boolean }>(`/admin/sandbox-pool/resources/${id}`);
+      const response = await backendApi.delete<{ success: boolean }>(`/v1/admin/sandbox-pool/resources/${id}`);
       if (response.error) throw response.error;
       return response.data!;
     },
@@ -275,7 +275,7 @@ export const useSandboxPoolRemove = () => {
 
   return useMutation<RemoveResponse, Error, { sandbox_ids: string[]; delete_sandbox?: boolean }>({
     mutationFn: async (data) => {
-      const response = await backendApi.post<RemoveResponse>('/admin/sandbox-pool/remove', data);
+      const response = await backendApi.post<RemoveResponse>('/v1/admin/sandbox-pool/remove', data);
       if (response.error) throw response.error;
       return response.data!;
     },

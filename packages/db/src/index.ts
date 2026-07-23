@@ -59,6 +59,7 @@ export {
   sessionSandboxes,
   sessionSandboxStatusEnum,
   warmPoolPresence,
+  accountWarmPoolPresence,
   providerEvents,
   sandboxes,
   sandboxMembers,

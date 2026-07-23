@@ -65,6 +65,8 @@ import { opsApp } from './ops';
 import { adminApp } from './admin';
 import { platformAdminApp } from './admin/platform';
 import { connectorsApp } from './connectors';
+import { sandboxPoolAdminApp } from './admin/sandbox-pool-routes';
+import { accountDeploymentsApp } from './deployments/account-routes';
 
 // ─── Process-level crash guards ───────────────────────────────────────────────
 // A stray rejected promise or throw escaping any fire-and-forget path — the
@@ -827,6 +829,14 @@ app.route('/v1/admin/platform', platformAdminApp);
 // own connectors without a project. Backward compatible with /v1/projects/:id/*
 // (used by mobile app).
 app.route('/v1/connectors', connectorsApp);
+// Account-scoped sandbox-pool admin surface (session-only mode). Mounted
+// alongside /v1/admin so the frontend hook (use-sandbox-pool.ts) hits
+// /v1/admin/sandbox-pool/* — backs the dormant /admin/sandbox-pool page.
+app.route('/v1/admin/sandbox-pool', sandboxPoolAdminApp);
+// Account-scoped deployments surface (session-only mode). Backs the dormant
+// /sessions/tools/deployments page — all routes return 503 'feature disabled'
+// until an operator flips account_deployments on.
+app.route('/v1/deployments', accountDeploymentsApp);
 
 // OAuth2 provider — public token endpoint, auth on authorize/consent
 app.route('/v1/oauth', oauthApp);
