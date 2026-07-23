@@ -309,3 +309,70 @@ export async function getScaffoldVersion(): Promise<string> {
     return '0';
   }
 }
+
+/**
+ * Push account-scoped registry items (marketplace installs) to all active
+ * sandboxes for a specific account. Called by registry-routes.ts after an
+ * install/uninstall so the skill appears in the user's active session
+ * immediately, without requiring a new session.
+ */
+export async function pushRegistryUpdateToAccount(
+  accountId: string,
+  _itemNames: string[],
+): Promise<{ updated: number; failed: number }> {
+  const { accountRegistryItems } = await import('@kortix/db');
+  const items = await db
+    .select()
+    .from(accountRegistryItems)
+    .where(
+      and(
+        eq(accountRegistryItems.accountId, accountId),
+        eq(accountRegistryItems.isActive, true),
+      ),
+    );
+
+  if (items.length === 0) return { updated: 0, failed: 0 };
+
+  // Find active sandboxes for this account only
+  const accountSandboxes = await db
+    .select({
+      externalId: sessionSandboxes.externalId,
+      sessionId: sessionSandboxes.sessionId,
+    })
+    .from(sessionSandboxes)
+    .where(
+      and(
+        eq(sessionSandboxes.accountId, accountId),
+        eq(sessionSandboxes.provider, 'tensorlake'),
+        eq(sessionSandboxes.status, 'active'),
+      ),
+    );
+
+  const activeSandboxes = accountSandboxes.filter(
+    (r): r is { externalId: string; sessionId: string } => r.externalId !== null,
+  );
+
+  if (activeSandboxes.length === 0) return { updated: 0, failed: 0 };
+
+  // Build the skill files to push
+  const skills: SkillFile[] = items.map((item) => ({
+    slug: item.name,
+    content: item.skillContent,
+  }));
+
+  let updated = 0;
+  let failed = 0;
+
+  for (const sb of activeSandboxes) {
+    const result = await updateSandboxFiles(sb.externalId, [], skills);
+    if (result.ok) {
+      updated++;
+      console.log(`[live-update] Pushed ${items.length} registry items to sandbox ${sb.externalId.slice(0, 8)}`);
+    } else {
+      failed++;
+      console.warn(`[live-update] Failed to push to sandbox ${sb.externalId.slice(0, 8)}: ${result.error}`);
+    }
+  }
+
+  return { updated, failed };
+}

@@ -125,6 +125,29 @@ async function main() {
         const seeded = await materializeScaffoldSeed(cfg.projectTarget, 'main')
         if (seeded) {
           console.log('[boot] simple mode — scaffold injected successfully')
+
+          // Fetch account-scoped marketplace skills and write them into the
+          // scaffold's .vaelorx/opencode/skills/ directory. Best-effort —
+          // failures are logged but don't block boot (the baked-in skills
+          // from the scaffold remain available).
+          try {
+            const { fetchInstalledSkills } = await import('./proxy-helpers')
+            const { writeFileSync, mkdirSync, existsSync } = await import('node:fs')
+            const { join } = await import('node:path')
+            const skills = await fetchInstalledSkills()
+            if (skills.length > 0) {
+              const skillsDir = join(cfg.projectTarget, '.vaelorx', 'opencode', 'skills')
+              if (!existsSync(skillsDir)) mkdirSync(skillsDir, { recursive: true })
+              for (const skill of skills) {
+                const skillDir = join(skillsDir, skill.name)
+                if (!existsSync(skillDir)) mkdirSync(skillDir, { recursive: true })
+                writeFileSync(join(skillDir, 'SKILL.md'), skill.content)
+              }
+              console.log(`[boot] injected ${skills.length} account-scoped marketplace skill(s) into scaffold`)
+            }
+          } catch (err) {
+            console.warn('[boot] failed to inject marketplace skills:', err instanceof Error ? err.message : err)
+          }
         } else {
           // No scaffold.git baked — create minimal files manually
           console.log('[boot] simple mode — no scaffold.git, creating minimal workspace files')

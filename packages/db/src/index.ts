@@ -125,6 +125,7 @@ export {
   // Platform Control (admin-managed)
   platformAgents,
   platformSkills,
+  accountRegistryItems,
   platformModels,
   platformSubscriptionPlans,
   platformProviders,

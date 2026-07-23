@@ -3170,6 +3170,37 @@ export const platformSkills = kortixSchema.table(
   },
 );
 
+/**
+ * Account-scoped marketplace registry items — tracks skills/agents/commands
+ * installed from the marketplace on a per-account basis. In session-only mode
+ * there is no project/git repo to commit to, so installs are persisted as DB
+ * rows keyed by (account_id, item_name).
+ *
+ * The daemon fetches these at boot via GET /v1/accounts/me/registry/installed
+ * and writes the file contents to .vaelorx/opencode/skills/ in the sandbox.
+ */
+export const accountRegistryItems = kortixSchema.table(
+  'account_registry_items',
+  {
+    itemId: uuid('item_id').defaultRandom().primaryKey(),
+    accountId: uuid('account_id').notNull(),
+    name: text('name').notNull(),
+    type: text('type').notNull().default('skill'),
+    sourceAddress: text('source_address'),
+    contentHash: text('content_hash'),
+    skillContent: text('skill_content').notNull(),
+    metadata: jsonb('metadata').default({}).$type<Record<string, unknown>>(),
+    isActive: boolean('is_active').default(true),
+    version: integer('version').default(1),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_account_registry_items_account').on(table.accountId),
+    uniqueIndex('idx_account_registry_items_account_name').on(table.accountId, table.name),
+  ],
+);
+
 export const platformModels = kortixSchema.table(
   'platform_models',
   {

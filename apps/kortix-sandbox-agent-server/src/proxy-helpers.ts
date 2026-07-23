@@ -14,6 +14,11 @@
  * The gateway is the SOURCE OF TRUTH for the default model. The daemon's
  * local KORTIX_DEFAULT_MODEL env var is set at sandbox boot time and may be
  * stale if the admin changed the default after the sandbox was created.
+ *
+ * fetchInstalledSkills() fetches account-scoped marketplace skills from
+ * /v1/accounts/me/registry/installed. Called by main.ts at boot, after
+ * materializeScaffoldSeed, to write user-installed skills into
+ * .vaelorx/opencode/skills/ in the sandbox.
  */
 
 let cachedDefaultModel: { model: string | null; fetchedAt: number } = {
@@ -72,3 +77,51 @@ export async function fetchCurrentDefaultModel(): Promise<string | null> {
     return envModel;
   }
 }
+
+// ─── Installed marketplace skills (account-scoped) ──────────────────────────
+
+export interface InstalledSkill {
+  name: string;
+  type: string;
+  content: string;
+  version: number;
+}
+
+/**
+ * Fetch account-scoped marketplace skills from the API.
+ *
+ * Uses the sandbox token (KORTIX_TOKEN) to authenticate — the API resolves
+ * the account from the token via /v1/accounts/me/registry/installed.
+ *
+ * Returns an empty array on any error (best-effort — the sandbox still boots
+ * with the baked-in scaffold skills even if the API is unreachable).
+ */
+export async function fetchInstalledSkills(): Promise<InstalledSkill[]> {
+  const apiUrl = process.env.KORTIX_API_URL?.trim();
+  const token = process.env.KORTIX_TOKEN?.trim() || process.env.KORTIX_SANDBOX_TOKEN?.trim();
+  if (!apiUrl || !token) {
+    return [];
+  }
+  try {
+    const url = `${apiUrl.replace(/\/+$/, '')}/v1/accounts/me/registry/installed`;
+    const res = await fetch(url, {
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const body = (await res.json()) as { items?: InstalledSkill[] };
+    return Array.isArray(body.items) ? body.items : [];
+  } catch (err) {
+    console.warn(
+      '[proxy-helpers] fetchInstalledSkills failed (continuing with baked-in skills only):',
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+}
+

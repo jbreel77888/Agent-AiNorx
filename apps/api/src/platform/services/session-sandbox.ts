@@ -583,6 +583,11 @@ export async function provisionSessionSandbox(opts: {
       // online one if not set.
       TUNNEL_API_URL: kortixOrigin,
       TUNNEL_TOKEN: sandboxKey.secretKey,
+      // KORTIX_API_URL — the daemon uses this at boot to fetch account-scoped
+      // marketplace skills (GET /v1/accounts/me/registry/installed). The
+      // sandbox token authenticates the request; the API resolves the account
+      // from the token. Without this, installed skills never reach the sandbox.
+      KORTIX_API_URL: kortixOrigin,
     },
     // Idle lifecycle is owned by the provider-agnostic reaper (projects/
     // sandbox-reaper.ts), keyed off MEANINGFUL activity (real turns), with each
