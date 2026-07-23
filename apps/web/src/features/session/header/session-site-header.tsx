@@ -39,6 +39,7 @@ import { ShareSessionModal } from '@/features/session/modals/share-session-modal
 import { CompactModal } from '@/features/session/header/compact-modal';
 import { ExportTranscriptModal } from '@/features/session/header/export-transcript-modal';
 import { PublicShareLinkButton } from '@/components/common/public-share-link-button';
+import { AccountNotificationsBell } from '@/components/notifications/account-notifications-bell';
 import { SessionChangesIndicator } from '@/features/session/header/session-changes-indicator';
 import { listProjectSessions, restartProjectSession } from '@/lib/projects-client';
 import { deleteSession, renameSession, restartSession } from '@/lib/sessions-client';
@@ -270,6 +271,7 @@ export function SessionSiteHeader({
           </div>
 
           <div className="pointer-events-auto flex items-center gap-1.5">
+            <AccountNotificationsBell />
             <SessionChangesIndicator sessionId={sessionId} />
             <Hint
               side="bottom"

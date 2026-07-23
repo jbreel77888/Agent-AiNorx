@@ -8,6 +8,7 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
 } from '@/components/ui/breadcrumb';
+import { AccountNotificationsBell } from '@/components/notifications/account-notifications-bell';
 import { AccountSwitcher } from '@/features/layout/account-switcher';
 import { UserMenu } from '@/features/layout/user-menu';
 import { useIsMobile } from '@/hooks/utils';
@@ -106,6 +107,7 @@ export function AppHeader({
         >
           {actions}
 
+          <AccountNotificationsBell />
           <UserMenu
             user={{ name: displayName, email: displayEmail, avatar: avatarUrl }}
             variant="header"
