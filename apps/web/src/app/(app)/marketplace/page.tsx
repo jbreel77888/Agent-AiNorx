@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 
 import { InstallItemDialog } from '@/components/marketplace/install-item-dialog';
 import { MarketplaceBrowser } from '@/components/marketplace/marketplace-browser';
@@ -12,9 +12,10 @@ import { MarketplaceInstalledPanel } from '@/components/marketplace/marketplace-
 import { FilterBar, FilterBarItem } from '@/components/ui/tabs';
 import { AppHeader } from '@/features/layout/app-header';
 import { useAuth } from '@/features/providers/auth-provider';
+import { useInstalledItems } from '@/hooks/marketplace';
+import { useCurrentAccountStore } from '@/stores/current-account-store';
 import type { MarketplaceItem } from '@/lib/marketplace-client';
 import { useMarketplaceDetailStore } from '@/stores/marketplace-detail-store';
-import { cn } from '@/lib/utils';
 
 type PageTab = 'explore' | 'installed' | 'marketplaces';
 
@@ -28,8 +29,20 @@ export default function MarketplacePage() {
   const openId = useMarketplaceDetailStore((s) => s.openId);
   const closeSheet = useMarketplaceDetailStore((s) => s.close);
 
-  // Resolve accountId from the auth context — used for the Installed panel
-  const accountId = (user?.app_metadata?.account_id as string) || (user?.user_metadata?.account_id as string) || '';
+  // Resolve accountId from the global current-account store (the same store
+  // the AccountSwitcher + UserMenu use). This is the source of truth for
+  // "which account is the user currently acting as".
+  const accountId = useCurrentAccountStore((s) => s.selectedAccountId);
+
+  // Fetch installed items so we can:
+  //   1. Filter them out of the Explore tab (hide already-installed)
+  //   2. Show them in the Installed tab
+  //   3. Refresh automatically after install (query invalidation)
+  const installedQuery = useInstalledItems(accountId);
+  const installedNames = useMemo(
+    () => new Set((installedQuery.data ?? []).map((i) => i.name)),
+    [installedQuery.data],
+  );
 
   useEffect(() => {
     if (!authLoading && !user) router.replace('/auth');
@@ -52,6 +65,7 @@ export default function MarketplacePage() {
           onOpenChange={(o) => {
             if (!o) setAddItem(null);
           }}
+          onInstalled={() => setTab('installed')}
         />
       </div>
     );
@@ -66,7 +80,7 @@ export default function MarketplacePage() {
             <div>
               <h1 className="text-foreground text-lg font-semibold">Marketplace</h1>
               <p className="text-muted-foreground text-sm">
-                Browse and install skills into your account — they'll appear in all your sessions.
+                Browse and install skills into your account — they&apos;ll appear in all your sessions.
               </p>
             </div>
             <FilterBar className="shrink-0">
@@ -80,7 +94,7 @@ export default function MarketplacePage() {
                 data-state={tab === 'installed' ? 'active' : 'inactive'}
                 onClick={() => setTab('installed')}
               >
-                Installed
+                Installed {installedQuery.data && `(${installedQuery.data.length})`}
               </FilterBarItem>
               <FilterBarItem
                 data-state={tab === 'marketplaces' ? 'active' : 'inactive'}
@@ -99,13 +113,14 @@ export default function MarketplacePage() {
                 closeSheet();
                 setAddItem(it);
               }}
+              installedNames={installedNames}
             />
           ) : tab === 'installed' ? (
             accountId ? (
               <MarketplaceInstalledPanel accountId={accountId} onBrowse={() => setTab('explore')} />
             ) : (
               <div className="text-muted-foreground rounded-lg border border-dashed p-8 text-center text-sm">
-                Loading your account...
+                No account selected. Please select an account from the header switcher.
               </div>
             )
           ) : (
@@ -125,6 +140,7 @@ export default function MarketplacePage() {
         onOpenChange={(o) => {
           if (!o) setAddItem(null);
         }}
+        onInstalled={() => setTab('installed')}
       />
     </div>
   );

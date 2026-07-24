@@ -1,6 +1,5 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,8 +11,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { errorToast, successToast } from '@/components/ui/toast';
-import { useAuth } from '@/features/providers/auth-provider';
 import { useInstallMarketplaceItem } from '@/hooks/marketplace';
+import { useCurrentAccountStore } from '@/stores/current-account-store';
 import type { MarketplaceItem } from '@/lib/marketplace-client';
 import { typeMeta } from './marketplace-meta';
 import { Loader2, Plug, Wrench, KeyRound } from 'lucide-react';
@@ -22,7 +21,7 @@ import { Loader2, Plug, Wrench, KeyRound } from 'lucide-react';
  * InstallItemDialog — installs a marketplace item into the user's account.
  *
  * In session-only mode there is no project picker — the item is installed
- * for the authenticated user's account (resolved from the auth token).
+ * for the authenticated user's account (resolved from useCurrentAccountStore).
  * The skill appears in:
  *   - All future sessions (via daemon fetchInstalledSkills at boot)
  *   - All active sessions (via live-update push)
@@ -31,18 +30,19 @@ export function InstallItemDialog({
   item,
   open,
   onOpenChange,
+  onInstalled,
 }: {
   item: MarketplaceItem | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Called after a successful install — parent can switch to Installed tab. */
+  onInstalled?: () => void;
 }) {
-  const tI18nHardcoded = useTranslations('hardcodedUi');
-  const { user } = useAuth();
   const install = useInstallMarketplaceItem();
-
-  // Resolve the accountId from the user's auth context. In session-only mode
-  // the user has exactly one primary account — we read it from user_metadata.
-  const accountId = (user?.app_metadata?.account_id as string) || (user?.user_metadata?.account_id as string) || '';
+  // Resolve accountId from the global current-account store (the same store
+  // the AccountSwitcher + UserMenu use). This is the source of truth for
+  // "which account is the user currently acting as".
+  const accountId = useCurrentAccountStore((s) => s.selectedAccountId);
 
   const caps = item?.capabilities;
   const hasCaps = !!caps && caps.secrets.length + caps.connectors.length + caps.tools.length > 0;
@@ -55,6 +55,8 @@ export function InstallItemDialog({
         description: `Added ${res.file_count} file${res.file_count === 1 ? '' : 's'}. Will appear in new sessions and active ones immediately.`,
       });
       onOpenChange(false);
+      // Notify parent so it can switch to the Installed tab
+      onInstalled?.();
     } catch (e) {
       errorToast('Install failed', { description: (e as Error).message });
     }
@@ -71,6 +73,12 @@ export function InstallItemDialog({
         </DialogHeader>
 
         <div className="space-y-4 px-6 py-5">
+          {!accountId && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm text-amber-600 dark:text-amber-400">
+              No account selected. Please select an account from the header switcher first.
+            </div>
+          )}
+
           {item && item.dependencies.length > 0 && (
             <p className="text-muted-foreground text-sm">
               Also installs: {item.dependencies.map((d) => d.name).join(', ')}

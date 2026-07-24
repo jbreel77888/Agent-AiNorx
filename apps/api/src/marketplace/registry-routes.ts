@@ -50,12 +50,15 @@ async function resolveAccountId(c: any): Promise<string | null> {
   return resolve(userId);
 }
 
-// ─── GET /me/registry/installed — daemon endpoint (MERGED platform + account) ─
+// ─── GET /installed — daemon endpoint (MERGED platform + account) ────────────
 // This is the endpoint the daemon calls at boot. Returns the MERGED set of
 // skills: platform defaults (base layer) + account overrides (top layer).
 // Account skills override platform skills with the same name.
+//
+// Mounted at /v1/registry/installed (NOT /v1/accounts/me/...) to avoid route
+// conflict with /:accountId in the accountsRouter.
 
-registryApp.get('/me/registry/installed', async (c) => {
+registryApp.get('/installed', async (c) => {
   const accountId = await resolveAccountId(c);
   if (!accountId) return c.json({ error: 'Account not found' }, 400);
 
@@ -204,6 +207,12 @@ registryApp.post('/:accountId/registry/install', async (c) => {
       ok: true,
       installed,
       file_count: result.files.length,
+      // Backwards-compat fields the frontend's InstallResult type expects
+      // (from the old git-commit model). Empty/no-op values — the install
+      // is DB-backed now, not git-backed.
+      commit_sha: '',
+      branch: '',
+      capabilities: result.capabilities,
     });
   } catch (err) {
     console.error('[registry] install failed:', err);
@@ -238,7 +247,8 @@ registryApp.get('/:accountId/registry/updates', async (c) => {
   const accountId = c.req.param('accountId');
   // For now, return empty — update detection requires comparing installed
   // content hashes with catalog hashes. This is a stub for future enhancement.
-  return c.json({ updates: [] });
+  // Match the shape the frontend expects: { updates, update_available }.
+  return c.json({ updates: [], update_available: [] });
 });
 
 // ─── POST /:accountId/registry/update — update a specific item ───────────────

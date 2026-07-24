@@ -36,7 +36,7 @@ export function useMarketplaces() {
   return useQuery({
     queryKey: ['marketplaces'],
     queryFn: listMarketplaces,
-    staleTime: 60_000,
+    staleTime: 5_000,
     refetchInterval: (query) => (query.state.data?.loading ? 1500 : false),
   });
 }
@@ -45,7 +45,7 @@ export function useFeaturedMarketplaces() {
   return useQuery({
     queryKey: ['marketplaces-featured'],
     queryFn: listFeaturedMarketplaces,
-    staleTime: 60_000,
+    staleTime: 5_000,
   });
 }
 
@@ -108,6 +108,9 @@ export function useInstallMarketplaceItem() {
       qc.invalidateQueries({ queryKey: ['marketplace-installed', accountId] });
       qc.invalidateQueries({ queryKey: ['marketplace-updates', accountId] });
       qc.invalidateQueries({ queryKey: ['account-detail', accountId] });
+      // Also invalidate the marketplace-items query so the Explore tab
+      // re-filters (hides the just-installed item) without a page reload.
+      qc.invalidateQueries({ queryKey: ['marketplace-items'] });
     },
   });
 }
@@ -121,6 +124,9 @@ export function useUninstallMarketplaceItem() {
       qc.invalidateQueries({ queryKey: ['marketplace-installed', accountId] });
       qc.invalidateQueries({ queryKey: ['marketplace-updates', accountId] });
       qc.invalidateQueries({ queryKey: ['account-detail', accountId] });
+      // Also invalidate the marketplace-items query so the Explore tab
+      // re-shows the just-uninstalled item without a page reload.
+      qc.invalidateQueries({ queryKey: ['marketplace-items'] });
     },
   });
 }
@@ -131,7 +137,7 @@ export function useMarketplaceSources() {
   return useQuery({
     queryKey: ['marketplace-sources'],
     queryFn: listMarketplaceSources,
-    staleTime: 60_000,
+    staleTime: 5_000,
   });
 }
 

@@ -777,7 +777,8 @@ app.route('/v1/platform', platformApp); // /v1/platform, /v1/platform/sandbox/ve
 app.route('/v1/sessions', sessionFilesApp); // /v1/sessions/:id/files — simple-mode file API
 app.route('/v1/marketplace', marketplaceApp); // /v1/marketplace — browse the registry catalog
 import { registryApp } from './marketplace/registry-routes';
-app.route('/v1/accounts', registryApp); // /v1/accounts/:id/registry/* — install/uninstall/list
+app.route('/v1/accounts', registryApp); // /v1/accounts/:id/registry/* — install/uninstall/list (account-scoped)
+app.route('/v1/registry', registryApp); // /v1/registry/installed — daemon endpoint (merged platform+account skills)
 import { notificationsApp } from './notifications';
 app.route('/v1/notifications', notificationsApp); // /v1/notifications — list, read, SSE stream
 

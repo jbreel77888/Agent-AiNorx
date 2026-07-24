@@ -16,7 +16,7 @@
  * stale if the admin changed the default after the sandbox was created.
  *
  * fetchInstalledSkills() fetches account-scoped marketplace skills from
- * /v1/accounts/me/registry/installed. Called by main.ts at boot, after
+ * /v1/registry/installed. Called by main.ts at boot, after
  * materializeScaffoldSeed, to write user-installed skills into
  * .vaelorx/opencode/skills/ in the sandbox.
  */
@@ -91,7 +91,7 @@ export interface InstalledSkill {
  * Fetch account-scoped marketplace skills from the API.
  *
  * Uses the sandbox token (KORTIX_TOKEN) to authenticate — the API resolves
- * the account from the token via /v1/accounts/me/registry/installed.
+ * the account from the token via /v1/registry/installed.
  *
  * Returns an empty array on any error (best-effort — the sandbox still boots
  * with the baked-in scaffold skills even if the API is unreachable).
@@ -103,7 +103,7 @@ export async function fetchInstalledSkills(): Promise<InstalledSkill[]> {
     return [];
   }
   try {
-    const url = `${apiUrl.replace(/\/+$/, '')}/v1/accounts/me/registry/installed`;
+    const url = `${apiUrl.replace(/\/+$/, '')}/v1/registry/installed`;
     const res = await fetch(url, {
       headers: {
         authorization: `Bearer ${token}`,

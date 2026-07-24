@@ -90,7 +90,13 @@ export function MarketplaceBrowser({
   const showTypeTabs = typeTabs.length > 1;
 
   const itemsQuery = useMarketplaceItems({ query: debounced, type: effectiveType, source });
-  const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data]);
+  const rawItems = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data]);
+  // Filter out already-installed items so the Explore tab only shows what's
+  // NOT yet installed. Installed items live in the Installed tab.
+  const items = useMemo(
+    () => installedNames ? rawItems.filter((it) => !installedNames.has(it.name)) : rawItems,
+    [rawItems, installedNames],
+  );
   const grouped = effectiveType === 'all' && !debounced;
   // Catalog still streaming external sources in (cold first load).
   const streaming = !!(itemsQuery.data?.loading || marketplacesQuery.data?.loading);
