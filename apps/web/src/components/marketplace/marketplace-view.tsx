@@ -23,7 +23,7 @@ import {
 import type { MarketplaceItem } from '@/lib/marketplace-client';
 import { getAccountDetail } from '@/lib/projects-client';
 import { useMarketplaceDetailStore } from '@/stores/marketplace-detail-store';
-import { AddToProjectDialog } from './add-to-project-dialog';
+import { InstallItemDialog } from './install-item-dialog';
 import { MarketplaceBrowser } from './marketplace-browser';
 import { MarketplaceDiscover } from './marketplace-discover';
 import { MarketplaceInstalledPanel } from './marketplace-installed-panel';
@@ -84,12 +84,10 @@ export function MarketplaceView({ accountId }: { accountId: string }) {
           )}
           installedNames={installedNames}
         />
-        <AddToProjectDialog
+        <InstallItemDialog
           item={addItem}
           open={!!addItem}
           onOpenChange={(o) => !o && setAddItem(null)}
-          fixedAccountId={accountId}
-          fixedProjectName={projectName}
         />
       </div>
     );
@@ -166,12 +164,10 @@ export function MarketplaceView({ accountId }: { accountId: string }) {
         )}
       </div>
 
-      <AddToProjectDialog
+      <InstallItemDialog
         item={addItem}
         open={!!addItem}
         onOpenChange={(o) => !o && setAddItem(null)}
-        fixedAccountId={accountId}
-        fixedProjectName={projectName}
       />
     </div>
   );

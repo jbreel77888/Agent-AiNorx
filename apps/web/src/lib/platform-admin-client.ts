@@ -146,6 +146,31 @@ export async function deleteSkill(id: string): Promise<void> {
   await backendApi.delete(`/admin/platform/skills/${id}`, { headers });
 }
 
+export async function seedSkills(): Promise<{
+  ok: boolean;
+  discovered: number;
+  inserted: number;
+  skipped: number;
+  message: string;
+}> {
+  const headers = await authHeaders();
+  const res = await backendApi.post('/admin/platform/skills/seed', {}, { headers });
+  return res.data;
+}
+
+export async function reinstallSkill(id: string): Promise<PlatformSkill> {
+  const headers = await authHeaders();
+  const res = await backendApi.post(`/admin/platform/skills/${id}/reinstall`, {}, { headers });
+  return res.data.skill;
+}
+
+// Toggle a skill's isActive state (enable/disable without deleting)
+export async function toggleSkill(id: string, isActive: boolean): Promise<PlatformSkill> {
+  const headers = await authHeaders();
+  const res = await backendApi.patch(`/admin/platform/skills/${id}`, { isActive }, { headers });
+  return res.data.skill;
+}
+
 // ─── Models ──────────────────────────────────────────────────────────────────
 
 export async function listModels(): Promise<PlatformModel[]> {

@@ -4,25 +4,32 @@ import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-import { AddToProjectDialog } from '@/components/marketplace/add-to-project-dialog';
+import { InstallItemDialog } from '@/components/marketplace/install-item-dialog';
 import { MarketplaceBrowser } from '@/components/marketplace/marketplace-browser';
 import { MarketplaceDiscover } from '@/components/marketplace/marketplace-discover';
 import { MarketplaceItemDetail } from '@/components/marketplace/marketplace-item-detail';
+import { MarketplaceInstalledPanel } from '@/components/marketplace/marketplace-installed-panel';
 import { FilterBar, FilterBarItem } from '@/components/ui/tabs';
 import { AppHeader } from '@/features/layout/app-header';
 import { useAuth } from '@/features/providers/auth-provider';
 import type { MarketplaceItem } from '@/lib/marketplace-client';
 import { useMarketplaceDetailStore } from '@/stores/marketplace-detail-store';
+import { cn } from '@/lib/utils';
+
+type PageTab = 'explore' | 'installed' | 'marketplaces';
 
 export default function MarketplacePage() {
   const tI18nHardcoded = useTranslations('hardcodedUi');
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   const [addItem, setAddItem] = useState<MarketplaceItem | null>(null);
-  const [tab, setTab] = useState<'explore' | 'marketplaces'>('explore');
+  const [tab, setTab] = useState<PageTab>('explore');
   const [source, setSource] = useState('all');
   const openId = useMarketplaceDetailStore((s) => s.openId);
   const closeSheet = useMarketplaceDetailStore((s) => s.close);
+
+  // Resolve accountId from the auth context — used for the Installed panel
+  const accountId = (user?.app_metadata?.account_id as string) || (user?.user_metadata?.account_id as string) || '';
 
   useEffect(() => {
     if (!authLoading && !user) router.replace('/auth');
@@ -39,7 +46,7 @@ export default function MarketplacePage() {
         <main className="ring-input bg-background min-h-0 flex-1 overflow-hidden rounded-t-3xl ring-1">
           <MarketplaceItemDetail onBack={closeSheet} onAdd={(it) => setAddItem(it)} />
         </main>
-        <AddToProjectDialog
+        <InstallItemDialog
           item={addItem}
           open={!!addItem}
           onOpenChange={(o) => {
@@ -59,9 +66,7 @@ export default function MarketplacePage() {
             <div>
               <h1 className="text-foreground text-lg font-semibold">Marketplace</h1>
               <p className="text-muted-foreground text-sm">
-                {tI18nHardcoded.raw(
-                  'autoAppAppMarketplacePageJsxTextBrowseSkillsAcrossEvery14a9148d',
-                )}
+                Browse and install skills into your account — they'll appear in all your sessions.
               </p>
             </div>
             <FilterBar className="shrink-0">
@@ -70,6 +75,12 @@ export default function MarketplacePage() {
                 onClick={() => setTab('explore')}
               >
                 Explore
+              </FilterBarItem>
+              <FilterBarItem
+                data-state={tab === 'installed' ? 'active' : 'inactive'}
+                onClick={() => setTab('installed')}
+              >
+                Installed
               </FilterBarItem>
               <FilterBarItem
                 data-state={tab === 'marketplaces' ? 'active' : 'inactive'}
@@ -89,6 +100,14 @@ export default function MarketplacePage() {
                 setAddItem(it);
               }}
             />
+          ) : tab === 'installed' ? (
+            accountId ? (
+              <MarketplaceInstalledPanel accountId={accountId} onBrowse={() => setTab('explore')} />
+            ) : (
+              <div className="text-muted-foreground rounded-lg border border-dashed p-8 text-center text-sm">
+                Loading your account...
+              </div>
+            )
           ) : (
             <MarketplaceDiscover
               onBrowse={(id) => {
@@ -100,7 +119,7 @@ export default function MarketplacePage() {
         </div>
       </main>
 
-      <AddToProjectDialog
+      <InstallItemDialog
         item={addItem}
         open={!!addItem}
         onOpenChange={(o) => {

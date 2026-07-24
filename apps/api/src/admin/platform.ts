@@ -167,6 +167,179 @@ platformAdminApp.delete('/skills/:id', async (c) => {
   return c.json({ ok: true });
 });
 
+// ─── Seed platform skills from baked scaffold ───────────────────────────────
+// One-shot endpoint that scans packages/starter/templates/ for SKILL.md files
+// and inserts them into platform_skills if they don't exist yet. This makes
+// the admin Skills panel show all 69 default skills (vaelorx-system, vaelorx-memory,
+// pdf, docx, xlsx, pptx, deep-research, etc.) instead of an empty list.
+
+platformAdminApp.post('/skills/seed', async (c) => {
+  try {
+    const path = await import('node:path');
+    const fs = await import('node:fs/promises');
+    const REPO_ROOT = process.cwd();
+
+    // Scan both base + general-knowledge-worker templates for SKILL.md files
+    const scanDirs = [
+      'packages/starter/templates/base/.vaelorx/opencode/skills',
+      'packages/starter/templates/general-knowledge-worker/.vaelorx/opencode/skills',
+    ];
+
+    const discovered: Array<{ slug: string; name: string; content: string; description: string }> = [];
+    for (const scanDir of scanDirs) {
+      const absDir = path.join(REPO_ROOT, scanDir);
+      let entries: import('node:fs').Dirent[] = [];
+      try {
+        entries = await fs.readdir(absDir, { withFileTypes: true });
+      } catch { continue; }
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        // Walk the skill directory recursively for SKILL.md (handles the
+        // GENERAL-KNOWLEDGE-WORKER/<skill>/SKILL.md nested layout)
+        const skillMdPath = await findSkillMd(path.join(absDir, entry.name));
+        if (!skillMdPath) continue;
+        try {
+          const content = await fs.readFile(skillMdPath, 'utf-8');
+          const slug = entry.name;
+          // Parse YAML frontmatter for name + description
+          const { name, description } = parseFrontmatter(content, slug);
+          discovered.push({ slug, name, content, description });
+        } catch { /* skip unreadable */ }
+      }
+    }
+
+    // Upsert each discovered skill — insert if slug doesn't exist, skip otherwise
+    let inserted = 0;
+    let skipped = 0;
+    for (const skill of discovered) {
+      const [existing] = await db
+        .select()
+        .from(platformSkills)
+        .where(eq(platformSkills.slug, skill.slug))
+        .limit(1);
+
+      if (existing) {
+        skipped++;
+      } else {
+        await db.insert(platformSkills).values({
+          slug: skill.slug,
+          name: skill.name,
+          description: skill.description,
+          skillContent: skill.content,
+          scripts: {},
+          referencesData: [],
+          isActive: true,
+          version: 1,
+        });
+        inserted++;
+      }
+    }
+
+    return c.json({
+      ok: true,
+      discovered: discovered.length,
+      inserted,
+      skipped,
+      message: `Seeded ${inserted} new skills, ${skipped} already existed`,
+    });
+  } catch (err) {
+    console.error('[admin/skills/seed] Error:', err);
+    return c.json({
+      ok: false,
+      error: err instanceof Error ? err.message : 'Seed failed',
+    }, 500);
+  }
+});
+
+// Helper: recursively find SKILL.md in a directory
+async function findSkillMd(dir: string): Promise<string | null> {
+  const fs = await import('node:fs/promises');
+  const path = await import('node:path');
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name === 'SKILL.md') {
+        return path.join(dir, entry.name);
+      }
+    }
+    // Not in root — recurse into subdirectories (one level deep)
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const found = await findSkillMd(path.join(dir, entry.name));
+        if (found) return found;
+      }
+    }
+  } catch { /* not readable */ }
+  return null;
+}
+
+// Helper: parse YAML frontmatter to extract name + description
+function parseFrontmatter(content: string, fallbackSlug: string): { name: string; description: string } {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return { name: fallbackSlug, description: '' };
+  const frontmatter = match[1];
+  const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
+  const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
+  return {
+    name: nameMatch?.[1]?.trim().replace(/^["']|["']$/g, '') || fallbackSlug,
+    description: descMatch?.[1]?.trim().replace(/^["']|["']$/g, '') || '',
+  };
+}
+
+// ─── Reinstall a skill (re-resolve from marketplace and update content) ──────
+platformAdminApp.post('/skills/:id/reinstall', async (c) => {
+  const id = c.req.param('id');
+  const [skill] = await db
+    .select()
+    .from(platformSkills)
+    .where(eq(platformSkills.skillId, id))
+    .limit(1);
+  if (!skill) return c.json({ error: 'Skill not found' }, 404);
+
+  // Re-resolve the skill content from the baked scaffold (in case it was
+  // edited in the DB but the admin wants to revert to the original).
+  try {
+    const path = await import('node:path');
+    const fs = await import('node:fs/promises');
+    const REPO_ROOT = process.cwd();
+    const scanDirs = [
+      'packages/starter/templates/base/.vaelorx/opencode/skills',
+      'packages/starter/templates/general-knowledge-worker/.vaelorx/opencode/skills',
+    ];
+
+    for (const scanDir of scanDirs) {
+      const absDir = path.join(REPO_ROOT, scanDir);
+      let entries: import('node:fs').Dirent[] = [];
+      try {
+        entries = await fs.readdir(absDir, { withFileTypes: true });
+      } catch { continue; }
+
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name !== skill.slug) continue;
+        const skillMdPath = await findSkillMd(path.join(absDir, entry.name));
+        if (!skillMdPath) continue;
+        const content = await fs.readFile(skillMdPath, 'utf-8');
+        const [row] = await db
+          .update(platformSkills)
+          .set({
+            skillContent: content,
+            version: (skill.version ?? 1) + 1,
+            updatedAt: new Date(),
+          })
+          .where(eq(platformSkills.skillId, id))
+          .returning();
+        return c.json({ skill: row, reinstalled: true });
+      }
+    }
+    return c.json({ error: 'Skill source not found in scaffold' }, 404);
+  } catch (err) {
+    return c.json({
+      error: err instanceof Error ? err.message : 'Reinstall failed',
+    }, 500);
+  }
+});
+
 // ─── Models ──────────────────────────────────────────────────────────────────
 
 platformAdminApp.get('/models', async (c) => {

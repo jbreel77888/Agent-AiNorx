@@ -4,21 +4,30 @@
  * Uses account_registry_items table (per-account, NOT the global platform_skills).
  * In session-only mode there is no project/git repo, so installs are DB-backed.
  *
- * The daemon fetches installed skills at boot via GET /v1/accounts/me/registry/installed
- * (the /me/ variant resolves accountId from the auth token — used by the daemon
- * which only has a sandbox-scoped token, not a user session).
+ * Skill delivery model (two layers):
+ *   1. Platform skills (admin-managed, in platform_skills table) — DEFAULT for
+ *      all accounts. Seeded from the baked scaffold skills (69 default skills
+ *      from packages/starter/templates/). Admin can add/disable/reinstall them
+ *      via /admin/platform/skills/* and /admin/platform/publish.
+ *   2. Account skills (user-installed, in account_registry_items table) —
+ *      per-account overrides. If the same skill name exists in both layers,
+ *      the account version WINS (user customization overrides default).
+ *
+ * The daemon fetches BOTH layers via GET /v1/accounts/me/registry/installed
+ * (which merges them server-side) and writes the merged set to
+ * .vaelorx/opencode/skills/ in the sandbox.
  *
  * Routes (mounted at /v1/accounts):
- *   GET    /:accountId/registry             — list installed items
+ *   GET    /:accountId/registry             — list account-installed items
  *   POST   /:accountId/registry/install     — install a marketplace item
  *   DELETE /:accountId/registry/:name       — uninstall an item
  *   GET    /:accountId/registry/updates     — check for updates
  *   POST   /:accountId/registry/update      — update a specific item
- *   GET    /me/registry/installed           — returns files for daemon (auth-token resolved)
+ *   GET    /me/registry/installed           — MERGED platform+account (daemon endpoint)
  */
 import { Hono } from 'hono';
 import { eq, and } from 'drizzle-orm';
-import { accountRegistryItems } from '@kortix/db';
+import { accountRegistryItems, platformSkills } from '@kortix/db';
 import { db } from '../shared/db';
 import { supabaseAuth } from '../middleware/auth';
 import { buildInstall, resolveItemFiles, catalogIdForName } from './install-service';
@@ -41,16 +50,23 @@ async function resolveAccountId(c: any): Promise<string | null> {
   return resolve(userId);
 }
 
-// ─── GET /me/registry/installed — daemon endpoint (returns file contents) ────
-// This is the endpoint the daemon calls at boot to fetch all installed skills
-// for the account. Returns raw file contents so the daemon can write them
-// directly to .vaelorx/opencode/skills/.
+// ─── GET /me/registry/installed — daemon endpoint (MERGED platform + account) ─
+// This is the endpoint the daemon calls at boot. Returns the MERGED set of
+// skills: platform defaults (base layer) + account overrides (top layer).
+// Account skills override platform skills with the same name.
 
 registryApp.get('/me/registry/installed', async (c) => {
   const accountId = await resolveAccountId(c);
   if (!accountId) return c.json({ error: 'Account not found' }, 400);
 
-  const items = await db
+  // 1. Fetch platform skills (defaults for ALL accounts)
+  const platformRows = await db
+    .select()
+    .from(platformSkills)
+    .where(eq(platformSkills.isActive, true));
+
+  // 2. Fetch account-scoped installed skills (overrides)
+  const accountRows = await db
     .select()
     .from(accountRegistryItems)
     .where(
@@ -60,18 +76,33 @@ registryApp.get('/me/registry/installed', async (c) => {
       ),
     );
 
+  // 3. Merge: start with platform skills, override with account skills
+  const merged = new Map<string, { name: string; type: string; content: string; version: number; source: string }>();
+  for (const row of platformRows) {
+    merged.set(row.slug, {
+      name: row.slug,
+      type: 'skill',
+      content: row.skillContent,
+      version: row.version ?? 1,
+      source: 'platform',
+    });
+  }
+  for (const row of accountRows) {
+    merged.set(row.name, {
+      name: row.name,
+      type: row.type,
+      content: row.skillContent,
+      version: row.version,
+      source: 'account',
+    });
+  }
+
   return c.json({
-    items: items.map((item) => ({
-      name: item.name,
-      type: item.type,
-      content: item.skillContent,
-      version: item.version,
-      updatedAt: item.updatedAt,
-    })),
+    items: Array.from(merged.values()),
   });
 });
 
-// ─── GET /:accountId/registry — list installed items ────────────────────────
+// ─── GET /:accountId/registry — list installed items (account only) ──────────
 
 registryApp.get('/:accountId/registry', async (c) => {
   const accountId = c.req.param('accountId');
@@ -115,7 +146,7 @@ registryApp.post('/:accountId/registry/install', async (c) => {
       configDir: '.vaelorx/opencode',
       existingLockRaw: null,
       legacyLockRaw: null,
-      now: Date.now(),
+      now: new Date().toISOString(),
     });
 
     // Store each file as an account_registry_item
@@ -220,7 +251,10 @@ registryApp.post('/:accountId/registry/update', async (c) => {
   if (!name) return c.json({ error: 'name is required' }, 400);
 
   try {
-    const files = await resolveItemFiles(name, '.vaelorx/opencode');
+    const files = (await resolveItemFiles(name, '.vaelorx/opencode')) ?? [];
+    if (files.length === 0) {
+      return c.json({ error: 'Item files not found' }, 404);
+    }
     const contentHash = simpleHash(files.map((f) => f.content).join(''));
 
     const [existing] = await db
@@ -269,3 +303,4 @@ function simpleHash(str: string): string {
   }
   return hash.toString(36);
 }
+
